@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.wwebjs_auth/
+.wwebjs_cache/
+sessions/
+*.log
+.DS_Store

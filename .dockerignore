@@ -1,0 +1,8 @@
+node_modules
+**/node_modules
+**/.env
+**/.env.*
+**/.wwebjs_auth
+**/.wwebjs_cache
+.git
+**/dist

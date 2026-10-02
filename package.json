@@ -1,0 +1,1 @@
+{"name":"masar-recruitment","version":"1.3.0","private":true,"workspaces":["admin-dashboard","whatsapp-bot"],"scripts":{"build":"npm run build -w admin-dashboard","test":"npm test -w whatsapp-bot","start":"npm start -w whatsapp-bot","dev":"npm run dev -w admin-dashboard"},"engines":{"node":">=22"},"devDependencies":{"@electric-sql/pglite":"^0.5.8"}}

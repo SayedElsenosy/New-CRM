@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: masar-whatsapp
+    runtime: docker
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /health
+    disk:
+      name: whatsapp-session
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DASHBOARD_ORIGIN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: SESSION_PATH
+        value: /data/whatsapp
+      - key: NODE_ENV
+        value: production

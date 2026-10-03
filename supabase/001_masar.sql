@@ -99,7 +99,7 @@ do $$ declare t text; begin
  end loop;
 end $$;
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
-values('masar-documents','masar-documents',false,10485760,array['image/jpeg','image/png','image/webp','application/pdf'])
+values('masar-documents','masar-documents',false,10485760,array['image/jpeg','image/png','image/webp','application/pdf','audio/ogg','audio/mpeg','audio/mp4','audio/aac','audio/wav'])
 on conflict(id) do update set public=false;
 -- Atomic application update + reply creation + inbox acknowledgement.
 create or replace function public.masar_commit_turn(p_message uuid,p_patch jsonb,p_reply text)

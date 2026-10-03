@@ -45,5 +45,14 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[paused]}=await db.query('select bot_enabled from masar_applicants where id=$1',[samePersonOtherNumber.id]);
  assert.equal(paused.bot_enabled,false);
  assert.equal((await db.query("select has_table_privilege('anon','masar_knowledge','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Add the three-day learning/run mode. Migration is idempotent and defaults to live.
+ const learningSql=await fs.readFile(new URL('../../supabase/005_learning_mode.sql',import.meta.url),'utf8');
+ await db.exec(learningSql);await db.exec(learningSql);
+ const {rows:[mode]}=await db.query("select ai_run_mode,ai_training_started_at,ai_training_until from masar_settings where id=true");
+ assert.equal(mode.ai_run_mode,'live');assert.equal(mode.ai_training_started_at,null);assert.equal(mode.ai_training_until,null);
+ await db.query("update masar_settings set ai_run_mode='training',ai_training_started_at=now(),ai_training_until=now()+interval '3 days' where id=true");
+ const {rows:[training]}=await db.query("select ai_run_mode,extract(epoch from (ai_training_until-ai_training_started_at))/3600 as hours from masar_settings where id=true");
+ assert.equal(training.ai_run_mode,'training');assert.equal(Number(training.hours),72);
  }finally{await db.close();}
 });

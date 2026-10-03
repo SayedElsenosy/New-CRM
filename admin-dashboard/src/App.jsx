@@ -34,12 +34,12 @@ export default function App(){
  return <div className="app"><aside className={menu?'open':''}><Brand/><p className="nav-label">مساحة العمل</p><nav>{nav.map(([key,label,Icon])=><button key={key} className={activeTab===key?'active':''} onClick={()=>{setTab(key);setMenu(false);}}><Icon size={20}/>{label}{activeTab===key&&<span className="nav-dot"/>}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">{(bootstrap?.profile?.name||'م')[0]}</div><div><strong>{bootstrap?.profile?.name||'إدارة التوظيف'}</strong><small>{session.user.email}</small></div><button className="icon" title="تسجيل الخروج" onClick={()=>supabase.auth.signOut()}><LogOut size={18}/></button></div></aside>
  <main><div className="topbar"><button className="icon mobile" onClick={()=>setMenu(!menu)} aria-label="القائمة"><Menu/></button><span>مساحة العمل <span className="slash">/</span> {nav.find(n=>n[0]===activeTab)?.[1]}</span><span className="secure"><ShieldCheck size={15}/> {role==='admin'?'حساب مسؤول النظام':'حساب مسؤول توظيف'}</span></div><div className="page"><Notice>{error}</Notice>{error&&<button className="text-button" onClick={()=>{setError('');refresh();}}>إعادة المحاولة</button>}{!bootstrap?<div className="loading">جارٍ تحميل البيانات…</div>:<>
  {activeTab==='overview'&&<Overview version={version} onTab={setTab} onSelect={setSelected} role={role} permissions={permissions}/>}
- {activeTab==='applicants'&&can('applicants')&&<Applicants version={version} onSelect={setSelected}/>}
+ {activeTab==='applicants'&&can('applicants')&&<Applicants version={version} onSelect={setSelected} accounts={bootstrap.whatsapp_accounts||[]}/>} 
  {activeTab==='questions'&&can('questions')&&<Questions {...shared}/>}
  {activeTab==='areas'&&can('areas')&&<Areas {...shared}/>}
- {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action}/>}
+ {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action} role={role}/>} 
  {activeTab==='campaigns'&&can('campaigns')&&<Campaigns action={action}/>}
- {activeTab==='reports'&&can('reports')&&<Reports version={version}/>}
+ {activeTab==='reports'&&can('reports')&&<Reports version={version}/>} 
  {activeTab==='staff'&&role==='admin'&&<StaffPage action={action}/>}
  {activeTab==='settings'&&can('settings')&&<SettingsPage {...shared}/>}
  </>}</div></main>{toast&&<div role="status" className={'toast '+(toast.startsWith('تعذّر')?'error':'')}><CheckCircle2 size={18}/>{toast}</div>}{selected&&<Applicant id={selected} onClose={()=>setSelected(null)} onChanged={()=>setVersion(v=>v+1)} action={action}/>}</div>;

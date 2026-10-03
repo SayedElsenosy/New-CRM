@@ -1,4 +1,17 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
+
+function areaPreviewReply(area,areas){
+ const others=areas.filter(z=>z.active&&z.id!==area.id);
+ const choices=others.length?'\n\nولو عايز تقارن بمنطقة تانية اختارها من الأزرار تحت.':'';
+ return areaDetails(area)+`\n\nلو ${area.name} هي المنطقة اللي هتنزل فيها اضغط «✅ تأكيد ${area.name}».`+choices;
+}
+function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
+function areaAction(body){
+ const s=String(body||'');
+ if(s.startsWith('area_preview:'))return {type:'preview',id:s.slice('area_preview:'.length)};
+ if(s.startsWith('confirm_area:'))return {type:'confirm',id:s.slice('confirm_area:'.length)};
+ return null;
+}
 function rejectedAreaReply(area,current,areas){
  const alternatives=areas.filter(z=>z.active&&z.id!==area.id);
  const intro=`تمام، مش هختار ${area.name}.`;
@@ -9,49 +22,112 @@ function rejectedAreaReply(area,current,areas){
  }
  return intro+'\n\nنكمل التقديم: '+questionPrompt(current,areas);
 }
+
 export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret}) {
  if(!a.bot_enabled||['lecture','working'].includes(a.stage))return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||pending[0];
+
+ const action=areaAction(m.body);
+ if(current?.kind==='area'&&action){
+  const area=areas.find(z=>z.active&&z.id===action.id);
+  if(!area)return {patch:{awaiting_id:current.id},reply:questionPrompt(current,areas)};
+  if(action.type==='preview'){
+   answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
+   return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
+  }
+  if(action.type==='confirm'){
+   if(answers.__area_preview?.value!==area.id)return {patch:{awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها أكد اختيارك النهائي.\n\n'+questionPrompt(current,areas)};
+   delete answers.__area_preview;
+   answers[current.id]={value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+   const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
+   const comp=completion(questions,answers,areas);
+   const stage=comp.complete?'complete':realAnswerCount(answers)?'incomplete':'new';
+   return {patch:{answers,stage,awaiting_id:next?.id||null},reply:(`تم تثبيت منطقة التقديم: ${area.name} ✅\n\n`)+(next?questionPrompt(next,areas):settings.completion)};
+  }
+ }
+
  const inquiry=areaInquiry(m.body,areas);
- if(inquiry)return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(inquiry)+(current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'')};
+ if(inquiry){
+  if(current?.kind==='area'){
+   answers.__area_preview={value:inquiry.id,display:inquiry.name,kind:'area_preview',at:new Date().toISOString()};
+   return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(inquiry,areas)};
+  }
+  return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(inquiry)+(current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'')};
+ }
+
  const areaQuestion=/(تفاصيل|مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(norm(m.body));
  if(areaQuestion){
   let area=null,intent=null;
   if(settings.ai_enabled){intent=await interpret(m.body,current,areas);if(intent?.intent==='area_info')area=areas.find(z=>z.active&&z.id===intent.area_id);}
   if(intent?.intent==='area_reject'){
    const rejected=areas.find(z=>z.active&&z.id===intent.area_id);
-   if(rejected)return {patch:current?{awaiting_id:current.id}:{},reply:rejectedAreaReply(rejected,current,areas)};
+   if(rejected){
+    if(answers.__area_preview?.value===rejected.id)delete answers.__area_preview;
+    return {patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers},reply:rejectedAreaReply(rejected,current,areas)};
+   }
   }
   if(!area){const saved=Object.values(answers).find(v=>v.kind==='area');area=areas.find(z=>z.active&&z.id===saved?.value);}
   const info=area?areaDetails(area):'تقصد أنهي منطقة؟ المناطق المتاحة: '+areas.filter(z=>z.active).map(z=>z.name).join('، ');
   return {patch:current?{awaiting_id:current.id}:{},reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
  }
+
  if(!current)return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaQuestion?'اكتب اسم المنطقة علشان أقولك تفاصيلها:\n'+areas.filter(z=>z.active).map(z=>z.name).join('، '):settings.completion};
- if(!a.awaiting_id || a.awaiting_id!==current.id) return {patch:{awaiting_id:current.id},reply:(Object.keys(answers).length?'نكمل بياناتك: ':settings.welcome+'\n')+questionPrompt(current,areas)};
+ if(!a.awaiting_id || a.awaiting_id!==current.id) return {patch:{awaiting_id:current.id},reply:(realAnswerCount(answers)?'نكمل بياناتك: ':settings.welcome+'\n')+questionPrompt(current,areas)};
+
  if(!current.required&&norm(m.body)==='تخطي')answers[current.id]={skipped:true,label:current.label,key:current.field_key,kind:current.kind};
  else {
   let parsed=validateAnswer(current,m.body,areas,m.media_path?{path:m.media_path}:null);
   let ai=null;
   if(!parsed.ok && settings.ai_enabled) ai=await interpret(m.body,current,areas);
+
   if(ai?.intent==='area_info') {
    const area=areas.find(z=>z.active&&z.id===ai.area_id);
-   if(area)return {patch:{},reply:areaDetails(area)+'\n\n'+questionPrompt(current,areas)};
+   if(area){
+    if(current.kind==='area'){
+     answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
+     return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
+    }
+    return {patch:{},reply:areaDetails(area)+'\n\n'+questionPrompt(current,areas)};
+   }
   }
+
   if(ai?.intent==='area_reject'){
    const rejected=areas.find(z=>z.active&&z.id===ai.area_id);
-   if(rejected)return {patch:{awaiting_id:current.id},reply:rejectedAreaReply(rejected,current,areas)};
+   if(rejected){
+    if(answers.__area_preview?.value===rejected.id)delete answers.__area_preview;
+    return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:rejectedAreaReply(rejected,current,areas)};
+   }
   }
+
   if(!parsed.ok&&ai?.intent==='answer'&&!String(ai.answer).includes('محجوب')) parsed=validateAnswer(current,ai.answer,areas,null);
   if(!parsed.ok)return {patch:{},reply:(m.media_error?m.media_error+'\n':'محتاج أوضح إجابتك علشان أسجلها صح.\n')+questionPrompt(current,areas)};
-  answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+
+  if(current.kind==='area'){
+   const area=areas.find(z=>z.active&&z.id===parsed.value);
+   if(area){
+    if(answers.__area_preview?.value===area.id){
+     delete answers.__area_preview;
+     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+    }else{
+     answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
+     return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
+    }
+   }
+  }else{
+   answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+  }
  }
+
  const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const comp=completion(questions,answers,areas);
- const stage=comp.complete?'complete':Object.keys(answers).length?'incomplete':'new';
+ const stage=comp.complete?'complete':realAnswerCount(answers)?'incomplete':'new';
  let reply=next?questionPrompt(next,areas):settings.completion;
- if(current.kind==='area'&&answers[current.id]?.value){const area=areas.find(z=>z.id===answers[current.id].value);if(area)reply=areaDetails(area)+'\n\n'+reply;}
+ if(current.kind==='area'&&answers[current.id]?.value){
+  const area=areas.find(z=>z.id===answers[current.id].value);
+  if(area)reply=`تم تثبيت منطقة التقديم: ${area.name} ✅\n\n`+reply;
+ }
  return {patch:{answers,stage,awaiting_id:next?.id||null},reply};
 }

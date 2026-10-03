@@ -4,9 +4,9 @@
 
 ## ابدأ من هنا
 
-للتشغيل المجاني على جهاز Windows افتح **docs/FREE_LOCAL_WINDOWS.md** وشغّل **START_FREE_WINDOWS.bat**. وللنشر السحابي افتح **docs/DEPLOY_AR.md**.
+للتجربة المجانية 24/7 بدون تشغيل جهازك افتح **docs/ORACLE_FREE_24_7.md**. هذا هو المسار الموصى به حالياً: Oracle Always Free + Supabase Free + Tailscale Funnel.
 
-**Vercel وحده لا يستضيف جلسة Chromium/WhatsApp هذه كعملية دائمة.** التصميم المرفق: واجهة Vercel + خدمة Docker واحدة على Render بقرص دائم + قاعدة Supabase. التشغيل اليومي والربط والفصل من اللوحة. خدمة Render ذات القرص الدائم تحتاج خطة مدفوعة؛ راجع السعر المعروض قبل تفعيلها.
+**المسار التجريبي الموصى به لا يحتاج Render أو جهازك الشخصي.** نفس Oracle VM تشغّل الواجهة وAPI وChromium/WhatsApp، والجلسة محفوظة في Docker volume، بينما Supabase يحتفظ بالبيانات.
 
 ## الموجود في النسخة
 
@@ -44,7 +44,8 @@
 | supabase/001_masar.sql | جداول جديدة باسم masar_ وإجراءات الحفظ؛ لا يحذف القديمة |
 | docs/DEPLOY_AR.md | دليل النشر والتشغيل من المتصفح |
 | docs/TESTING.md | ما اختُبر وما يحتاج اختباراً فعلياً بعد الربط |
-| vercel.json / render.yaml / Dockerfile | إعداد نشر الواجهة وخدمة البوت |
+| Dockerfile / docker-compose.oracle.yml / oracle | تشغيل الواجهة والبوت 24/7 على Oracle VM |
+| vercel.json / render.yaml | خيارات نشر بديلة لاحقاً إذا رغبت في استضافة مدفوعة |
 | .github/workflows/check.yml | بناء واختبار تلقائي عند الرفع إلى GitHub |
 
 ## للمطور فقط

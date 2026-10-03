@@ -1,4 +1,5 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
+import {findKnowledgeAnswer,looksLikeQuestion} from './knowledge.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -23,7 +24,7 @@ function rejectedAreaReply(area,current,areas){
  return intro+'\n\nنكمل التقديم: '+questionPrompt(current,areas);
 }
 
-export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret}) {
+export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[]}) {
  if(!a.bot_enabled||['lecture','working'].includes(a.stage))return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
@@ -76,6 +77,18 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(!area){const saved=Object.values(answers).find(v=>v.kind==='area');area=areas.find(z=>z.active&&z.id===saved?.value);}
   const info=area?areaDetails(area):'تقصد أنهي منطقة؟ المناطق المتاحة: '+areas.filter(z=>z.active).map(z=>z.name).join('، ');
   return {patch:current?{awaiting_id:current.id}:{},reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
+ }
+
+ if(settings.ai_enabled&&settings.ai_knowledge_enabled!==false&&looksLikeQuestion(m.body)){
+  const threshold=Number(settings.ai_confidence_threshold||0.62);
+  const match=findKnowledgeAnswer(m.body,knowledge,threshold);
+  if(match){
+   const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+   return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:match.answer+continueFlow,knowledge_id:match.id,knowledge_confidence:match.confidence};
+  }
+  const answersWithHandoff={...answers,__ai_handoff:{question:String(m.body||'').slice(0,1000),at:new Date().toISOString(),reason:'low_confidence'}};
+  const fallback=String(settings.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.').trim();
+  return {patch:{answers:answersWithHandoff,awaiting_id:current?.id||null,bot_enabled:false,stage:computedStage({...a,answers:answersWithHandoff},questions,areas)},reply:fallback,handoff:true};
  }
 
  if(!current)return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaQuestion?'اكتب اسم المنطقة علشان أقولك تفاصيلها:\n'+areas.filter(z=>z.active).map(z=>z.name).join('، '):settings.completion};

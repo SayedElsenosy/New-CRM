@@ -99,6 +99,69 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/connect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.connect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/disconnect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.disconnect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('settings','put','/settings',async(req,res)=>{const b=req.body;if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');must(await db.from('masar_settings').update({ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion}).eq('id',true));res.json({ok:true});});
+ const cleanKeywords=value=>Array.isArray(value)?[...new Set(value.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20).map(x=>x.slice(0,80)))]:[];
+ async function intelligenceState(){
+  try{
+   const [settings,knowledge,suggestions]=await Promise.all([
+    db.from('masar_settings').select('*').eq('id',true).single(),
+    db.from('masar_knowledge').select('*').order('updated_at',{ascending:false}),
+    db.from('masar_learning_suggestions').select('*').order('created_at',{ascending:false}).limit(200)
+   ]);
+   const s=must(settings),k=must(knowledge),sg=must(suggestions);
+   return {configured:true,settings:{
+    ai_knowledge_enabled:s.ai_knowledge_enabled!==false,
+    ai_learning_enabled:s.ai_learning_enabled!==false,
+    ai_confidence_threshold:Number(s.ai_confidence_threshold||0.62),
+    ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.'
+   },knowledge:k,suggestions:sg,stats:{
+    active:k.filter(x=>x.active).length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
+    learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0)
+   }};
+  }catch(e){
+   if(schemaMissing(e))return {configured:false,settings:null,knowledge:[],suggestions:[],stats:{active:0,total:0,pending:0,learned:0,usage:0}};
+   throw e;
+  }
+ }
+ adminRoute('get','/intelligence',async(_req,res)=>res.json(await intelligenceState()));
+ adminRoute('put','/intelligence/settings',async(req,res)=>{
+  const b=req.body,threshold=Number(b.ai_confidence_threshold),fallback=String(b.ai_fallback||'').trim();
+  if(typeof b.ai_knowledge_enabled!=='boolean'||typeof b.ai_learning_enabled!=='boolean'||!Number.isFinite(threshold)||threshold<.35||threshold>.95||!fallback||fallback.length>1500)throw bad('راجع إعدادات ذكاء البوت');
+  try{must(await db.from('masar_settings').update({ai_knowledge_enabled:b.ai_knowledge_enabled,ai_learning_enabled:b.ai_learning_enabled,ai_confidence_threshold:threshold,ai_fallback:fallback}).eq('id',true));}
+  catch(e){if(schemaMissing(e))throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);throw e;}
+  res.json({ok:true});
+ });
+ adminRoute('post','/intelligence/knowledge',async(req,res)=>{await serial(async()=>{
+  const question=String(req.body.question||'').trim(),answer=String(req.body.answer||'').trim();
+  if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
+  const keywords=cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question));
+  try{res.status(201).json(must(await db.from('masar_knowledge').insert({question,answer,keywords,active:req.body.active!==false,source:'manual',created_by:req.user.id}).select().single()));}
+  catch(e){if(schemaMissing(e))throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);throw e;}
+ });});
+ adminRoute('put','/intelligence/knowledge/:id',async(req,res)=>{await serial(async()=>{
+  if(!uuid(req.params.id))throw bad('معرف المعرفة غير صحيح');
+  const question=String(req.body.question||'').trim(),answer=String(req.body.answer||'').trim();
+  if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
+  const patch={question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),active:req.body.active!==false,updated_at:new Date().toISOString()};
+  res.json(must(await db.from('masar_knowledge').update(patch).eq('id',req.params.id).select().single()));
+ });});
+ adminRoute('delete','/intelligence/knowledge/:id',async(req,res)=>{if(!uuid(req.params.id))throw bad('معرف المعرفة غير صحيح');must(await db.from('masar_knowledge').delete().eq('id',req.params.id));res.json({ok:true});});
+ adminRoute('post','/intelligence/suggestions/:id/approve',async(req,res)=>{await serial(async()=>{
+  if(!uuid(req.params.id))throw bad('معرف الاقتراح غير صحيح');
+  const suggestion=must(await db.from('masar_learning_suggestions').select('*').eq('id',req.params.id).single());
+  if(suggestion.status!=='pending')throw bad('تمت مراجعة الاقتراح بالفعل');
+  const question=String(req.body.question||suggestion.question||'').trim(),answer=String(req.body.answer||suggestion.answer||'').trim();
+  if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
+  const knowledge=must(await db.from('masar_knowledge').insert({question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),active:true,source:'staff',source_suggestion_id:suggestion.id,created_by:req.user.id}).select().single());
+  must(await db.from('masar_learning_suggestions').update({status:'approved',reviewed_by:req.user.id,reviewed_at:new Date().toISOString()}).eq('id',suggestion.id));
+  res.json(knowledge);
+ });});
+ adminRoute('post','/intelligence/suggestions/:id/reject',async(req,res)=>{if(!uuid(req.params.id))throw bad('معرف الاقتراح غير صحيح');const row=must(await db.from('masar_learning_suggestions').select('status').eq('id',req.params.id).single());if(row.status!=='pending')throw bad('تمت مراجعة الاقتراح بالفعل');must(await db.from('masar_learning_suggestions').update({status:'rejected',reviewed_by:req.user.id,reviewed_at:new Date().toISOString()}).eq('id',req.params.id));res.json({ok:true});});
+ adminRoute('post','/intelligence/test',async(req,res)=>{
+  const text=String(req.body.text||'').trim();if(text.length<2||text.length>2000)throw bad('اكتب سؤال للاختبار');
+  const state=await intelligenceState();if(!state.configured)throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);
+  const match=findKnowledgeAnswer(text,state.knowledge.filter(x=>x.active),state.settings.ai_confidence_threshold);
+  res.json(match?{matched:true,id:match.id,question:match.question,answer:match.answer,confidence:Math.round(match.confidence*1000)/1000}:{matched:false,answer:state.settings.ai_fallback,confidence:null});
+ });
  for(const type of ['areas','questions']){
   permissionRoute(type,'post','/'+type,async(req,res)=>{await serial(async()=>{
    const b=req.body;let row;

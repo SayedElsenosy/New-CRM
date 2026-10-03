@@ -17,6 +17,11 @@ create table if not exists public.masar_questions (
  required boolean not null default true, active boolean not null default true,
  position integer not null default 0, created_at timestamptz not null default now()
 );
+-- Normalize defaults when upgrading an older Masar questions table.
+alter table public.masar_questions alter column required set default true;
+alter table public.masar_questions alter column active set default true;
+alter table public.masar_questions alter column position set default 0;
+
 create table if not exists public.masar_applicants (
  id uuid primary key default gen_random_uuid(), contact_id text unique not null,
  phone text unique check(phone is null or phone ~ '^\+[1-9][0-9]{7,14}$'),

@@ -20,7 +20,7 @@ export class WhatsAppConnection {
   this.busy=true;this.desired=true;
   try{await this.persist();if(this.client){await this.client.destroy().catch(()=>{});this.client=null;}
    this.state={status:'starting',phone:null,qr:null,error:null};
-   const client=new this.ClientClass({authStrategy:new LocalAuth({clientId:'masar',dataPath:this.sessionPath}),puppeteer:{headless:true,executablePath:process.env.PUPPETEER_EXECUTABLE_PATH||undefined,args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage']},authTimeoutMs:120000});
+   const client=new this.ClientClass({authStrategy:new LocalAuth({clientId:'masar',dataPath:this.sessionPath}),puppeteer:{headless:true,executablePath:process.env.PUPPETEER_EXECUTABLE_PATH||undefined,protocolTimeout:300000,timeout:180000,args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-background-timer-throttling','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']},authTimeoutMs:300000});
    this.client=client;
    client.on('qr',async qr=>{const image=await QRCode.toDataURL(qr,{width:300,margin:2});if(this.client===client)this.state={status:'qr',qr:image,qrExpiresAt:Date.now()+55000,phone:null,error:null};});
    client.on('authenticated',()=>{if(this.client===client)this.state={...this.state,status:'authenticated',qr:null};});

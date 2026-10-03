@@ -155,3 +155,31 @@ tbody tr:hover{background:#fbfdf5}
  .brand-image{max-width:185px}
  .login-card .brand-image{max-width:260px}
 }
+
+
+/* Keep long desktop sidebars reachable on shorter screens */
+.app>aside{
+ height:100vh;
+ height:100dvh;
+ max-height:100vh;
+ max-height:100dvh;
+ overflow-y:auto;
+ overflow-x:hidden;
+ overscroll-behavior:contain;
+ scrollbar-width:thin;
+ scrollbar-color:#b7e40066 transparent;
+}
+.app>aside::-webkit-scrollbar{width:7px}
+.app>aside::-webkit-scrollbar-track{background:transparent}
+.app>aside::-webkit-scrollbar-thumb{background:#b7e40055;border-radius:999px}
+.app>aside::-webkit-scrollbar-thumb:hover{background:#b7e40088}
+.app>aside .brand,.app>aside .nav-label,.app>aside nav,.app>aside .sidebar-bottom{flex-shrink:0}
+.sidebar-bottom{
+ position:sticky;
+ bottom:0;
+ z-index:2;
+ background:linear-gradient(180deg,#171e2700 0%,#171e27 24%,#171e27 100%);
+ backdrop-filter:blur(6px);
+ padding-top:28px;
+ padding-bottom:18px;
+}

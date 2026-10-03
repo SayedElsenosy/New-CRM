@@ -1,5 +1,8 @@
 FROM node:22-bookworm-slim AS build
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY admin-dashboard/package.json admin-dashboard/package.json

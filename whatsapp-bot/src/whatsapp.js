@@ -1,4 +1,4 @@
-import makeWASocket,{DisconnectReason,useMultiFileAuthState,downloadMediaMessage} from '@whiskeysockets/baileys';
+import makeWASocket,{DisconnectReason,useMultiFileAuthState,downloadMediaMessage,generateWAMessageFromContent,proto} from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -29,8 +29,20 @@ function unwrap(message){
  }
  return m;
 }
-function textOf(message){
+export function extractMessageText(message){
  const m=unwrap(message);
+ if(m.interactiveResponseMessage){
+  const response=m.interactiveResponseMessage;
+  try{
+   const params=JSON.parse(response.nativeFlowResponseMessage?.paramsJson||'{}');
+   const id=params.id||params.row_id||params.selected_id;
+   if(id)return String(id);
+  }catch{}
+  if(response.body?.text)return String(response.body.text);
+ }
+ if(m.buttonsResponseMessage)return String(m.buttonsResponseMessage.selectedButtonId||m.buttonsResponseMessage.selectedDisplayText||'');
+ if(m.listResponseMessage)return String(m.listResponseMessage.singleSelectReply?.selectedRowId||m.listResponseMessage.title||'');
+ if(m.templateButtonReplyMessage)return String(m.templateButtonReplyMessage.selectedId||m.templateButtonReplyMessage.selectedDisplayText||'');
  return String(m.conversation||m.extendedTextMessage?.text||m.imageMessage?.caption||m.documentMessage?.caption||m.videoMessage?.caption||'');
 }
 function mediaMeta(message){
@@ -65,7 +77,7 @@ async function normalizedRecord(sock,msg){
  const ts=Number(msg.messageTimestamp?.toString?.()||msg.messageTimestamp||Math.floor(Date.now()/1000));
  return {
   id:String(msg.key.id),contact_id:jid,phone:await resolvePhone(sock,msg),
-  body:textOf(msg.message).slice(0,10000),media,media_error,
+  body:extractMessageText(msg.message).slice(0,10000),media,media_error,
   created_at:new Date((Number.isFinite(ts)?ts:Math.floor(Date.now()/1000))*1000).toISOString()
  };
 }
@@ -147,9 +159,30 @@ export class WhatsAppConnection{
    this.state={status:'disconnected',qr:null,phone:null,error:null};
   }finally{this.busy=false;}
  }
- async send(to,body){
+ async send(to,body,{buttons=[]}={}){
   if(this.state.status!=='connected'||!this.client)throw new Error('WhatsApp is disconnected');
-  return this.client.sendMessage(to,{text:body});
+  if(!buttons.length)return this.client.sendMessage(to,{text:body});
+  try{
+   const nativeButtons=buttons.slice(0,10).map((button,index)=>({
+    name:'quick_reply',
+    buttonParamsJson:JSON.stringify({display_text:String(button.text||button.label||('اختيار '+(index+1))).slice(0,80),id:String(button.id)})
+   }));
+   const interactive=proto.Message.InteractiveMessage.fromObject({
+    header:{hasMediaAttachment:false},
+    body:{text:String(body)},
+    footer:{text:'اختار بالضغط على الزر'},
+    nativeFlowMessage:{buttons:nativeButtons,messageParamsJson:'{}',messageVersion:1}
+   });
+   const generated=generateWAMessageFromContent(to,{interactiveMessage:interactive},{userJid:this.client.user?.id});
+   const bizNode={tag:'biz',attrs:{},content:[{tag:'interactive',attrs:{type:'native_flow',v:'1'},content:[{tag:'native_flow',attrs:{v:'9',name:'mixed'}}]}]};
+   const botNode={tag:'bot',attrs:{biz_bot:'1'}};
+   const message={documentWithCaptionMessage:{message:generated.message}};
+   await this.client.relayMessage(to,message,{messageId:generated.key.id,additionalNodes:[bizNode,botNode]});
+   generated.message=message;return generated;
+  }catch(e){
+   console.warn('Interactive area buttons failed; falling back to text:',e?.name||'Error');
+   return this.client.sendMessage(to,{text:body});
+  }
  }
  async close(){
   const sock=this.client;this.client=null;

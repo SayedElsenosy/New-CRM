@@ -45,9 +45,15 @@ export class Worker {
    }catch(e){blocked.add(m.applicant_id);const attempts=m.attempts+1;must(await this.db.from('masar_messages').update({attempts,status:attempts>=3?'failed':'pending',error:'تعذر معالجة الرسالة؛ أعد المحاولة من ملف المتقدم.'}).eq('id',m.id));this.lastError='توجد رسالة تحتاج مراجعة في ملف المتقدم';}}
    if(this.connection.snapshot().status==='connected'){
     const outgoing=must(await this.db.from('masar_messages').select('*').eq('status','queued').order('sequence').limit(20));
-    for(const m of outgoing){const a=must(await this.db.from('masar_applicants').select('contact_id').eq('id',m.applicant_id).single());
+    const sendConfig=outgoing.length?await config(this.db):null;
+    for(const m of outgoing){const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled').eq('id',m.applicant_id).single());
+     let buttons=[];
+     if(m.sender==='bot'&&a.bot_enabled&&sendConfig){
+      const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);
+      if(q?.kind==='area')buttons=sendConfig.areas.filter(area=>area.active).map(area=>({id:area.id,text:area.name}));
+     }
      must(await this.db.from('masar_messages').update({status:'sending'}).eq('id',m.id));
-     try{const sent=await this.connection.send(a.contact_id,m.body);must(await this.db.from('masar_messages').update({status:'sent',wa_id:sent?.key?.id||sent?.id?._serialized||null,error:null}).eq('id',m.id));}
+     try{const sent=await this.connection.send(a.contact_id,m.body,{buttons});must(await this.db.from('masar_messages').update({status:'sent',wa_id:sent?.key?.id||sent?.id?._serialized||null,error:null}).eq('id',m.id));}
      catch{must(await this.db.from('masar_messages').update({status:'uncertain',error:'لم نتأكد من وصول الرد. راجع واتساب قبل إعادة إرساله.'}).eq('id',m.id));}
     }
    }

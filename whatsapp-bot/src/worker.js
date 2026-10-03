@@ -26,7 +26,7 @@ export class Worker {
   this.tick();
  }
  async prepareRecordMedia(record,applicantId,accountId){
-  let body=String(record.body||''),media_path=null,media_error=record.media_error||null,transcribed=false;
+  let body=String(record.body||''),media_path=null,media_error=record.media_error||null,transcribed=false,transcription_trusted=false,transcription_confidence=null;
   const media=record.media||null;
   if(media){
    const bytes=Buffer.from(media.data,'base64');
@@ -42,8 +42,15 @@ export class Worker {
    if(media.kind==='audio'&&!body.trim()){
     try{
      if(!this.speech?.available)throw new Error(this.speech?.error||'speech unavailable');
-     body=await this.speech.transcribe(bytes,media.type);
+     const transcript=await this.speech.transcribe(bytes,media.type);
+     body=transcript.text;
      transcribed=true;
+     transcription_trusted=Boolean(transcript.trusted);
+     transcription_confidence=Number.isFinite(transcript.confidence)?transcript.confidence:null;
+     if(!transcription_trusted){
+      const pct=transcription_confidence===null?'':` (ثقة ${Math.round(transcription_confidence*100)}%)`;
+      media_error='التفريغ الصوتي غير موثوق'+pct+'؛ لم يستخدمه البوت في الرد أو التعلّم. راجع التسجيل الأصلي.';
+     }
     }catch(e){
      body='🎤 رسالة صوتية';
      media_error=media_path?'تم حفظ الرسالة الصوتية لكن تعذر تحويلها إلى نص تلقائياً. يمكن لمسؤول التوظيف تشغيل التسجيل ومراجعته.':'تعذر حفظ الرسالة الصوتية أو تحويلها إلى نص تلقائياً؛ يحتاج مسؤول التوظيف لمراجعتها من واتساب.';
@@ -51,7 +58,7 @@ export class Worker {
     }
    }
   }
-  return {body:body.slice(0,10000),media_path,media_type:media?.type||null,media_error,transcribed,is_audio:media?.kind==='audio'};
+  return {body:body.slice(0,10000),media_path,media_type:media?.type||null,media_error,transcribed,transcription_trusted,transcription_confidence,is_audio:media?.kind==='audio'};
  }
  async ingest(record){
   const accountId=record.whatsapp_account_id||null,multi=this.multi();
@@ -117,10 +124,10 @@ export class Worker {
    let learned=false;
    if(source&&settings?.ai_learning_enabled!==false){
     learned=await createLearningSuggestion(this.db,{
-     applicantId:a.id,sourceMessage:source,staffMessageId:saved.id,answer:prepared.transcribed||!prepared.is_audio?prepared.body:'',staffId:null,force:runMode==='training'
+     applicantId:a.id,sourceMessage:source,staffMessageId:saved.id,answer:(prepared.transcribed&&prepared.transcription_trusted)||!prepared.is_audio?prepared.body:'',staffId:null,force:runMode==='training'
     });
    }
-   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed)}}));
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
    return;
   }
 
@@ -136,11 +143,11 @@ export class Worker {
 
   const prepared=await this.prepareRecordMedia(record,a.id,accountId);
   const messageRow={applicant_id:a.id,wa_id:record.id,direction:'in',sender:'applicant',body:prepared.body,media_path:prepared.media_path,media_type:prepared.media_type,media_error:prepared.media_error,created_at:record.created_at};
-  if(prepared.is_audio&&!prepared.transcribed)messageRow.status='processed';
+  if(prepared.is_audio&&(!prepared.transcribed||!prepared.transcription_trusted))messageRow.status='processed';
   if(multi)messageRow.whatsapp_account_id=accountId;
   const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
   if(prepared.is_audio){
-   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'voice_message',detail:{message_id:saved.id,direction:'in',transcribed:Boolean(prepared.transcribed)}}));
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'voice_message',detail:{message_id:saved.id,direction:'in',transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
   }
  }
  async tick(){

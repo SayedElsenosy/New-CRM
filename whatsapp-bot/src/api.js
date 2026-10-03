@@ -5,7 +5,6 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
 import {legacyImport} from './legacy.js';
-import expressStatic from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(v);
@@ -108,7 +107,7 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   ].map((q,i)=>({...q,position:i+1}))));
  });res.json({ok:true});});
  if(dashboardDist&&fs.existsSync(dashboardDist)){
-  app.use(expressStatic.static(dashboardDist,{index:false}));
+  app.use(express.static(dashboardDist,{index:false}));
   app.use((req,res,next)=>{if(req.method==='GET'&&!req.path.startsWith('/api')&&req.path!=='/health')return res.sendFile(path.join(dashboardDist,'index.html'));next();});
  }
  app.use((error,_req,res,_next)=>{console.error('API:',error.code||error.name);res.status(error.status||500).json({error:error.status?error.message:error.code==='23505'?'الاسم أو مفتاح البيانات مستخدم بالفعل':'تعذر إتمام العملية. راجع إعداد قاعدة البيانات واتصال الخدمة.'});});return app;

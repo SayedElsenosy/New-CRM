@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(v);
 function bad(message,status=400){return Object.assign(new Error(message),{status});}
-const PERMISSIONS=new Set(['applicants','areas','reports','questions','whatsapp','settings']);
+const PERMISSIONS=new Set(['applicants','areas','reports','campaigns','questions','whatsapp','settings']);
 const DEFAULT_RECRUITER_PERMISSIONS=['applicants','areas','reports'];
 const cleanPermissions=value=>Array.isArray(value)?[...new Set(value.filter(v=>PERMISSIONS.has(v)))]:[...DEFAULT_RECRUITER_PERMISSIONS];
 export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}){
@@ -59,10 +59,87 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   const ids=req.body.ids;if(!Array.isArray(ids)||ids.length!==qs.length||new Set(ids).size!==ids.length||ids.some(id=>!qs.some(q=>q.id===id)))throw bad('تم تغيير قائمة الأسئلة؛ حدّث الصفحة');
   must(await db.rpc('masar_reorder_questions',{p_ids:ids}));res.json({ok:true});
  });});
+ const attributionOf=a=>a?.answers?.__attribution&&typeof a.answers.__attribution==='object'?a.answers.__attribution:null;
+ async function campaignCatalog(){
+  try{
+   const [campaigns,ads]=await Promise.all([
+    db.from('masar_campaigns').select('*').order('created_at',{ascending:true}),
+    db.from('masar_ads').select('*').order('last_seen_at',{ascending:false})
+   ]);
+   return {campaigns:must(campaigns),ads:must(ads)};
+  }catch(e){
+   if(['PGRST205','42P01','42703'].includes(e.code))throw bad('فعّل جداول تتبع الحملات أولاً بتشغيل ملف supabase/002_campaign_attribution.sql في Supabase SQL Editor.',503);
+   throw e;
+  }
+ }
+ async function discoverAds(){
+  const catalog=await campaignCatalog(),byId=new Map(catalog.ads.map(a=>[a.ad_id,a]));
+  const applicants=await allRows(db,'masar_applicants');
+  for(const applicant of applicants){
+   const ref=attributionOf(applicant),adId=String(ref?.source_id||'').trim();if(!adId)continue;
+   const existing=byId.get(adId);
+   if(!existing){
+    const inserted=must(await db.from('masar_ads').insert({
+     ad_id:adId,name:ref.title||'',headline:ref.title||'',source_url:ref.source_url||null,
+     source_app:ref.source_app||null,source_type:ref.source_type||'ad',
+     first_seen_at:ref.captured_at||applicant.created_at,last_seen_at:ref.captured_at||applicant.created_at
+    }).select().single());byId.set(adId,inserted);catalog.ads.unshift(inserted);
+   }else{
+    const patch={last_seen_at:ref.captured_at||applicant.created_at,updated_at:new Date().toISOString()};
+    if(!existing.headline&&ref.title)patch.headline=ref.title;
+    if(!existing.source_url&&ref.source_url)patch.source_url=ref.source_url;
+    if(!existing.source_app&&ref.source_app)patch.source_app=ref.source_app;
+    if(Object.keys(patch).length>2){must(await db.from('masar_ads').update(patch).eq('ad_id',adId));Object.assign(existing,patch);}
+   }
+  }
+  return catalog;
+ }
+ const summaryFor=rows=>{
+  const stages=Object.fromEntries(Object.keys(STAGES).map(k=>[k,rows.filter(a=>a.stage===k).length]));
+  const completed=rows.filter(a=>['complete','lecture','working'].includes(a.stage)).length;
+  return {total:rows.length,completed,stages};
+ };
+ permissionRoute('campaigns','get','/campaigns',async(_req,res)=>{
+  const {campaigns,ads}=await discoverAds();
+  const cfg=await config(db),applicants=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas)}));
+  const stats=Object.fromEntries(ads.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
+  res.json({campaigns,ads:ads.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
+ });
+ permissionRoute('campaigns','post','/campaigns',async(req,res)=>{await serial(async()=>{
+  const b=req.body,name=String(b.name||'').trim(),meta=String(b.meta_campaign_id||'').trim()||null;
+  if(name.length<2||name.length>150)throw bad('اكتب اسم الحملة');
+  const row={name,meta_campaign_id:meta,active:b.active!==false,updated_at:new Date().toISOString()};
+  if(b.id&&!uuid(b.id))throw bad('معرف الحملة غير صحيح');
+  const q=b.id?db.from('masar_campaigns').update(row).eq('id',b.id):db.from('masar_campaigns').insert(row);
+  res.json(must(await q.select().single()));
+ });});
+ permissionRoute('campaigns','delete','/campaigns/:id',async(req,res)=>{await serial(async()=>{
+  if(!uuid(req.params.id))throw bad('معرف الحملة غير صحيح');
+  must(await db.from('masar_ads').update({campaign_id:null,updated_at:new Date().toISOString()}).eq('campaign_id',req.params.id));
+  must(await db.from('masar_campaigns').delete().eq('id',req.params.id));res.json({ok:true});
+ });});
+ permissionRoute('campaigns','put','/ads/:id',async(req,res)=>{await serial(async()=>{
+  const adId=String(req.params.id||'').trim(),b=req.body;if(!/^\d{5,40}$/.test(adId))throw bad('Ad ID غير صحيح');
+  const campaignId=b.campaign_id||null;if(campaignId&&!uuid(campaignId))throw bad('معرف الحملة غير صحيح');
+  const spend=Number(b.spend);if(!Number.isFinite(spend)||spend<0||spend>1000000000)throw bad('راجع تكلفة الإعلان');
+  const name=String(b.name||'').trim();if(name.length>200)throw bad('اسم الإعلان طويل');
+  const patch={campaign_id:campaignId,name,spend:Math.round(spend*100)/100,updated_at:new Date().toISOString()};
+  res.json(must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single()));
+ });});
+ permissionRoute('reports','get','/reports/options',async(_req,res)=>{
+  const {campaigns,ads}=await discoverAds();res.json({campaigns,ads});
+ });
+
  async function applicantList(req){
   const c=await config(db);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,c.questions,c.areas),completion:completion(c.questions,a.answers,c.areas)}));
   if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||a.display_name.toLowerCase().includes(s)||Object.values(a.answers).some(v=>v.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
   if(req.query.stage)rows=rows.filter(a=>a.stage===req.query.stage);
+  if(req.query.ad_id)rows=rows.filter(a=>String(attributionOf(a)?.source_id||'')===String(req.query.ad_id));
+  if(req.query.campaign_id){
+   if(!uuid(String(req.query.campaign_id)))throw bad('معرف الحملة غير صحيح');
+   const {ads}=await campaignCatalog(),ids=new Set(ads.filter(ad=>ad.campaign_id===req.query.campaign_id).map(ad=>ad.ad_id));
+   rows=rows.filter(a=>ids.has(String(attributionOf(a)?.source_id||'')));
+  }
   if(req.query.from)rows=rows.filter(a=>a.created_at>=req.query.from);
   if(req.query.to)rows=rows.filter(a=>a.created_at<req.query.to);
   return {rows:rows.sort((a,b)=>b.created_at.localeCompare(a.created_at)),...c};
@@ -89,13 +166,37 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
  permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');await serial(async()=>{const a=must(await db.from('masar_applicants').select('id,contact_id').eq('id',req.params.id).single());if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');must(await db.from('masar_applicants').update({bot_enabled:false}).eq('id',a.id));must(await db.from('masar_messages').insert({applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'}));});res.json({ok:true});});
  permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single());if(!['failed','uncertain'].includes(m.status))throw bad('هذه الرسالة لا تحتاج إعادة محاولة');if(m.status==='uncertain'&&req.body.confirm!==true)throw bad('راجع واتساب ثم أكد إعادة الإرسال');must(await db.from('masar_messages').update({status:m.direction==='in'?'pending':'queued',attempts:0,error:null}).eq('id',m.id));});res.json({ok:true});});
  permissionRoute('reports','get','/reports',async(req,res)=>{
-  const {rows,areas}=await applicantList(req);const stages=Object.fromEntries(Object.keys(STAGES).map(k=>[k,rows.filter(a=>a.stage===k).length]));
-  const zones=areas.map(z=>({name:z.name,count:rows.filter(a=>Object.values(a.answers).some(v=>v.kind==='area'&&v.value===z.id)).length}));
+  const {rows,areas}=await applicantList(req),catalog=await campaignCatalog();
+  const base=summaryFor(rows),stages=base.stages;
+  const zones=areas.map(z=>({name:z.name,count:rows.filter(a=>Object.values(a.answers||{}).some(v=>v?.kind==='area'&&v.value===z.id)).length}));
   const days={};for(const a of rows){const day=new Date(a.created_at).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});days[day]=(days[day]||0)+1;}
-  res.json({total:rows.length,stages,areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:rows.filter(a=>['complete','lecture','working'].includes(a.stage)).length});
+  const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
+  const adIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))];
+  const ad_breakdown=adIds.map(adId=>{const subset=rows.filter(a=>String(attributionOf(a)?.source_id||'')===adId),ad=adById.get(adId),s=summaryFor(subset);return {
+   ad_id:adId,name:ad?.name||ad?.headline||'',campaign_id:ad?.campaign_id||null,campaign_name:campaignById.get(ad?.campaign_id)?.name||'غير مربوط بحملة',
+   spend:Number(ad?.spend||0),...s
+  };}).sort((a,b)=>b.total-a.total);
+  const campaignIds=[...new Set(ad_breakdown.map(x=>x.campaign_id).filter(Boolean))];
+  const campaign_breakdown=campaignIds.map(id=>{const adSet=new Set(catalog.ads.filter(x=>x.campaign_id===id).map(x=>x.ad_id)),subset=rows.filter(a=>adSet.has(String(attributionOf(a)?.source_id||''))),s=summaryFor(subset);return {
+   id,name:campaignById.get(id)?.name||'حملة',spend:catalog.ads.filter(x=>x.campaign_id===id).reduce((n,x)=>n+Number(x.spend||0),0),...s
+  };}).sort((a,b)=>b.total-a.total);
+  const selectedSpend=req.query.ad_id?Number(adById.get(String(req.query.ad_id))?.spend||0):
+   req.query.campaign_id?catalog.ads.filter(x=>x.campaign_id===req.query.campaign_id).reduce((n,x)=>n+Number(x.spend||0),0):
+   catalog.ads.reduce((n,x)=>n+Number(x.spend||0),0);
+  const div=n=>n?Math.round(selectedSpend/n*100)/100:null;
+  res.json({
+   total:base.total,stages,areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:base.completed,
+   attributed:rows.filter(a=>Boolean(attributionOf(a)?.source_id)).length,unattributed:rows.filter(a=>!attributionOf(a)?.source_id).length,
+   spend:selectedSpend,costs:{per_lead:div(base.total),per_complete:div(base.completed),per_lecture:div(stages.lecture),per_working:div(stages.working)},
+   ad_breakdown,campaign_breakdown
+  });
  });
  permissionRoute('reports','get','/reports.csv',async(req,res)=>{
-  const {rows}=await applicantList(req);const lines=[['رقم واتساب','الاسم','الحالة','المنطقة','اكتمال البيانات','تاريخ التسجيل'],...rows.map(a=>[a.phone||'غير متاح',Object.values(a.answers).find(v=>v.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers).find(v=>v.kind==='area')?.display||'',a.completion.percent+'%',a.created_at])];res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="masar-report.csv"');res.send('\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n'));
+  const {rows}=await applicantList(req),catalog=await campaignCatalog(),campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
+  const lines=[['رقم واتساب','الاسم','الحالة','المنطقة','اكتمال البيانات','الحملة','Ad ID','اسم الإعلان','CTWA Click ID','مصروف الإعلان المسجل','مصدر الإعلان','رابط الإعلان','تاريخ التسجيل'],...rows.map(a=>{
+   const ref=attributionOf(a)||{},ad=adById.get(String(ref.source_id||'')),campaign=campaignById.get(ad?.campaign_id);
+   return [a.phone||'غير متاح',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers||{}).find(v=>v?.kind==='area')?.display||'',a.completion.percent+'%',campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ref.ctwa_clid||'',Number(ad?.spend||0),ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];
+  })];res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="speed-delivery-campaign-report.csv"');res.send('\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n'));
  });
  async function staffRows(){
   const rows=must(await db.from('masar_staff').select('user_id,created_at').order('created_at',{ascending:true}));

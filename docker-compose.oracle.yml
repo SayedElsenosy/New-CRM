@@ -1,0 +1,23 @@
+services:
+  masar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    container_name: masar
+    restart: unless-stopped
+    env_file:
+      - ./oracle/.env
+    environment:
+      PORT: 3001
+      SESSION_PATH: /data/whatsapp
+      DASHBOARD_DIST: /app/admin-dashboard/dist
+      NODE_ENV: production
+    volumes:
+      - masar_whatsapp:/data/whatsapp
+    network_mode: host
+
+volumes:
+  masar_whatsapp:

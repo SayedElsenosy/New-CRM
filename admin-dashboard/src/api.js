@@ -1,8 +1,8 @@
 import {createClient} from '@supabase/supabase-js';
 const url=import.meta.env.VITE_SUPABASE_URL,key=import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const configured=!!(url&&key&&import.meta.env.VITE_BOT_API_URL);
+export const configured=!!(url&&key);
 export const supabase=configured?createClient(url,key):null;
-const base=(import.meta.env.VITE_BOT_API_URL||'').replace(/\/$/,'');
+const base=(import.meta.env.VITE_BOT_API_URL||window.location.origin).replace(/\/$/,'');
 export async function api(route,options={}){
  const {data}=await supabase.auth.getSession();
  const response=await fetch(base+'/api'+route,{...options,headers:{'Content-Type':'application/json',Authorization:`Bearer ${data.session?.access_token||''}`,...options.headers},signal:options.signal||AbortSignal.timeout(25000)});

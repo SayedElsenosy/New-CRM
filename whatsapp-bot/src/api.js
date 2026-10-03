@@ -5,9 +5,11 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
 import {legacyImport} from './legacy.js';
+import fs from 'node:fs';
+import path from 'node:path';
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(v);
 function bad(message,status=400){return Object.assign(new Error(message),{status});}
-export function makeApi({db,connection,worker,serial,origins}){
+export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}){
  const app=express();app.set('trust proxy',1);app.use(helmet());
  app.use(cors({origin(origin,cb){cb(null,!origin||origins.includes(origin));}}));
  app.use(express.json({limit:'64kb'}));
@@ -21,7 +23,7 @@ export function makeApi({db,connection,worker,serial,origins}){
   req.user=data.user;next();
  }catch(e){next(e);}});
  const route=(method,url,fn)=>app[method]('/api'+url,async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}});
- route('get','/bootstrap',async(_r,res)=>res.json({...await config(db),ai_configured:!!process.env.GEMINI_API_KEY}));
+ route('get','/bootstrap',async(_r,res)=>res.json({...await config(db),ai_configured:true,ai_provider:'local'}));
  route('get','/whatsapp',async(_r,res)=>res.json({...connection.snapshot(),worker_error:worker.lastError}));
  route('post','/whatsapp/connect',async(_r,res)=>{await connection.connect();res.json(connection.snapshot());});
  route('post','/whatsapp/disconnect',async(_r,res)=>{await connection.disconnect();res.json(connection.snapshot());});
@@ -104,5 +106,9 @@ export function makeApi({db,connection,worker,serial,origins}){
    {field_key:'document',label:'ابعت المستند المطلوب للتقديم بعد مراجعة مسؤول التوظيف لنوعه.',kind:'image',required:false,active:false}
   ].map((q,i)=>({...q,position:i+1}))));
  });res.json({ok:true});});
+ if(dashboardDist&&fs.existsSync(dashboardDist)){
+  app.use(express.static(dashboardDist,{index:false}));
+  app.use((req,res,next)=>{if(req.method==='GET'&&!req.path.startsWith('/api')&&req.path!=='/health')return res.sendFile(path.join(dashboardDist,'index.html'));next();});
+ }
  app.use((error,_req,res,_next)=>{console.error('API:',error.code||error.name);res.status(error.status||500).json({error:error.status?error.message:error.code==='23505'?'الاسم أو مفتاح البيانات مستخدم بالفعل':'تعذر إتمام العملية. راجع إعداد قاعدة البيانات واتصال الخدمة.'});});return app;
 }

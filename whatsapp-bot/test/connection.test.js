@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
-import {WhatsAppConnection,resolvePhone,extractMessageText,extractAdReferral,normalizedRecord} from '../src/whatsapp.js';
+import {WhatsAppConnection,resolvePhone,extractMessageText,extractAdReferral,normalizedRecord,normalizeMediaType,isAudioType} from '../src/whatsapp.js';
 
 test('phone resolution uses PN mapping and never treats LID digits as a phone',async()=>{
  const msg={key:{remoteJid:'99999999999999@lid'}};
@@ -86,4 +86,12 @@ test('normal applicant messages remain inbound records',async()=>{
  assert.equal(record.direction,'in');
  assert.equal(record.from_me,false);
  assert.equal(record.source,'applicant');
+});
+
+
+test('WhatsApp voice-note MIME types are normalized for storage and transcription',()=>{
+ assert.equal(normalizeMediaType('audio/ogg; codecs=opus'),'audio/ogg');
+ assert.equal(normalizeMediaType('audio/opus'),'audio/ogg');
+ assert.equal(isAudioType('audio/ogg; codecs=opus'),true);
+ assert.equal(isAudioType('image/jpeg'),false);
 });

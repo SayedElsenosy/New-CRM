@@ -12,7 +12,15 @@ function bad(message,status=400){return Object.assign(new Error(message),{status
 const PERMISSIONS=new Set(['applicants','areas','reports','campaigns','questions','whatsapp','settings']);
 const DEFAULT_RECRUITER_PERMISSIONS=['applicants','areas','reports'];
 const cleanPermissions=value=>Array.isArray(value)?[...new Set(value.filter(v=>PERMISSIONS.has(v)))]:[...DEFAULT_RECRUITER_PERMISSIONS];
-export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}){
+export function makeApi({db,connection,connections,worker,serial,origins,dashboardDist=null}){
+ const whatsapp=connections||{
+  configured:false,
+  defaultAccountId:()=>null,
+  snapshot:()=>connection?.snapshot?.()||{status:'disconnected'},
+  snapshots:async()=>[{id:null,name:'الرقم الرئيسي',legacy_session:true,...(connection?.snapshot?.()||{status:'disconnected'})}],
+  connect:async()=>{await connection?.connect?.();return connection?.snapshot?.()||{status:'disconnected'};},
+  disconnect:async()=>{await connection?.disconnect?.();return connection?.snapshot?.()||{status:'disconnected'};}
+ };
  const app=express();app.set('trust proxy',1);app.use(helmet({
   contentSecurityPolicy:{
    directives:{
@@ -34,10 +42,61 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
  const route=(method,url,fn)=>app[method]('/api'+url,async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}});
  const adminRoute=(method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin')throw bad('هذه الصفحة متاحة لمسؤول النظام فقط',403);await fn(req,res);});
  const permissionRoute=(permission,method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin'&&!req.permissions.includes(permission))throw bad('ليس لديك صلاحية لهذه الصفحة',403);await fn(req,res);});
- route('get','/bootstrap',async(req,res)=>{const cfg=await config(db);const profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};const payload={role:req.role,permissions:req.permissions,profile,ai_configured:true,ai_provider:'local'};if(req.role==='admin'||req.permissions.includes('areas'))payload.areas=cfg.areas;if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;res.json(payload);});
- permissionRoute('whatsapp','get','/whatsapp',async(_r,res)=>res.json({...connection.snapshot(),worker_error:worker.lastError}));
- permissionRoute('whatsapp','post','/whatsapp/connect',async(_r,res)=>{await connection.connect();res.json(connection.snapshot());});
- permissionRoute('whatsapp','post','/whatsapp/disconnect',async(_r,res)=>{await connection.disconnect();res.json(connection.snapshot());});
+ async function accessibleAccountIds(req){
+  if(!whatsapp.configured||req.role==='admin')return null;
+  const rows=must(await db.from('masar_staff_whatsapp_access').select('whatsapp_account_id').eq('user_id',req.user.id));
+  return rows.map(x=>x.whatsapp_account_id);
+ }
+ async function accountRows(req){
+  const rows=await whatsapp.snapshots(),allowed=await accessibleAccountIds(req);
+  return allowed===null?rows:rows.filter(x=>allowed.includes(x.id));
+ }
+ async function ensureAccountAccess(req,id){
+  if(!whatsapp.configured)return;
+  if(!uuid(id))throw bad('معرف رقم واتساب غير صحيح');
+  const allowed=await accessibleAccountIds(req);
+  if(allowed!==null&&!allowed.includes(id))throw bad('رقم واتساب ده مش ضمن صلاحيات حسابك',403);
+  if(!whatsapp.snapshot(id))throw bad('حساب واتساب غير موجود',404);
+ }
+ route('get','/bootstrap',async(req,res)=>{
+  const cfg=await config(db),profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};
+  const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
+  const payload={role:req.role,permissions:req.permissions,profile,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured,ai_configured:true,ai_provider:'local'};
+  if(req.role==='admin'||req.permissions.includes('areas'))payload.areas=cfg.areas;
+  if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;
+  if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;
+  res.json(payload);
+ });
+ permissionRoute('whatsapp','get','/whatsapp',async(req,res)=>{
+  const rows=await accountRows(req),first=rows[0]||null;
+  res.json(first?{...first,worker_error:worker.lastError}:{status:'disconnected',phone:null,qr:null,error:'لا يوجد رقم واتساب ضمن صلاحيات الحساب',worker_error:worker.lastError});
+ });
+ permissionRoute('whatsapp','post','/whatsapp/connect',async(req,res)=>{
+  const rows=await accountRows(req),id=rows[0]?.id??whatsapp.defaultAccountId();
+  if(whatsapp.configured&&!id)throw bad('لا يوجد رقم واتساب ضمن صلاحيات الحساب',403);
+  if(id)await ensureAccountAccess(req,id);res.json(await whatsapp.connect(id));
+ });
+ permissionRoute('whatsapp','post','/whatsapp/disconnect',async(req,res)=>{
+  const rows=await accountRows(req),id=rows[0]?.id??whatsapp.defaultAccountId();
+  if(whatsapp.configured&&!id)throw bad('لا يوجد رقم واتساب ضمن صلاحيات الحساب',403);
+  if(id)await ensureAccountAccess(req,id);res.json(await whatsapp.disconnect(id));
+ });
+ permissionRoute('whatsapp','get','/whatsapp/accounts',async(req,res)=>res.json({configured:whatsapp.configured,items:await accountRows(req),worker_error:worker.lastError}));
+ adminRoute('post','/whatsapp/accounts',async(req,res)=>{await serial(async()=>{
+  if(!whatsapp.configured)throw bad('فعّل تعدد أرقام واتساب أولاً بتشغيل ملف supabase/003_multi_whatsapp.sql في Supabase SQL Editor.',503);
+  const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
+  const row=must(await db.from('masar_whatsapp_accounts').insert({name,legacy_session:false,active:true}).select().single());
+  await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));
+ });});
+ adminRoute('put','/whatsapp/accounts/:id',async(req,res)=>{await serial(async()=>{
+  if(!whatsapp.configured||!uuid(req.params.id))throw bad('معرف رقم واتساب غير صحيح');
+  const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
+  const row=must(await db.from('masar_whatsapp_accounts').update({name,updated_at:new Date().toISOString()}).eq('id',req.params.id).select().single());
+  const item=whatsapp.item?.(req.params.id);if(item)item.account={...item.account,...row};
+  res.json(whatsapp.snapshot(req.params.id)||row);
+ });});
+ permissionRoute('whatsapp','post','/whatsapp/accounts/:id/connect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.connect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
+ permissionRoute('whatsapp','post','/whatsapp/accounts/:id/disconnect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.disconnect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('settings','put','/settings',async(req,res)=>{const b=req.body;if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');must(await db.from('masar_settings').update({ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion}).eq('id',true));res.json({ok:true});});
  for(const type of ['areas','questions']){
   permissionRoute(type,'post','/'+type,async(req,res)=>{await serial(async()=>{
@@ -102,11 +161,14 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   const completed=rows.filter(a=>['complete','lecture','working'].includes(a.stage)).length;
   return {total:rows.length,completed,stages};
  };
- permissionRoute('campaigns','get','/campaigns',async(_req,res)=>{
-  const {campaigns,ads}=await discoverAds();
-  const cfg=await config(db),applicants=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas)}));
-  const stats=Object.fromEntries(ads.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
-  res.json({campaigns,ads:ads.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
+ permissionRoute('campaigns','get','/campaigns',async(req,res)=>{
+  const {campaigns,ads}=await discoverAds(),applicants=(await applicantList(req)).rows;
+  const visibleIds=new Set(applicants.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+  const scopedAds=req.role==='admin'?ads:ads.filter(ad=>visibleIds.has(ad.ad_id));
+  const scopedCampaignIds=new Set(scopedAds.map(ad=>ad.campaign_id).filter(Boolean));
+  const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>scopedCampaignIds.has(x.id));
+  const stats=Object.fromEntries(scopedAds.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
+  res.json({campaigns:scopedCampaigns,ads:scopedAds.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
  });
  permissionRoute('campaigns','post','/campaigns',async(req,res)=>{await serial(async()=>{
   const b=req.body,name=String(b.name||'').trim(),meta=String(b.meta_campaign_id||'').trim()||null;
@@ -129,14 +191,41 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   const patch={campaign_id:campaignId,name,spend:Math.round(spend*100)/100,updated_at:new Date().toISOString()};
   res.json(must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single()));
  });});
- permissionRoute('reports','get','/reports/options',async(_req,res)=>{
-  try{const {campaigns,ads}=await discoverAds();res.json({campaigns,ads,configured:true});}
-  catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],configured:false});throw e;}
+ permissionRoute('reports','get','/reports/options',async(req,res)=>{
+  try{
+   const {campaigns,ads}=await discoverAds(),rows=(await applicantList(req)).rows;
+   const ids=new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+   const scopedAds=req.role==='admin'?ads:ads.filter(x=>ids.has(x.ad_id));
+   const campaignIds=new Set(scopedAds.map(x=>x.campaign_id).filter(Boolean));
+   const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>campaignIds.has(x.id));
+   const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
+   res.json({campaigns:scopedCampaigns,ads:scopedAds,accounts,configured:true,multi_whatsapp_configured:whatsapp.configured});
+  }catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],accounts:[],configured:false,multi_whatsapp_configured:whatsapp.configured});throw e;}
  });
 
+ async function ensureApplicantAccess(req,a){
+  if(!whatsapp.configured||req.role==='admin')return;
+  const allowed=await accessibleAccountIds(req);
+  if(!allowed.includes(a.whatsapp_account_id))throw bad('المتقدم ده تابع لرقم واتساب غير مصرح لك به',403);
+ }
+ async function applicantById(req,id,select='*'){
+  if(!uuid(id))throw bad('معرف المتقدم غير صحيح');
+  const a=must(await db.from('masar_applicants').select(select).eq('id',id).single());
+  await ensureApplicantAccess(req,a);return a;
+ }
  async function applicantList(req){
-  const c=await config(db);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,c.questions,c.areas),completion:completion(c.questions,a.answers,c.areas)}));
-  if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||a.display_name.toLowerCase().includes(s)||Object.values(a.answers).some(v=>v.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
+  const cfg=await config(db);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas)}));
+  if(whatsapp.configured){
+   const allowed=await accessibleAccountIds(req);
+   if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
+   if(req.query.whatsapp_account_id){
+    const accountId=String(req.query.whatsapp_account_id);
+    if(!uuid(accountId))throw bad('معرف رقم واتساب غير صحيح');
+    if(allowed!==null&&!allowed.includes(accountId))throw bad('رقم واتساب ده مش ضمن صلاحيات حسابك',403);
+    rows=rows.filter(a=>a.whatsapp_account_id===accountId);
+   }
+  }
+  if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||(a.display_name||'').toLowerCase().includes(s)||Object.values(a.answers||{}).some(v=>v?.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
   if(req.query.stage)rows=rows.filter(a=>a.stage===req.query.stage);
   if(req.query.ad_id)rows=rows.filter(a=>String(attributionOf(a)?.source_id||'')===String(req.query.ad_id));
   if(req.query.campaign_id){
@@ -146,47 +235,55 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   }
   if(req.query.from)rows=rows.filter(a=>a.created_at>=req.query.from);
   if(req.query.to)rows=rows.filter(a=>a.created_at<req.query.to);
-  return {rows:rows.sort((a,b)=>b.created_at.localeCompare(a.created_at)),...c};
+  return {rows:rows.sort((a,b)=>b.created_at.localeCompare(a.created_at)),...cfg};
  }
  permissionRoute('applicants','get','/applicants',async(req,res)=>{const {rows}=await applicantList(req);const page=Math.max(1,parseInt(req.query.page)||1);res.json({items:rows.slice((page-1)*30,page*30),total:rows.length,page});});
  permissionRoute('applicants','get','/applicants/:id',async(req,res)=>{
-  const a=must(await db.from('masar_applicants').select('*').eq('id',req.params.id).single());const c=await config(db);
+  const a=await applicantById(req,req.params.id),cfg=await config(db);
   const before=req.query.before;let query=db.from('masar_messages').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(101);
-  // Timestamp+ID cursor prevents omission when timestamps coincide.
   if(before){const [time,id]=String(before).split('|');if(!uuid(id)||!Number.isFinite(Date.parse(time)))throw bad('مؤشر غير صحيح');query=query.or(`created_at.lt.${time},and(created_at.eq.${time},id.lt.${id})`);}
-  const all=must(await query);const has_more=all.length>100;const messages=all.slice(0,100);const last=messages.at(-1);
+  const all=must(await query),has_more=all.length>100,messages=all.slice(0,100),last=messages.at(-1);
   for(const m of messages){if(m.media_path){const signed=await db.storage.from('masar-documents').createSignedUrl(m.media_path,600);m.media_url=signed.data?.signedUrl||null;}}
   const events=must(await db.from('masar_events').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).limit(50));
-  res.json({applicant:{...a,stage:computedStage(a,c.questions,c.areas),completion:completion(c.questions,a.answers,c.areas)},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
+  const account=whatsapp.configured?whatsapp.snapshot(a.whatsapp_account_id):null;
+  res.json({applicant:{...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
  });
  permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{await serial(async()=>{
-  const a=must(await db.from('masar_applicants').select('*').eq('id',req.params.id).single());const b=req.body;const patch={updated_at:new Date().toISOString()};
+  const a=await applicantById(req,req.params.id),b=req.body,patch={updated_at:new Date().toISOString()};
   if(b.notes!==undefined){if(typeof b.notes!=='string'||b.notes.length>4000)throw bad('الملاحظات لا تتجاوز 4000 حرف');patch.notes=b.notes;}
   if(b.bot_enabled!==undefined){if(typeof b.bot_enabled!=='boolean')throw bad('قيمة غير صحيحة');patch.bot_enabled=b.bot_enabled;}
-  if(b.stage!==undefined){if(!['lecture','working','auto'].includes(b.stage))throw bad('حالة غير صحيحة');const c=await config(db);if(b.stage!=='auto'&&!completion(c.questions,a.answers,c.areas).complete)throw bad('أكمل البيانات المطلوبة قبل تأكيد الحضور أو بدء العمل');patch.stage=b.stage==='auto'?computedStage({...a,stage:'new'},c.questions,c.areas):b.stage;patch.lecture_at=b.stage==='auto'?null:(a.lecture_at||new Date().toISOString());patch.working_at=b.stage==='working'?new Date().toISOString():null;}
+  if(b.stage!==undefined){if(!['lecture','working','auto'].includes(b.stage))throw bad('حالة غير صحيحة');const cfg=await config(db);if(b.stage!=='auto'&&!completion(cfg.questions,a.answers,cfg.areas).complete)throw bad('أكمل البيانات المطلوبة قبل تأكيد الحضور أو بدء العمل');patch.stage=b.stage==='auto'?computedStage({...a,stage:'new'},cfg.questions,cfg.areas):b.stage;patch.lecture_at=b.stage==='auto'?null:(a.lecture_at||new Date().toISOString());patch.working_at=b.stage==='working'?new Date().toISOString():null;}
   must(await db.from('masar_applicants').update(patch).eq('id',a.id));
   must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined}}));res.json({ok:true});
  });});
- permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');await serial(async()=>{const a=must(await db.from('masar_applicants').select('id,contact_id').eq('id',req.params.id).single());if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');must(await db.from('masar_applicants').update({bot_enabled:false}).eq('id',a.id));must(await db.from('masar_messages').insert({applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'}));});res.json({ok:true});});
- permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single());if(!['failed','uncertain'].includes(m.status))throw bad('هذه الرسالة لا تحتاج إعادة محاولة');if(m.status==='uncertain'&&req.body.confirm!==true)throw bad('راجع واتساب ثم أكد إعادة الإرسال');must(await db.from('masar_messages').update({status:m.direction==='in'?'pending':'queued',attempts:0,error:null}).eq('id',m.id));});res.json({ok:true});});
+ permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{
+  const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');
+  await serial(async()=>{const a=await applicantById(req,req.params.id,whatsapp.configured?'id,contact_id,whatsapp_account_id':'id,contact_id');if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');must(await db.from('masar_applicants').update({bot_enabled:false}).eq('id',a.id));const row={applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'};if(whatsapp.configured)row.whatsapp_account_id=a.whatsapp_account_id;must(await db.from('masar_messages').insert(row));});res.json({ok:true});
+ });
+ permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{
+  const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single()),a=await applicantById(req,m.applicant_id,whatsapp.configured?'id,whatsapp_account_id':'id');
+  if(!['failed','uncertain'].includes(m.status))throw bad('هذه الرسالة لا تحتاج إعادة محاولة');if(m.status==='uncertain'&&req.body.confirm!==true)throw bad('راجع واتساب ثم أكد إعادة الإرسال');
+  must(await db.from('masar_messages').update({status:m.direction==='in'?'pending':'queued',attempts:0,error:null}).eq('id',m.id));
+ });res.json({ok:true});});
  permissionRoute('reports','get','/reports',async(req,res)=>{
   const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);
   const base=summaryFor(rows),stages=base.stages;
   const zones=areas.map(z=>({name:z.name,count:rows.filter(a=>Object.values(a.answers||{}).some(v=>v?.kind==='area'&&v.value===z.id)).length}));
   const days={};for(const a of rows){const day=new Date(a.created_at).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});days[day]=(days[day]||0)+1;}
   const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
-  const adIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))];
+  const adIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))],visibleAdIds=new Set(adIds);
+  const relevantAds=catalog.ads.filter(x=>visibleAdIds.has(x.ad_id));
   const ad_breakdown=adIds.map(adId=>{const subset=rows.filter(a=>String(attributionOf(a)?.source_id||'')===adId),ad=adById.get(adId),s=summaryFor(subset);return {
    ad_id:adId,name:ad?.name||ad?.headline||'',campaign_id:ad?.campaign_id||null,campaign_name:campaignById.get(ad?.campaign_id)?.name||'غير مربوط بحملة',
    spend:Number(ad?.spend||0),...s
   };}).sort((a,b)=>b.total-a.total);
   const campaignIds=[...new Set(ad_breakdown.map(x=>x.campaign_id).filter(Boolean))];
-  const campaign_breakdown=campaignIds.map(id=>{const adSet=new Set(catalog.ads.filter(x=>x.campaign_id===id).map(x=>x.ad_id)),subset=rows.filter(a=>adSet.has(String(attributionOf(a)?.source_id||''))),s=summaryFor(subset);return {
-   id,name:campaignById.get(id)?.name||'حملة',spend:catalog.ads.filter(x=>x.campaign_id===id).reduce((n,x)=>n+Number(x.spend||0),0),...s
+  const campaign_breakdown=campaignIds.map(id=>{const campaignAds=relevantAds.filter(x=>x.campaign_id===id),adSet=new Set(campaignAds.map(x=>x.ad_id)),subset=rows.filter(a=>adSet.has(String(attributionOf(a)?.source_id||''))),s=summaryFor(subset);return {
+   id,name:campaignById.get(id)?.name||'حملة',spend:campaignAds.reduce((n,x)=>n+Number(x.spend||0),0),...s
   };}).sort((a,b)=>b.total-a.total);
-  const selectedSpend=req.query.ad_id?Number(adById.get(String(req.query.ad_id))?.spend||0):
-   req.query.campaign_id?catalog.ads.filter(x=>x.campaign_id===req.query.campaign_id).reduce((n,x)=>n+Number(x.spend||0),0):
-   catalog.ads.reduce((n,x)=>n+Number(x.spend||0),0);
+  const selectedSpend=req.query.ad_id?Number(relevantAds.find(x=>x.ad_id===String(req.query.ad_id))?.spend||0):
+   req.query.campaign_id?relevantAds.filter(x=>x.campaign_id===req.query.campaign_id).reduce((n,x)=>n+Number(x.spend||0),0):
+   relevantAds.reduce((n,x)=>n+Number(x.spend||0),0);
   const div=n=>n?Math.round(selectedSpend/n*100)/100:null;
   res.json({
    total:base.total,stages,areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:base.completed,
@@ -197,16 +294,41 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
  });
  permissionRoute('reports','get','/reports.csv',async(req,res)=>{
   const {rows}=await applicantList(req),catalog=await campaignCatalog(true),campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
-  const lines=[['رقم واتساب','الاسم','الحالة','المنطقة','اكتمال البيانات','الحملة','Ad ID','اسم الإعلان','CTWA Click ID','مصروف الإعلان المسجل','مصدر الإعلان','رابط الإعلان','تاريخ التسجيل'],...rows.map(a=>{
-   const ref=attributionOf(a)||{},ad=adById.get(String(ref.source_id||'')),campaign=campaignById.get(ad?.campaign_id);
-   return [a.phone||'غير متاح',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers||{}).find(v=>v?.kind==='area')?.display||'',a.completion.percent+'%',campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ref.ctwa_clid||'',Number(ad?.spend||0),ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];
+  const accountById=new Map((await accountRows(req)).map(x=>[x.id,x]));
+  const lines=[['رقم واتساب المتقدم','حساب واتساب المستلم','رقم الحساب المستلم','الاسم','الحالة','المنطقة','اكتمال البيانات','الحملة','Ad ID','اسم الإعلان','CTWA Click ID','مصروف الإعلان المسجل','مصدر الإعلان','رابط الإعلان','تاريخ التسجيل'],...rows.map(a=>{
+   const ref=attributionOf(a)||{},ad=adById.get(String(ref.source_id||'')),campaign=campaignById.get(ad?.campaign_id),account=accountById.get(a.whatsapp_account_id);
+   return [a.phone||'غير متاح',account?.name||'',account?.phone||'',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers||{}).find(v=>v?.kind==='area')?.display||'',a.completion.percent+'%',campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ref.ctwa_clid||'',Number(ad?.spend||0),ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];
   })];res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="speed-delivery-campaign-report.csv"');res.send('\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n'));
  });
+ async function normalizedStaffAccountIds(value){
+  if(!whatsapp.configured)return [];
+  if(!Array.isArray(value))throw bad('حدد أرقام واتساب المسموح بها');
+  const requested=[...new Set(value.map(String))];
+  if(requested.some(id=>!uuid(id)))throw bad('أحد أرقام واتساب المختارة غير صحيح');
+  const available=(await whatsapp.snapshots()).map(x=>x.id);
+  if(requested.some(id=>!available.includes(id)))throw bad('تم تغيير قائمة أرقام واتساب؛ حدّث الصفحة');
+  return requested;
+ }
+ async function saveStaffAccountAccess(userId,ids){
+  if(!whatsapp.configured)return;
+  must(await db.from('masar_staff_whatsapp_access').delete().eq('user_id',userId));
+  if(ids.length)must(await db.from('masar_staff_whatsapp_access').insert(ids.map(whatsapp_account_id=>({user_id:userId,whatsapp_account_id}))));
+ }
  async function staffRows(){
   const rows=must(await db.from('masar_staff').select('user_id,created_at').order('created_at',{ascending:true}));
   const {data,error}=await db.auth.admin.listUsers({page:1,perPage:1000});if(error)throw error;
   const byId=new Map((data.users||[]).map(u=>[u.id,u]));
-  return rows.map(r=>{const u=byId.get(r.user_id);const role=u?.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';return {id:r.user_id,name:String(u?.user_metadata?.full_name||''),email:u?.email||'',role,permissions:role==='admin'?[...PERMISSIONS]:cleanPermissions(u?.app_metadata?.masar_permissions),created_at:r.created_at,last_sign_in_at:u?.last_sign_in_at||null};});
+  const access=whatsapp.configured?must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id')):[];
+  const accessByUser=new Map();
+  for(const row of access){if(!accessByUser.has(row.user_id))accessByUser.set(row.user_id,[]);accessByUser.get(row.user_id).push(row.whatsapp_account_id);}
+  const accounts=(await whatsapp.snapshots()).map(({id,name,phone,status})=>({id,name,phone,status}));
+  const items=rows.map(r=>{const u=byId.get(r.user_id),role=u?.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';return {
+   id:r.user_id,name:String(u?.user_metadata?.full_name||''),email:u?.email||'',role,
+   permissions:role==='admin'?[...PERMISSIONS]:cleanPermissions(u?.app_metadata?.masar_permissions),
+   whatsapp_account_ids:role==='admin'?accounts.map(x=>x.id):accessByUser.get(r.user_id)||[],
+   created_at:r.created_at,last_sign_in_at:u?.last_sign_in_at||null
+  };});
+  return {items,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured};
  }
  async function recruiterTarget(id){
   if(!uuid(id))throw bad('معرف الحساب غير صحيح');
@@ -214,27 +336,31 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   if(target.data.user.app_metadata?.masar_role!=='recruiter')throw bad('يمكن تعديل حسابات مسؤولي التوظيف فقط',403);
   return target.data.user;
  }
- adminRoute('get','/staff',async(_req,res)=>res.json({items:await staffRows()}));
+ adminRoute('get','/staff',async(_req,res)=>res.json(await staffRows()));
  adminRoute('post','/staff',async(req,res)=>{
   const name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase(),password=String(req.body.password||''),permissions=cleanPermissions(req.body.permissions);
+  const accountIds=await normalizedStaffAccountIds(req.body.whatsapp_account_ids||[]);
   if(name.length<2||name.length>100)throw bad('اكتب اسم مسؤول التوظيف');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw bad('اكتب بريد إلكتروني صحيح');
   if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');
+  if(whatsapp.configured&&!accountIds.length)throw bad('اختر رقم واتساب واحد على الأقل للمسؤول');
   const created=await db.auth.admin.createUser({email,password,email_confirm:true,app_metadata:{masar_role:'recruiter',masar_permissions:permissions},user_metadata:{full_name:name}});
   if(created.error)throw bad(created.error.message.includes('already')?'البريد الإلكتروني مستخدم بالفعل':'تعذر إنشاء الحساب');
-  try{must(await db.from('masar_staff').insert({user_id:created.data.user.id}));}
+  try{must(await db.from('masar_staff').insert({user_id:created.data.user.id}));await saveStaffAccountAccess(created.data.user.id,accountIds);}
   catch(e){await db.auth.admin.deleteUser(created.data.user.id).catch(()=>{});throw e;}
-  res.status(201).json({id:created.data.user.id,name,email,role:'recruiter',permissions});
+  res.status(201).json({id:created.data.user.id,name,email,role:'recruiter',permissions,whatsapp_account_ids:accountIds});
  });
  adminRoute('put','/staff/:id',async(req,res)=>{
-  const target=await recruiterTarget(req.params.id);const name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase();
+  const target=await recruiterTarget(req.params.id),name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase();
   if(name.length<2||name.length>100)throw bad('اكتب اسم مسؤول التوظيف');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw bad('اكتب بريد إلكتروني صحيح');
   if(!Array.isArray(req.body.permissions))throw bad('حدد صلاحيات الحساب');
-  const permissions=cleanPermissions(req.body.permissions);
+  const permissions=cleanPermissions(req.body.permissions),accountIds=await normalizedStaffAccountIds(req.body.whatsapp_account_ids||[]);
+  if(whatsapp.configured&&!accountIds.length)throw bad('اختر رقم واتساب واحد على الأقل للمسؤول');
   const changed=await db.auth.admin.updateUserById(req.params.id,{email,email_confirm:true,user_metadata:{...(target.user_metadata||{}),full_name:name},app_metadata:{...(target.app_metadata||{}),masar_role:'recruiter',masar_permissions:permissions}});
   if(changed.error)throw bad(changed.error.message.includes('already')?'البريد الإلكتروني مستخدم بالفعل':'تعذر تعديل الحساب');
-  res.json({id:req.params.id,name,email,role:'recruiter',permissions});
+  await saveStaffAccountAccess(req.params.id,accountIds);
+  res.json({id:req.params.id,name,email,role:'recruiter',permissions,whatsapp_account_ids:accountIds});
  });
  adminRoute('put','/staff/:id/password',async(req,res)=>{
   await recruiterTarget(req.params.id);const password=String(req.body.password||'');if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');

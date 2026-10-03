@@ -147,7 +147,7 @@ export class WhatsAppConnection{
     markOnlineOnConnect:false,
     syncFullHistory:false,
     generateHighQualityLinkPreview:false,
-    browser:['Masar','Chrome','1.0.0'],
+    browser:['Speed Delivery','Chrome','1.0.0'],
     getMessage:async()=>undefined,
     logger:silentLogger
    });

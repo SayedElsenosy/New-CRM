@@ -60,15 +60,18 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   must(await db.rpc('masar_reorder_questions',{p_ids:ids}));res.json({ok:true});
  });});
  const attributionOf=a=>a?.answers?.__attribution&&typeof a.answers.__attribution==='object'?a.answers.__attribution:null;
- async function campaignCatalog(){
+ async function campaignCatalog(optional=false){
   try{
    const [campaigns,ads]=await Promise.all([
     db.from('masar_campaigns').select('*').order('created_at',{ascending:true}),
     db.from('masar_ads').select('*').order('last_seen_at',{ascending:false})
    ]);
-   return {campaigns:must(campaigns),ads:must(ads)};
+   return {campaigns:must(campaigns),ads:must(ads),configured:true};
   }catch(e){
-   if(['PGRST205','42P01','42703'].includes(e.code))throw bad('فعّل جداول تتبع الحملات أولاً بتشغيل ملف supabase/002_campaign_attribution.sql في Supabase SQL Editor.',503);
+   if(['PGRST205','42P01','42703'].includes(e.code)){
+    if(optional)return {campaigns:[],ads:[],configured:false};
+    throw bad('فعّل جداول تتبع الحملات أولاً بتشغيل ملف supabase/002_campaign_attribution.sql في Supabase SQL Editor.',503);
+   }
    throw e;
   }
  }
@@ -127,7 +130,8 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   res.json(must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single()));
  });});
  permissionRoute('reports','get','/reports/options',async(_req,res)=>{
-  const {campaigns,ads}=await discoverAds();res.json({campaigns,ads});
+  try{const {campaigns,ads}=await discoverAds();res.json({campaigns,ads,configured:true});}
+  catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],configured:false});throw e;}
  });
 
  async function applicantList(req){
@@ -166,7 +170,7 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
  permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');await serial(async()=>{const a=must(await db.from('masar_applicants').select('id,contact_id').eq('id',req.params.id).single());if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');must(await db.from('masar_applicants').update({bot_enabled:false}).eq('id',a.id));must(await db.from('masar_messages').insert({applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'}));});res.json({ok:true});});
  permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single());if(!['failed','uncertain'].includes(m.status))throw bad('هذه الرسالة لا تحتاج إعادة محاولة');if(m.status==='uncertain'&&req.body.confirm!==true)throw bad('راجع واتساب ثم أكد إعادة الإرسال');must(await db.from('masar_messages').update({status:m.direction==='in'?'pending':'queued',attempts:0,error:null}).eq('id',m.id));});res.json({ok:true});});
  permissionRoute('reports','get','/reports',async(req,res)=>{
-  const {rows,areas}=await applicantList(req),catalog=await campaignCatalog();
+  const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);
   const base=summaryFor(rows),stages=base.stages;
   const zones=areas.map(z=>({name:z.name,count:rows.filter(a=>Object.values(a.answers||{}).some(v=>v?.kind==='area'&&v.value===z.id)).length}));
   const days={};for(const a of rows){const day=new Date(a.created_at).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});days[day]=(days[day]||0)+1;}
@@ -192,7 +196,7 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   });
  });
  permissionRoute('reports','get','/reports.csv',async(req,res)=>{
-  const {rows}=await applicantList(req),catalog=await campaignCatalog(),campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
+  const {rows}=await applicantList(req),catalog=await campaignCatalog(true),campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
   const lines=[['رقم واتساب','الاسم','الحالة','المنطقة','اكتمال البيانات','الحملة','Ad ID','اسم الإعلان','CTWA Click ID','مصروف الإعلان المسجل','مصدر الإعلان','رابط الإعلان','تاريخ التسجيل'],...rows.map(a=>{
    const ref=attributionOf(a)||{},ad=adById.get(String(ref.source_id||'')),campaign=campaignById.get(ad?.campaign_id);
    return [a.phone||'غير متاح',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers||{}).find(v=>v?.kind==='area')?.display||'',a.completion.percent+'%',campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ref.ctwa_clid||'',Number(ad?.spend||0),ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];

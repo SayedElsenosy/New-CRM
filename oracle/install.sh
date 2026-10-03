@@ -7,7 +7,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl git docker.io docker-compose-plugin
+apt-get install -y ca-certificates curl git docker.io docker-compose-v2
 systemctl enable --now docker
 
 if ! command -v tailscale >/dev/null 2>&1; then
@@ -15,6 +15,8 @@ if ! command -v tailscale >/dev/null 2>&1; then
 fi
 
 echo
-echo "تم تثبيت Docker وTailscale."
-echo "الخطوة التالية: tailscale up"
-echo "وبعد تسجيل الدخول شغّل: sudo bash oracle/start.sh"
+echo "تم تثبيت Docker Compose وTailscale."
+echo "الخطوة التالية:"
+echo "sudo tailscale up"
+echo "ثم بعد تسجيل الدخول:"
+echo "sudo bash oracle/start.sh"

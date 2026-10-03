@@ -22,9 +22,28 @@ export class Worker {
    if(canonical&&a&&canonical.id!==a.id){must(await this.db.rpc('masar_merge_applicants',{p_source:a.id,p_target:canonical.id}));a=canonical;}
    else if(canonical)a=canonical;
   }
-  if(!a)a=must(await this.db.from('masar_applicants').insert({contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at}).select().single());
-  else {const patch={contact_id:record.contact_id,last_message_at:record.created_at,updated_at:new Date().toISOString()};if(record.phone)patch.phone=record.phone;must(await this.db.from('masar_applicants').update(patch).eq('id',a.id));}
+  const referral=record.referral?.source_id?record.referral:null;
+  if(!a){
+   const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at};
+   if(referral)row.answers={__attribution:referral};
+   a=must(await this.db.from('masar_applicants').insert(row).select().single());
+  }else {
+   const patch={contact_id:record.contact_id,last_message_at:record.created_at,updated_at:new Date().toISOString()};
+   if(record.phone)patch.phone=record.phone;
+   if(referral&&!a.answers?.__attribution)patch.answers={...(a.answers||{}),__attribution:referral};
+   must(await this.db.from('masar_applicants').update(patch).eq('id',a.id));
+   if(patch.answers)a={...a,answers:patch.answers};
+  }
   must(await this.db.from('masar_contacts').upsert({contact_id:record.contact_id,applicant_id:a.id},{onConflict:'contact_id'}));
+  if(referral){
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ad_referral',detail:referral}));
+   try{
+    const current=must(await this.db.from('masar_ads').select('*').eq('ad_id',referral.source_id).maybeSingle());
+    const metadata={headline:referral.title||current?.headline||'',source_url:referral.source_url||current?.source_url||null,source_app:referral.source_app||current?.source_app||null,source_type:referral.source_type||current?.source_type||'ad',last_seen_at:record.created_at};
+    if(current)must(await this.db.from('masar_ads').update(metadata).eq('ad_id',referral.source_id));
+    else must(await this.db.from('masar_ads').insert({ad_id:referral.source_id,name:referral.title||'',...metadata,first_seen_at:record.created_at}));
+   }catch(e){console.warn('Ad attribution metadata not indexed yet:',e.code||e.name);}
+  }
   let media_path=null;
   if(record.media){media_path=`${a.id}/${createHash('sha256').update(record.id).digest('hex')}`;must(await this.db.storage.from('masar-documents').upload(media_path,Buffer.from(record.media.data,'base64'),{contentType:record.media.type,upsert:true}));}
   must(await this.db.from('masar_messages').insert({applicant_id:a.id,wa_id:record.id,direction:'in',sender:'applicant',body:record.body,media_path,media_type:record.media?.type,media_error:record.media_error,created_at:record.created_at}));

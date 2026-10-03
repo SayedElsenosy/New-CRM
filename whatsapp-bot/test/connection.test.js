@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
-import {WhatsAppConnection,resolvePhone,extractMessageText} from '../src/whatsapp.js';
+import {WhatsAppConnection,resolvePhone,extractMessageText,extractAdReferral} from '../src/whatsapp.js';
 
 test('phone resolution uses PN mapping and never treats LID digits as a phone',async()=>{
  const msg={key:{remoteJid:'99999999999999@lid'}};
@@ -43,4 +43,21 @@ test('area choices are relayed as native quick-reply buttons',async()=>{
   const raw=JSON.stringify(relay.message);assert.match(raw,/quick_reply/);assert.match(raw,/zayed/);assert.match(raw,/الشيخ زايد/);
   assert.ok(relay.options.additionalNodes.some(n=>n.tag==='biz'));assert.ok(relay.options.additionalNodes.some(n=>n.tag==='bot'));
  }finally{await connection.close();await fs.rm(tmp,{recursive:true,force:true});}
+});
+
+
+test('Click-to-WhatsApp referral exposes the Meta ad id and click id',()=>{
+ const referral=extractAdReferral({extendedTextMessage:{text:'hello',contextInfo:{externalAdReply:{
+  sourceType:'ad',sourceId:'120240000000000001',sourceUrl:'https://fb.me/test',sourceApp:'facebook',
+  title:'Zayed riders',body:'Apply now',ctwaClid:'clid-123',showAdAttribution:true
+ }}}});
+ assert.equal(referral.source_id,'120240000000000001');
+ assert.equal(referral.source_type,'ad');
+ assert.equal(referral.ctwa_clid,'clid-123');
+ assert.equal(referral.title,'Zayed riders');
+ assert.equal(referral.source_app,'facebook');
+});
+
+test('normal WhatsApp messages do not invent ad attribution',()=>{
+ assert.equal(extractAdReferral({conversation:'hello'}),null);
 });

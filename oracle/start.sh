@@ -11,11 +11,11 @@ if [ ! -f oracle/.env ]; then
 fi
 
 docker compose --env-file oracle/.env -f docker-compose.oracle.yml up -d --build
-tailscale funnel --bg 443 http://127.0.0.1:3001
+tailscale funnel --bg --https=443 http://127.0.0.1:3001
 
 echo
 echo "تم تشغيل مسار 24/7."
-echo "رابط Funnel يظهر مع الأمر:"
+echo "لإظهار رابط HTTPS:"
 echo "tailscale funnel status"
 echo
 echo "لمراقبة البوت:"

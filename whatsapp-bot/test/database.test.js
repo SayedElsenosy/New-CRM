@@ -20,5 +20,19 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  await db.query('select masar_reorder_questions($1::uuid[])',[[q.id]]);
  assert.equal((await db.query('select position from masar_questions')).rows[0].position,1);
  assert.equal((await db.query("select has_table_privilege('anon','masar_applicants','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Upgrade an existing single-number installation to multi-WhatsApp.
+ const multiSql=(await fs.readFile(new URL('../../supabase/003_multi_whatsapp.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(multiSql);await db.exec(multiSql);
+ const {rows:[defaultAccount]}=await db.query("select id from masar_whatsapp_accounts where legacy_session=true limit 1");
+ assert.ok(defaultAccount?.id);
+ assert.equal(String((await db.query('select whatsapp_account_id from masar_applicants where id=$1',[a.id])).rows[0].whatsapp_account_id),String(defaultAccount.id));
+ const {rows:[second]}=await db.query("insert into masar_whatsapp_accounts(name) values('Second') returning id");
+ const {rows:[samePersonOtherNumber]}=await db.query("insert into masar_applicants(whatsapp_account_id,contact_id,phone) values($1,'201012345678@c.us','+201012345678') returning id",[second.id]);
+ assert.ok(samePersonOtherNumber.id);
+ const {rows:[in2]}=await db.query("insert into masar_messages(whatsapp_account_id,applicant_id,wa_id,direction,sender,body) values($1,$2,'same-account-msg','in','applicant','Hi') returning id",[second.id,samePersonOtherNumber.id]);
+ await db.query('select masar_commit_turn($1,$2::jsonb,$3)',[in2.id,JSON.stringify({stage:'incomplete'}),'Reply']);
+ const {rows:[out2]}=await db.query("select whatsapp_account_id from masar_messages where applicant_id=$1 and direction='out' order by created_at desc limit 1",[samePersonOtherNumber.id]);
+ assert.equal(String(out2.whatsapp_account_id),String(second.id));
  }finally{await db.close();}
 });

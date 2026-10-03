@@ -7,8 +7,8 @@ import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.js';
 
 export class Worker {
- constructor({db,connection,connections,serial,sessionPath}){
-  Object.assign(this,{db,connection,connections,serial});
+ constructor({db,connection,connections,serial,sessionPath,speech=null}){
+  Object.assign(this,{db,connection,connections,serial,speech});
   this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;
  }
  multi(){return Boolean(this.connections?.configured);}
@@ -24,6 +24,34 @@ export class Worker {
   try{await fs.access(file);return;}catch{}
   await fs.writeFile(file+'.tmp',JSON.stringify(record),{mode:0o600});await fs.rename(file+'.tmp',file);
   this.tick();
+ }
+ async prepareRecordMedia(record,applicantId,accountId){
+  let body=String(record.body||''),media_path=null,media_error=record.media_error||null,transcribed=false;
+  const media=record.media||null;
+  if(media){
+   const bytes=Buffer.from(media.data,'base64');
+   media_path=`${applicantId}/${createHash('sha256').update(String(accountId||'legacy')+':'+record.id).digest('hex')}`;
+   try{
+    must(await this.db.storage.from('masar-documents').upload(media_path,bytes,{contentType:media.type,upsert:true}));
+   }catch(e){
+    if(media.kind!=='audio')throw e;
+    media_path=null;
+    media_error='تم استلام الرسالة الصوتية لكن تعذر حفظ ملف التسجيل في التخزين.';
+    console.warn('Voice storage failed:',e.code||e.name||'Error');
+   }
+   if(media.kind==='audio'&&!body.trim()){
+    try{
+     if(!this.speech?.available)throw new Error(this.speech?.error||'speech unavailable');
+     body=await this.speech.transcribe(bytes,media.type);
+     transcribed=true;
+    }catch(e){
+     body='🎤 رسالة صوتية';
+     media_error=media_path?'تم حفظ الرسالة الصوتية لكن تعذر تحويلها إلى نص تلقائياً. يمكن لمسؤول التوظيف تشغيل التسجيل ومراجعته.':'تعذر حفظ الرسالة الصوتية أو تحويلها إلى نص تلقائياً؛ يحتاج مسؤول التوظيف لمراجعتها من واتساب.';
+     console.warn('Voice transcription failed:',e.code||e.name||'Error');
+    }
+   }
+  }
+  return {body:body.slice(0,10000),media_path,media_type:media?.type||null,media_error,transcribed,is_audio:media?.kind==='audio'};
  }
  async ingest(record){
   const accountId=record.whatsapp_account_id||null,multi=this.multi();
@@ -69,13 +97,9 @@ export class Worker {
 
   const isExternalOutbound=record.direction==='out'||record.from_me===true;
   if(isExternalOutbound){
-   let media_path=null;
-   if(record.media){
-    media_path=`${a.id}/${createHash('sha256').update(String(accountId||'legacy')+':'+record.id).digest('hex')}`;
-    must(await this.db.storage.from('masar-documents').upload(media_path,Buffer.from(record.media.data,'base64'),{contentType:record.media.type,upsert:true}));
-   }
+   const prepared=await this.prepareRecordMedia(record,a.id,accountId);
    const source=must(await this.db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());
-   const messageRow={applicant_id:a.id,wa_id:record.id,direction:'out',sender:'staff',body:record.body,media_path,media_type:record.media?.type,media_error:record.media_error,status:'sent',reply_to:source?.id||null,created_at:record.created_at};
+   const messageRow={applicant_id:a.id,wa_id:record.id,direction:'out',sender:'staff',body:prepared.body,media_path:prepared.media_path,media_type:prepared.media_type,media_error:prepared.media_error,status:'sent',reply_to:source?.id||null,created_at:record.created_at};
    if(multi)messageRow.whatsapp_account_id=accountId;
    const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
 
@@ -93,10 +117,10 @@ export class Worker {
    let learned=false;
    if(source&&settings?.ai_learning_enabled!==false){
     learned=await createLearningSuggestion(this.db,{
-     applicantId:a.id,sourceMessage:source,staffMessageId:saved.id,answer:record.body,staffId:null,force:runMode==='training'
+     applicantId:a.id,sourceMessage:source,staffMessageId:saved.id,answer:prepared.transcribed||!prepared.is_audio?prepared.body:'',staffId:null,force:runMode==='training'
     });
    }
-   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode}}));
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed)}}));
    return;
   }
 
@@ -110,14 +134,14 @@ export class Worker {
    }catch(e){console.warn('Ad attribution metadata not indexed yet:',e.code||e.name);}
   }
 
-  let media_path=null;
-  if(record.media){
-   media_path=`${a.id}/${createHash('sha256').update(String(accountId||'legacy')+':'+record.id).digest('hex')}`;
-   must(await this.db.storage.from('masar-documents').upload(media_path,Buffer.from(record.media.data,'base64'),{contentType:record.media.type,upsert:true}));
-  }
-  const messageRow={applicant_id:a.id,wa_id:record.id,direction:'in',sender:'applicant',body:record.body,media_path,media_type:record.media?.type,media_error:record.media_error,created_at:record.created_at};
+  const prepared=await this.prepareRecordMedia(record,a.id,accountId);
+  const messageRow={applicant_id:a.id,wa_id:record.id,direction:'in',sender:'applicant',body:prepared.body,media_path:prepared.media_path,media_type:prepared.media_type,media_error:prepared.media_error,created_at:record.created_at};
+  if(prepared.is_audio&&!prepared.transcribed)messageRow.status='processed';
   if(multi)messageRow.whatsapp_account_id=accountId;
-  must(await this.db.from('masar_messages').insert(messageRow));
+  const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
+  if(prepared.is_audio){
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'voice_message',detail:{message_id:saved.id,direction:'in',transcribed:Boolean(prepared.transcribed)}}));
+  }
  }
  async tick(){
   if(this.ticking)return;this.ticking=true;

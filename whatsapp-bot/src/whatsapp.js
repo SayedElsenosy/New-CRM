@@ -82,13 +82,22 @@ export function extractAdReferral(message){
   captured_at:new Date().toISOString()
  };
 }
+export function normalizeMediaType(value){
+ const raw=String(value||'').toLowerCase().split(';')[0].trim();
+ if(raw==='audio/opus')return 'audio/ogg';
+ if(['audio/ogg','audio/mpeg','audio/mp4','audio/aac','audio/wav','audio/x-wav'].includes(raw))return raw==='audio/x-wav'?'audio/wav':raw;
+ return raw;
+}
+export function isAudioType(value){return normalizeMediaType(value).startsWith('audio/');}
 function mediaMeta(message){
  const m=unwrap(message);
- if(m.imageMessage)return {node:m.imageMessage,type:m.imageMessage.mimetype||'image/jpeg'};
- if(m.documentMessage)return {node:m.documentMessage,type:m.documentMessage.mimetype||'application/octet-stream'};
+ if(m.imageMessage)return {node:m.imageMessage,type:m.imageMessage.mimetype||'image/jpeg',kind:'image'};
+ if(m.documentMessage)return {node:m.documentMessage,type:m.documentMessage.mimetype||'application/octet-stream',kind:'document'};
+ if(m.audioMessage)return {node:m.audioMessage,type:normalizeMediaType(m.audioMessage.mimetype||'audio/ogg'),kind:'audio',voice:Boolean(m.audioMessage.ptt)};
  return null;
 }
-function validMedia(bytes,type){
+function validMedia(bytes,type,kind){
+ if(kind==='audio')return bytes.length>0;
  return (type==='image/jpeg'&&bytes.subarray(0,3).equals(Buffer.from([255,216,255])))||
   (type==='image/png'&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))||
   (type==='image/webp'&&bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP')||
@@ -105,13 +114,13 @@ export async function normalizedRecord(sock,msg,{upsertType=null}={}){
   try{
    const size=Number(meta.node?.fileLength?.toString?.()||meta.node?.fileLength||0);
    if(size>10485760)throw new Error('too large');
-   if(!['image/jpeg','image/png','image/webp','application/pdf'].includes(meta.type))throw new Error('unsupported');
+   if(!['image/jpeg','image/png','image/webp','application/pdf','audio/ogg','audio/mpeg','audio/mp4','audio/aac','audio/wav'].includes(meta.type))throw new Error('unsupported');
    const bytes=await downloadMediaMessage(msg,'buffer',{},{
     reuploadRequest:sock.updateMediaMessage
    });
-   if(!Buffer.isBuffer(bytes)||bytes.length>10485760||!validMedia(bytes,meta.type))throw new Error('invalid media');
-   media={data:bytes.toString('base64'),type:meta.type};
-  }catch{media_error='تعذر حفظ المرفق. ابعت صورة JPG/PNG/WebP أو PDF بحجم أقل من 10 ميجا.';}
+   if(!Buffer.isBuffer(bytes)||bytes.length>10485760||!validMedia(bytes,meta.type,meta.kind))throw new Error('invalid media');
+   media={data:bytes.toString('base64'),type:meta.type,kind:meta.kind,voice:Boolean(meta.voice)};
+  }catch{media_error=meta?.kind==='audio'?'تعذر تنزيل الرسالة الصوتية من واتساب.':'تعذر حفظ المرفق. ابعت صورة JPG/PNG/WebP أو PDF بحجم أقل من 10 ميجا.';}
  }
  const ts=Number(msg.messageTimestamp?.toString?.()||msg.messageTimestamp||Math.floor(Date.now()/1000));
  return {

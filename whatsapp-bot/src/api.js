@@ -21,7 +21,7 @@ export function makeApi({db,connection,worker,serial,origins}){
   req.user=data.user;next();
  }catch(e){next(e);}});
  const route=(method,url,fn)=>app[method]('/api'+url,async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}});
- route('get','/bootstrap',async(_r,res)=>res.json({...await config(db),ai_configured:!!process.env.GEMINI_API_KEY}));
+ route('get','/bootstrap',async(_r,res)=>res.json({...await config(db),ai_configured:true,ai_provider:'local'}));
  route('get','/whatsapp',async(_r,res)=>res.json({...connection.snapshot(),worker_error:worker.lastError}));
  route('post','/whatsapp/connect',async(_r,res)=>{await connection.connect();res.json(connection.snapshot());});
  route('post','/whatsapp/disconnect',async(_r,res)=>{await connection.disconnect();res.json(connection.snapshot());});

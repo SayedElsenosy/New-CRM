@@ -42,10 +42,61 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
  const route=(method,url,fn)=>app[method]('/api'+url,async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}});
  const adminRoute=(method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin')throw bad('هذه الصفحة متاحة لمسؤول النظام فقط',403);await fn(req,res);});
  const permissionRoute=(permission,method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin'&&!req.permissions.includes(permission))throw bad('ليس لديك صلاحية لهذه الصفحة',403);await fn(req,res);});
- route('get','/bootstrap',async(req,res)=>{const cfg=await config(db);const profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};const payload={role:req.role,permissions:req.permissions,profile,ai_configured:true,ai_provider:'local'};if(req.role==='admin'||req.permissions.includes('areas'))payload.areas=cfg.areas;if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;res.json(payload);});
- permissionRoute('whatsapp','get','/whatsapp',async(_r,res)=>res.json({...connection.snapshot(),worker_error:worker.lastError}));
- permissionRoute('whatsapp','post','/whatsapp/connect',async(_r,res)=>{await connection.connect();res.json(connection.snapshot());});
- permissionRoute('whatsapp','post','/whatsapp/disconnect',async(_r,res)=>{await connection.disconnect();res.json(connection.snapshot());});
+ async function accessibleAccountIds(req){
+  if(!whatsapp.configured||req.role==='admin')return null;
+  const rows=must(await db.from('masar_staff_whatsapp_access').select('whatsapp_account_id').eq('user_id',req.user.id));
+  return rows.map(x=>x.whatsapp_account_id);
+ }
+ async function accountRows(req){
+  const rows=await whatsapp.snapshots(),allowed=await accessibleAccountIds(req);
+  return allowed===null?rows:rows.filter(x=>allowed.includes(x.id));
+ }
+ async function ensureAccountAccess(req,id){
+  if(!whatsapp.configured)return;
+  if(!uuid(id))throw bad('معرف رقم واتساب غير صحيح');
+  const allowed=await accessibleAccountIds(req);
+  if(allowed!==null&&!allowed.includes(id))throw bad('رقم واتساب ده مش ضمن صلاحيات حسابك',403);
+  if(!whatsapp.snapshot(id))throw bad('حساب واتساب غير موجود',404);
+ }
+ route('get','/bootstrap',async(req,res)=>{
+  const cfg=await config(db),profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};
+  const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
+  const payload={role:req.role,permissions:req.permissions,profile,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured,ai_configured:true,ai_provider:'local'};
+  if(req.role==='admin'||req.permissions.includes('areas'))payload.areas=cfg.areas;
+  if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;
+  if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;
+  res.json(payload);
+ });
+ permissionRoute('whatsapp','get','/whatsapp',async(req,res)=>{
+  const rows=await accountRows(req),first=rows[0]||null;
+  res.json(first?{...first,worker_error:worker.lastError}:{status:'disconnected',phone:null,qr:null,error:'لا يوجد رقم واتساب ضمن صلاحيات الحساب',worker_error:worker.lastError});
+ });
+ permissionRoute('whatsapp','post','/whatsapp/connect',async(req,res)=>{
+  const rows=await accountRows(req),id=rows[0]?.id??whatsapp.defaultAccountId();
+  if(whatsapp.configured&&!id)throw bad('لا يوجد رقم واتساب ضمن صلاحيات الحساب',403);
+  if(id)await ensureAccountAccess(req,id);res.json(await whatsapp.connect(id));
+ });
+ permissionRoute('whatsapp','post','/whatsapp/disconnect',async(req,res)=>{
+  const rows=await accountRows(req),id=rows[0]?.id??whatsapp.defaultAccountId();
+  if(whatsapp.configured&&!id)throw bad('لا يوجد رقم واتساب ضمن صلاحيات الحساب',403);
+  if(id)await ensureAccountAccess(req,id);res.json(await whatsapp.disconnect(id));
+ });
+ permissionRoute('whatsapp','get','/whatsapp/accounts',async(req,res)=>res.json({configured:whatsapp.configured,items:await accountRows(req),worker_error:worker.lastError}));
+ adminRoute('post','/whatsapp/accounts',async(req,res)=>{await serial(async()=>{
+  if(!whatsapp.configured)throw bad('فعّل تعدد أرقام واتساب أولاً بتشغيل ملف supabase/003_multi_whatsapp.sql في Supabase SQL Editor.',503);
+  const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
+  const row=must(await db.from('masar_whatsapp_accounts').insert({name,legacy_session:false,active:true}).select().single());
+  await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));
+ });});
+ adminRoute('put','/whatsapp/accounts/:id',async(req,res)=>{await serial(async()=>{
+  if(!whatsapp.configured||!uuid(req.params.id))throw bad('معرف رقم واتساب غير صحيح');
+  const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
+  const row=must(await db.from('masar_whatsapp_accounts').update({name,updated_at:new Date().toISOString()}).eq('id',req.params.id).select().single());
+  const item=whatsapp.item?.(req.params.id);if(item)item.account={...item.account,...row};
+  res.json(whatsapp.snapshot(req.params.id)||row);
+ });});
+ permissionRoute('whatsapp','post','/whatsapp/accounts/:id/connect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.connect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
+ permissionRoute('whatsapp','post','/whatsapp/accounts/:id/disconnect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.disconnect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('settings','put','/settings',async(req,res)=>{const b=req.body;if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');must(await db.from('masar_settings').update({ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion}).eq('id',true));res.json({ok:true});});
  for(const type of ['areas','questions']){
   permissionRoute(type,'post','/'+type,async(req,res)=>{await serial(async()=>{

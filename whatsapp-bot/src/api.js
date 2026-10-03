@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
+import {schemaMissing,suggestKeywords,findKnowledgeAnswer,createLearningSuggestion} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -258,7 +259,21 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
  });});
  permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{
   const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');
-  await serial(async()=>{const a=await applicantById(req,req.params.id,whatsapp.configured?'id,contact_id,whatsapp_account_id':'id,contact_id');if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');must(await db.from('masar_applicants').update({bot_enabled:false}).eq('id',a.id));const row={applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'};if(whatsapp.configured)row.whatsapp_account_id=a.whatsapp_account_id;must(await db.from('masar_messages').insert(row));});res.json({ok:true});
+  await serial(async()=>{
+   const select=whatsapp.configured?'id,contact_id,whatsapp_account_id,answers':'id,contact_id,answers';
+   const a=await applicantById(req,req.params.id,select);if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');
+   const answers={...(a.answers||{})};delete answers.__ai_handoff;
+   must(await db.from('masar_applicants').update({bot_enabled:false,answers,updated_at:new Date().toISOString()}).eq('id',a.id));
+   const row={applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'};if(whatsapp.configured)row.whatsapp_account_id=a.whatsapp_account_id;
+   const staffMessage=must(await db.from('masar_messages').insert(row).select('id').single());
+   try{
+    const settings=must(await db.from('masar_settings').select('*').eq('id',true).single());
+    if(settings.ai_learning_enabled!==false){
+     const source=must(await db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());
+     if(source)await createLearningSuggestion(db,{applicantId:a.id,sourceMessage:source,staffMessageId:staffMessage.id,answer:body,staffId:req.user.id});
+    }
+   }catch(e){if(!schemaMissing(e))throw e;}
+  });res.json({ok:true});
  });
  permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{
   const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single()),a=await applicantById(req,m.applicant_id,whatsapp.configured?'id,whatsapp_account_id':'id');

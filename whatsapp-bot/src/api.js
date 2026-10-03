@@ -387,7 +387,7 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
    if(settings?.ai_learning_enabled!==false){
     try{
      const source=must(await db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());
-     if(source)await createLearningSuggestion(db,{applicantId:a.id,sourceMessage:source,staffMessageId:staffMessage.id,answer:body,staffId:req.user.id});
+     if(source)await createLearningSuggestion(db,{applicantId:a.id,sourceMessage:source,staffMessageId:staffMessage.id,answer:body,staffId:req.user.id,force:runMode==='training'});
     }catch(e){if(!schemaMissing(e))throw e;}
    }
   });res.json({ok:true});

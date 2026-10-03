@@ -100,7 +100,17 @@ export class Worker {
     const prior=must(await this.db.from('masar_messages').select('id').eq('applicant_id',m.applicant_id).eq('direction','in').eq('status','failed').lte('sequence',m.sequence).limit(1));
     if(prior.length){blocked.add(m.applicant_id);continue;}
     try{
-     const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db),knowledge=await loadKnowledge(this.db);
+     const c=await config(this.db);
+     let runMode=c.settings?.ai_run_mode||'live';
+     if(runMode==='training'&&c.settings?.ai_training_until&&Date.parse(c.settings.ai_training_until)<=Date.now()){
+      try{must(await this.db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204'&&e.code!=='42703')throw e;}
+      runMode='paused';
+     }
+     if(runMode!=='live'){
+      must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
+      continue;
+     }
+     const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),knowledge=await loadKnowledge(this.db);
      const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge});
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.knowledge_id){

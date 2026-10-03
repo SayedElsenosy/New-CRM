@@ -94,10 +94,11 @@ function validMedia(bytes,type){
   (type==='image/webp'&&bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP')||
   (type==='application/pdf'&&bytes.subarray(0,5).toString()==='%PDF-');
 }
-export async function normalizedRecord(sock,msg){
+export async function normalizedRecord(sock,msg,{upsertType=null}={}){
  const jid=String(msg?.key?.remoteJid||'');
  if(!jid||jid.endsWith('@g.us')||jid==='status@broadcast'||!msg?.key?.id||!msg.message)return null;
  const fromMe=Boolean(msg?.key?.fromMe);
+ if(fromMe&&upsertType&&upsertType!=='notify')return null;
  let media=null,media_error=null;
  const meta=mediaMeta(msg.message);
  if(meta){
@@ -177,10 +178,10 @@ export class WhatsAppConnection{
      }
     }
    });
-   sock.ev.on('messages.upsert',({messages})=>{
+   sock.ev.on('messages.upsert',({messages,type})=>{
     for(const msg of messages||[]){
      this.receiveTail=this.receiveTail.then(async()=>{
-      const record=await normalizedRecord(sock,msg);if(record)await this.onMessage(record);
+      const record=await normalizedRecord(sock,msg,{upsertType:type});if(record)await this.onMessage(record);
      }).catch(err=>{console.error('Inbound persistence failed:',err.code||err.name);this.state.error='تعذر حفظ رسالة؛ راجع اتصال قاعدة البيانات ومساحة التخزين.';});
     }
    });

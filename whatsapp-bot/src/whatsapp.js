@@ -45,6 +45,43 @@ export function extractMessageText(message){
  if(m.templateButtonReplyMessage)return String(m.templateButtonReplyMessage.selectedId||m.templateButtonReplyMessage.selectedDisplayText||'');
  return String(m.conversation||m.extendedTextMessage?.text||m.imageMessage?.caption||m.documentMessage?.caption||m.videoMessage?.caption||'');
 }
+
+function contextInfoOf(message){
+ const m=unwrap(message);
+ for(const node of [
+  m.extendedTextMessage,m.imageMessage,m.documentMessage,m.videoMessage,m.audioMessage,
+  m.buttonsResponseMessage,m.listResponseMessage,m.templateButtonReplyMessage,m.interactiveResponseMessage,
+  m.contactMessage,m.contactsArrayMessage,m.locationMessage,m.liveLocationMessage
+ ]){
+  if(node?.contextInfo)return node.contextInfo;
+ }
+ return m.contextInfo||null;
+}
+export function extractAdReferral(message){
+ const ctx=contextInfoOf(message);if(!ctx)return null;
+ const ad=ctx.externalAdReply||null;
+ const sourceId=String(ad?.sourceId||'').trim();
+ const ctwaClid=String(ad?.ctwaClid||'').trim();
+ const sourceType=String(ad?.sourceType||'').trim();
+ const isReferral=Boolean(sourceId||ctwaClid||sourceType==='ad'||ad?.showAdAttribution||ctx.entryPointConversionSource||ctx.ctwaPayload);
+ if(!isReferral)return null;
+ const clean=value=>{const s=String(value||'').trim();return s||null;};
+ return {
+  source_id:clean(sourceId),
+  source_type:clean(sourceType),
+  source_url:clean(ad?.sourceUrl),
+  source_app:clean(ad?.sourceApp||ctx.entryPointConversionApp),
+  title:clean(ad?.title),
+  body:clean(ad?.body),
+  ctwa_clid:clean(ctwaClid),
+  ref:clean(ad?.ref),
+  entry_point_source:clean(ctx.entryPointConversionSource),
+  utm_source:clean(ctx.utm?.utmSource),
+  utm_campaign:clean(ctx.utm?.utmCampaign),
+  whatsapp_campaign_id:clean(ctx.smbServerCampaignId||ctx.smbClientCampaignId),
+  captured_at:new Date().toISOString()
+ };
+}
 function mediaMeta(message){
  const m=unwrap(message);
  if(m.imageMessage)return {node:m.imageMessage,type:m.imageMessage.mimetype||'image/jpeg'};
@@ -78,6 +115,7 @@ async function normalizedRecord(sock,msg){
  return {
   id:String(msg.key.id),contact_id:jid,phone:await resolvePhone(sock,msg),
   body:extractMessageText(msg.message).slice(0,10000),media,media_error,
+  referral:extractAdReferral(msg.message),
   created_at:new Date((Number.isFinite(ts)?ts:Math.floor(Date.now()/1000))*1000).toISOString()
  };
 }

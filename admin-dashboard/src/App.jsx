@@ -1,5 +1,5 @@
 import {useEffect,useState,useCallback,useRef} from 'react';
-import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck} from 'lucide-react';
+import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown} from 'lucide-react';
 import {api,send,supabase,configured,STAGES,KINDS,personName,date,dateParams} from './api';
 import {BRAND_IMAGE} from './brandAssets';
 const PERMISSION_OPTIONS=[
@@ -11,7 +11,7 @@ const PERMISSION_OPTIONS=[
  ['whatsapp','ربط واتساب'],
  ['settings','الإعدادات']
 ];
-const NAV=[['overview','نظرة عامة',LayoutDashboard,null],['applicants','المتقدمون',Users,'applicants'],['questions','أسئلة البوت',GitBranch,'questions'],['areas','مناطق العمل',MapPin,'areas'],['whatsapp','ربط واتساب',MessageCircle,'whatsapp'],['campaigns','الحملات الإعلانية',BarChart3,'campaigns'],['reports','التقارير',BarChart3,'reports'],['staff','فريق التوظيف',Users,'admin'],['settings','الإعدادات',Settings,'settings']];
+const NAV=[['overview','نظرة عامة',LayoutDashboard,null],['applicants','المتقدمون',Users,'applicants'],['questions','أسئلة البوت',GitBranch,'questions'],['areas','مناطق العمل',MapPin,'areas'],['whatsapp','ربط واتساب',MessageCircle,'whatsapp'],['campaigns','الحملات الإعلانية',BarChart3,'campaigns'],['reports','التقارير',BarChart3,'reports'],['intelligence','ذكاء البوت',BrainCircuit,'admin'],['staff','فريق التوظيف',Users,'admin'],['settings','الإعدادات',Settings,'settings']];
 function Notice({children,type='error'}){return children?<div role="alert" className={'notice '+type}>{children}</div>:null;}
 function Badge({stage}){return <span className={'badge '+stage}>{STAGES[stage]||stage}</span>;}
 function Empty({children}){return <div className="empty"><InboxIcon/>{children}</div>;}
@@ -40,7 +40,7 @@ export default function App(){
  {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action} role={role}/>} 
  {activeTab==='campaigns'&&can('campaigns')&&<Campaigns action={action}/>}
  {activeTab==='reports'&&can('reports')&&<Reports version={version}/>} 
- {activeTab==='staff'&&role==='admin'&&<StaffPage action={action}/>}
+ {activeTab==='intelligence'&&role==='admin'&&<BotIntelligence action={action}/>}\n {activeTab==='staff'&&role==='admin'&&<StaffPage action={action}/>} 
  {activeTab==='settings'&&can('settings')&&<SettingsPage {...shared}/>}
  </>}</div></main>{toast&&<div role="status" className={'toast '+(toast.startsWith('تعذّر')?'error':'')}><CheckCircle2 size={18}/>{toast}</div>}{selected&&<Applicant id={selected} onClose={()=>setSelected(null)} onChanged={()=>setVersion(v=>v+1)} action={action}/>}</div>;
 }

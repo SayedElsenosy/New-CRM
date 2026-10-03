@@ -195,3 +195,23 @@ tbody tr:hover{background:#fbfdf5}
 .attribution-card small{overflow-wrap:anywhere}
 @media(max-width:980px){.report-filters{grid-template-columns:repeat(2,minmax(150px,1fr))}}
 @media(max-width:620px){.report-filters{grid-template-columns:1fr}.campaign-grid{grid-template-columns:1fr}}
+
+
+/* Multi WhatsApp */
+.whatsapp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px}
+.multi-whatsapp-card{min-height:360px}
+.multi-whatsapp-card .section-heading>div{display:flex;align-items:center;gap:12px}
+.multi-whatsapp-card .whatsapp-symbol{width:54px;height:54px;margin:0;flex:0 0 auto}
+.multi-whatsapp-card h2{margin:0 0 6px}
+.whatsapp-phone{font-weight:800;font-size:16px;letter-spacing:.2px}
+.multi-whatsapp-card .qr{margin:12px auto}
+.multi-whatsapp-card .qr img{max-width:240px;width:100%}
+.whatsapp-access-check{align-items:flex-start}
+.whatsapp-access-check>span{display:flex;flex-direction:column;gap:3px}
+.whatsapp-access-check small{font-weight:400;color:var(--muted)}
+.applicant-filters{flex-wrap:wrap}
+.applicant-filters select{min-width:170px}
+@media(max-width:700px){
+ .whatsapp-grid{grid-template-columns:1fr}
+ .multi-whatsapp-card{min-height:auto}
+}

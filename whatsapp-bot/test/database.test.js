@@ -34,5 +34,16 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  await db.query('select masar_commit_turn($1,$2::jsonb,$3)',[in2.id,JSON.stringify({stage:'incomplete'}),'Reply']);
  const {rows:[out2]}=await db.query("select whatsapp_account_id from masar_messages where applicant_id=$1 and direction='out' order by created_at desc limit 1",[samePersonOtherNumber.id]);
  assert.equal(String(out2.whatsapp_account_id),String(second.id));
+
+ // Add supervised bot intelligence without losing existing data.
+ const intelligenceSql=(await fs.readFile(new URL('../../supabase/004_bot_intelligence.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(intelligenceSql);await db.exec(intelligenceSql);
+ const {rows:[knowledge]}=await db.query("insert into masar_knowledge(question,answer,keywords) values('التأمين الطبي يبدأ امتى؟','من أول يوم',array['تأمين','طبي']) returning id");
+ assert.ok(knowledge.id);
+ const {rows:[handoffMessage]}=await db.query("insert into masar_messages(whatsapp_account_id,applicant_id,wa_id,direction,sender,body) values($1,$2,'handoff-msg','in','applicant','سؤال جديد') returning id",[second.id,samePersonOtherNumber.id]);
+ await db.query('select masar_commit_turn($1,$2::jsonb,$3)',[handoffMessage.id,JSON.stringify({bot_enabled:false}),'هحوّلك لمسؤول التوظيف']);
+ const {rows:[paused]}=await db.query('select bot_enabled from masar_applicants where id=$1',[samePersonOtherNumber.id]);
+ assert.equal(paused.bot_enabled,false);
+ assert.equal((await db.query("select has_table_privilege('anon','masar_knowledge','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

@@ -59,3 +59,12 @@ test('local speech transcriber uses Arabic recruitment prompt and returns confid
  assert.ok(calls[1].args.includes('--prompt'));
  assert.ok(calls[1].args.includes('-ojf'));
 });
+
+
+test('speech errors identify likely resource limits',()=>{
+ const speech=new SpeechTranscriber({skipAvailabilityCheck:true});
+ assert.equal(speech.classifyError(new Error('process exited with 137')),'resource_limit');
+ assert.equal(speech.classifyError(new Error('cannot allocate memory')),'resource_limit');
+ assert.equal(speech.classifyError(new Error('timeout')),'timeout');
+ assert.equal(speech.classifyError(new Error('bad audio')),'transcription_failed');
+});

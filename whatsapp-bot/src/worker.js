@@ -53,8 +53,10 @@ export class Worker {
      }
     }catch(e){
      body='🎤 رسالة صوتية';
-     media_error=media_path?'تم حفظ الرسالة الصوتية لكن تعذر تحويلها إلى نص تلقائياً. يمكن لمسؤول التوظيف تشغيل التسجيل ومراجعته.':'تعذر حفظ الرسالة الصوتية أو تحويلها إلى نص تلقائياً؛ يحتاج مسؤول التوظيف لمراجعتها من واتساب.';
-     console.warn('Voice transcription failed:',e.code||e.name||'Error');
+     const reason=this.speech?.classifyError?.(e)||'transcription_failed';
+     const detail=reason==='resource_limit'?'الموديل الصوتي احتاج موارد أعلى من المتاحة على السيرفر.':reason==='timeout'?'تحويل الرسالة الصوتية استغرق وقتاً أطول من الحد المسموح.':'تعذر فهم التسجيل تلقائياً.';
+     media_error=media_path?'تم حفظ الرسالة الصوتية لكن تعذر تحويلها إلى نص تلقائياً. '+detail+' يمكن لمسؤول التوظيف تشغيل التسجيل ومراجعته.':'تعذر حفظ الرسالة الصوتية أو تحويلها إلى نص تلقائياً؛ يحتاج مسؤول التوظيف لمراجعتها من واتساب.';
+     console.warn('Voice transcription failed:',reason,e.code||e.name||'Error');
     }
    }
   }

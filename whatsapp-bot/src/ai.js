@@ -8,7 +8,7 @@ const NEGATIVE=[
 const POSITIVE=['نعم','ايوه','ايوا','اه','أه','تمام','موافق','عندي','معايا','موجود','متاح','yes','yep','yeah'];
 
 const clean=v=>norm(digits(v)).replace(/[^\p{L}\p{N}\s?؟]/gu,' ').replace(/\s+/g,' ').trim();
-const hasAny=(text,words)=>words.some(w=>text===clean(w)||text.includes(clean(w)));
+const hasAny=(text,words)=>{const tokens=new Set(text.split(' '));return words.some(w=>{const x=clean(w);return x.includes(' ')?text.includes(x):text===x||tokens.has(x);});};
 
 function areaHits(text,areas){
  const n=clean(text);

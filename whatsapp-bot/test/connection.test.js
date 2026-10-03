@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';
-import {WhatsAppConnection,resolvePhone,extractMessageText,extractAdReferral} from '../src/whatsapp.js';
+import {WhatsAppConnection,resolvePhone,extractMessageText,extractAdReferral,normalizedRecord} from '../src/whatsapp.js';
 
 test('phone resolution uses PN mapping and never treats LID digits as a phone',async()=>{
  const msg={key:{remoteJid:'99999999999999@lid'}};
@@ -60,4 +60,30 @@ test('Click-to-WhatsApp referral exposes the Meta ad id and click id',()=>{
 
 test('normal WhatsApp messages do not invent ad attribution',()=>{
  assert.equal(extractAdReferral({conversation:'hello'}),null);
+});
+
+
+test('linked-device outgoing messages are captured as human staff replies',async()=>{
+ const record=await normalizedRecord({},{
+  key:{remoteJid:'201099999999@s.whatsapp.net',fromMe:true,id:'human-mobile-1'},
+  message:{conversation:'التأمين الطبي بيبدأ من أول يوم بعد استكمال الورق.'},
+  messageTimestamp:1760000000
+ });
+ assert.equal(record.direction,'out');
+ assert.equal(record.from_me,true);
+ assert.equal(record.source,'linked_whatsapp_device');
+ assert.equal(record.phone,'+201099999999');
+ assert.match(record.body,/التأمين الطبي/);
+ assert.equal(record.referral,null);
+});
+
+test('normal applicant messages remain inbound records',async()=>{
+ const record=await normalizedRecord({},{
+  key:{remoteJid:'201099999999@s.whatsapp.net',fromMe:false,id:'client-1'},
+  message:{conversation:'المرتب كام؟'},
+  messageTimestamp:1760000001
+ });
+ assert.equal(record.direction,'in');
+ assert.equal(record.from_me,false);
+ assert.equal(record.source,'applicant');
 });

@@ -45,12 +45,16 @@ export function looksLikeQuestion(text){
  if(/[?؟]/.test(raw)&&raw.length>=6)return true;
  return QUESTION_WORDS.some(w=>n.includes(canonical(w)));
 }
-export function isLearnableExchange(question,answer){
- const q=String(question||'').trim(),a=String(answer||'').trim();
- if(!looksLikeQuestion(q)||a.length<3||a.length>4000)return false;
+function usefulAnswer(answer){
+ const a=String(answer||'').trim();if(a.length<3||a.length>4000)return false;
  const n=canonical(a);
- if(['تمام','اوكي','ok','okay','حاضر','شكرا','شكراً','اه','ايوه','لا','لاء'].map(canonical).includes(n))return false;
- return true;
+ return !['تمام','اوكي','ok','okay','حاضر','شكرا','شكراً','اه','ايوه','لا','لاء'].map(canonical).includes(n);
+}
+export function isLearnableExchange(question,answer,{force=false}={}){
+ const q=String(question||'').trim();
+ if(!usefulAnswer(answer))return false;
+ if(force)return q.length>=3&&q.length<=2000;
+ return looksLikeQuestion(q);
 }
 function scoreEntry(text,row){
  const q=canonical(text),target=canonical(row.question);
@@ -88,8 +92,8 @@ export async function loadKnowledge(db){
   return result.data||[];
  }catch(e){if(schemaMissing(e))return [];throw e;}
 }
-export async function createLearningSuggestion(db,{applicantId,sourceMessage,staffMessageId,answer,staffId}){
- if(!isLearnableExchange(sourceMessage?.body,answer))return false;
+export async function createLearningSuggestion(db,{applicantId,sourceMessage,staffMessageId,answer,staffId,force=false}){
+ if(!isLearnableExchange(sourceMessage?.body,answer,{force}))return false;
  try{
   const result=await db.from('masar_learning_suggestions').insert({
    applicant_id:applicantId,

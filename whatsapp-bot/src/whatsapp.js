@@ -94,9 +94,11 @@ function validMedia(bytes,type){
   (type==='image/webp'&&bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP')||
   (type==='application/pdf'&&bytes.subarray(0,5).toString()==='%PDF-');
 }
-async function normalizedRecord(sock,msg){
+export async function normalizedRecord(sock,msg,{upsertType=null}={}){
  const jid=String(msg?.key?.remoteJid||'');
- if(!jid||msg?.key?.fromMe||jid.endsWith('@g.us')||jid==='status@broadcast'||!msg?.key?.id||!msg.message)return null;
+ if(!jid||jid.endsWith('@g.us')||jid==='status@broadcast'||!msg?.key?.id||!msg.message)return null;
+ const fromMe=Boolean(msg?.key?.fromMe);
+ if(fromMe&&upsertType&&upsertType!=='notify')return null;
  let media=null,media_error=null;
  const meta=mediaMeta(msg.message);
  if(meta){
@@ -114,8 +116,9 @@ async function normalizedRecord(sock,msg){
  const ts=Number(msg.messageTimestamp?.toString?.()||msg.messageTimestamp||Math.floor(Date.now()/1000));
  return {
   id:String(msg.key.id),contact_id:jid,phone:await resolvePhone(sock,msg),
+  direction:fromMe?'out':'in',from_me:fromMe,source:fromMe?'linked_whatsapp_device':'applicant',
   body:extractMessageText(msg.message).slice(0,10000),media,media_error,
-  referral:extractAdReferral(msg.message),
+  referral:fromMe?null:extractAdReferral(msg.message),
   created_at:new Date((Number.isFinite(ts)?ts:Math.floor(Date.now()/1000))*1000).toISOString()
  };
 }
@@ -175,10 +178,10 @@ export class WhatsAppConnection{
      }
     }
    });
-   sock.ev.on('messages.upsert',({messages})=>{
+   sock.ev.on('messages.upsert',({messages,type})=>{
     for(const msg of messages||[]){
      this.receiveTail=this.receiveTail.then(async()=>{
-      const record=await normalizedRecord(sock,msg);if(record)await this.onMessage(record);
+      const record=await normalizedRecord(sock,msg,{upsertType:type});if(record)await this.onMessage(record);
      }).catch(err=>{console.error('Inbound persistence failed:',err.code||err.name);this.state.error='تعذر حفظ رسالة؛ راجع اتصال قاعدة البيانات ومساحة التخزين.';});
     }
    });

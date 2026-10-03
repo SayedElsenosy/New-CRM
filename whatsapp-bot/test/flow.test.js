@@ -125,3 +125,9 @@ test('only useful staff answers become learning candidates',()=>{
  assert.equal(isLearnableExchange('اسمي سيد احمد','تمام'),false);
  assert.equal(isLearnableExchange('المحاضرة امتى؟','تمام'),false);
 });
+
+
+test('training mode can collect useful staff answers even when the applicant phrased a statement',()=>{
+ assert.equal(isLearnableExchange('معايا رخصة بس منتهية','ينفع تكمل التقديم ومسؤول التوظيف هيراجع حالة الرخصة.',{force:true}),true);
+ assert.equal(isLearnableExchange('معايا رخصة بس منتهية','تمام',{force:true}),false);
+});

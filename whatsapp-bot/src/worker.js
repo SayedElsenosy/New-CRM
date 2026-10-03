@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {interpret} from './ai.js';
-import {loadKnowledge,schemaMissing} from './knowledge.js';
+import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.js';
 
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath}){
@@ -66,6 +66,39 @@ export class Worker {
   const contactRow={contact_id:record.contact_id,applicant_id:a.id};
   if(multi)contactRow.whatsapp_account_id=accountId;
   must(await this.db.from('masar_contacts').upsert(contactRow,{onConflict:multi?'whatsapp_account_id,contact_id':'contact_id'}));
+
+  const isExternalOutbound=record.direction==='out'||record.from_me===true;
+  if(isExternalOutbound){
+   let media_path=null;
+   if(record.media){
+    media_path=`${a.id}/${createHash('sha256').update(String(accountId||'legacy')+':'+record.id).digest('hex')}`;
+    must(await this.db.storage.from('masar-documents').upload(media_path,Buffer.from(record.media.data,'base64'),{contentType:record.media.type,upsert:true}));
+   }
+   const source=must(await this.db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());
+   const messageRow={applicant_id:a.id,wa_id:record.id,direction:'out',sender:'staff',body:record.body,media_path,media_type:record.media?.type,media_error:record.media_error,status:'sent',reply_to:source?.id||null,created_at:record.created_at};
+   if(multi)messageRow.whatsapp_account_id=accountId;
+   const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
+
+   let settings=null,runMode='live';
+   try{
+    settings=must(await this.db.from('masar_settings').select('*').eq('id',true).single());
+    runMode=settings.ai_run_mode||'live';
+    if(runMode==='training'&&settings.ai_training_until&&Date.parse(settings.ai_training_until)<=Date.now()){
+     try{must(await this.db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204'&&e.code!=='42703')throw e;}
+     runMode='paused';
+    }
+   }catch(e){if(!schemaMissing(e))throw e;}
+   if(runMode==='live')must(await this.db.from('masar_applicants').update({bot_enabled:false,updated_at:new Date().toISOString()}).eq('id',a.id));
+
+   let learned=false;
+   if(source&&settings?.ai_learning_enabled!==false){
+    learned=await createLearningSuggestion(this.db,{
+     applicantId:a.id,sourceMessage:source,staffMessageId:saved.id,answer:record.body,staffId:null,force:runMode==='training'
+    });
+   }
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode}}));
+   return;
+  }
 
   if(referral){
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ad_referral',detail:{...referral,whatsapp_account_id:accountId}}));

@@ -17,7 +17,7 @@ const REPLACEMENTS=[
 export const schemaMissing=e=>['PGRST205','42P01','42703'].includes(e?.code);
 
 function canonical(value){
- let s=norm(digits(value)).replace(/[^p{L}p{N}s]/gu,' ').replace(/s+/g,' ').trim();
+ let s=norm(digits(value)).replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();
  for(const [pattern,replacement] of REPLACEMENTS)s=s.replace(pattern,replacement);
  return s;
 }
@@ -49,7 +49,7 @@ export function isLearnableExchange(question,answer){
  const q=String(question||'').trim(),a=String(answer||'').trim();
  if(!looksLikeQuestion(q)||a.length<3||a.length>4000)return false;
  const n=canonical(a);
- if(['تمام','اوكي','ok','okay','حاضر','شكرا','شكراً','اه','ايوه','لا','لاء'].includes(n))return false;
+ if(['تمام','اوكي','ok','okay','حاضر','شكرا','شكراً','اه','ايوه','لا','لاء'].map(canonical).includes(n))return false;
  return true;
 }
 function scoreEntry(text,row){
@@ -82,8 +82,11 @@ export function findKnowledgeAnswer(text,rows,threshold=.62){
  return best&&best.confidence>=threshold?best:null;
 }
 export async function loadKnowledge(db){
- try{return (await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false})).data||[];}
- catch(e){if(schemaMissing(e))return [];throw e;}
+ try{
+  const result=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});
+  if(result.error)throw result.error;
+  return result.data||[];
+ }catch(e){if(schemaMissing(e))return [];throw e;}
 }
 export async function createLearningSuggestion(db,{applicantId,sourceMessage,staffMessageId,answer,staffId}){
  if(!isLearnableExchange(sourceMessage?.body,answer))return false;

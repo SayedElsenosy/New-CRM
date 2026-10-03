@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';
+import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -96,4 +96,32 @@ test('plain text fallback previews first and confirms when repeated',async()=>{
  const second=await planTurn({applicant:{...a,answers:first.patch.answers},message:{body:'أكتوبر'},questions,areas:liveAreas,settings,interpret});
  assert.equal(second.patch.answers.area.value,'oct');
  assert.equal(second.patch.awaiting_id,'bike');
+});
+
+
+test('knowledge matcher understands Egyptian wording variants',()=>{
+ const rows=[{id:'k1',question:'ميعاد بداية التأمين الطبي امتى؟',answer:'من أول يوم',keywords:['تأمين طبي'],active:true}];
+ const match=findKnowledgeAnswer('التأمين الطبي بيبدأ امتى؟',rows,.5);
+ assert.equal(match.id,'k1');assert.ok(match.confidence>=.5);
+});
+
+test('approved knowledge answers side questions then resumes the pending application question',async()=>{
+ const kb=[{id:'k1',question:'التأمين الطبي بيبدأ امتى؟',answer:'التأمين الطبي يبدأ بعد استكمال إجراءات التعيين.',keywords:['تأمين طبي'],active:true}];
+ const a={...applicant,awaiting_id:'name'};
+ const r=await planTurn({applicant:a,message:{body:'التأمين الطبي بيبدأ امتى؟'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},interpret,knowledge:kb});
+ assert.equal(r.knowledge_id,'k1');assert.equal(r.patch.awaiting_id,'name');assert.equal(r.patch.bot_enabled,undefined);
+ assert.match(r.reply,/التأمين الطبي يبدأ/);assert.match(r.reply,/اسمك بالكامل/);
+});
+
+test('unknown side question hands off safely instead of inventing an answer',async()=>{
+ const a={...applicant,awaiting_id:'name'};
+ const r=await planTurn({applicant:a,message:{body:'الإجازات الرسمية بتتحسب ازاي؟'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّل سؤالك لمسؤول التوظيف'},interpret,knowledge:[]});
+ assert.equal(r.handoff,true);assert.equal(r.patch.bot_enabled,false);assert.equal(r.patch.awaiting_id,'name');
+ assert.match(r.reply,/مسؤول التوظيف/);assert.equal(r.patch.answers.__ai_handoff.reason,'low_confidence');
+});
+
+test('only useful staff answers become learning candidates',()=>{
+ assert.equal(isLearnableExchange('التأمين الطبي بيبدأ امتى؟','بيبدأ بعد استكمال إجراءات التعيين.'),true);
+ assert.equal(isLearnableExchange('اسمي سيد احمد','تمام'),false);
+ assert.equal(isLearnableExchange('المحاضرة امتى؟','تمام'),false);
 });

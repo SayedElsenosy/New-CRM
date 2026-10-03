@@ -215,3 +215,26 @@ tbody tr:hover{background:#fbfdf5}
  .whatsapp-grid{grid-template-columns:1fr}
  .multi-whatsapp-card{min-height:auto}
 }
+
+
+/* Bot intelligence */
+.intelligence-setup{text-align:center;max-width:760px;margin:auto}
+.intelligence-setup>svg{color:#88a900;margin-bottom:12px}
+.intelligence-setup code{display:block;direction:ltr;background:#141b23;color:#d9f36f;padding:14px;border-radius:10px;margin:16px 0;overflow:auto}
+.intelligence-metrics{margin-bottom:18px}
+.intelligence-top{align-items:start}
+.confidence-range{padding:0;border:0;box-shadow:none;accent-color:#9fc500}
+.ai-test-result{margin-top:18px;border-radius:12px;padding:16px;border:1px solid var(--border)}
+.ai-test-result.matched{background:#f3f8df;border-color:#dbe7ad}
+.ai-test-result.handoff{background:#fff4e8;border-color:#efd3af}
+.ai-test-result{display:flex;flex-direction:column;gap:7px}
+.ai-test-result p{margin:0}
+.learning-card{margin-top:18px}
+.learning-list{display:grid;gap:13px}
+.learning-item{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:16px;align-items:start;padding:17px;border:1px solid var(--border);border-radius:13px;background:#fbfcf8}
+.learning-item>div{display:flex;flex-direction:column;gap:6px}
+.learning-item small{color:var(--muted)}
+.learning-item strong{font-size:14px;line-height:1.7}
+.learning-item p{margin:0;line-height:1.8}
+.knowledge-answer{max-width:420px;white-space:pre-line;line-height:1.7}
+@media(max-width:980px){.learning-item{grid-template-columns:1fr}.learning-item .button-row{flex-direction:row}}

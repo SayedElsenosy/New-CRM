@@ -10,7 +10,13 @@ import path from 'node:path';
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(v);
 function bad(message,status=400){return Object.assign(new Error(message),{status});}
 export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}){
- const app=express();app.set('trust proxy',1);app.use(helmet());
+ const app=express();app.set('trust proxy',1);app.use(helmet({
+  contentSecurityPolicy:{
+   directives:{
+    connectSrc:["'self'","https://*.supabase.co","wss://*.supabase.co"]
+   }
+  }
+ }));
  app.use(cors({origin(origin,cb){cb(null,!origin||origins.includes(origin));}}));
  app.use(express.json({limit:'64kb'}));
  app.get('/health',(_req,res)=>res.json({ok:true}));

@@ -38,6 +38,7 @@ export default function App(){
  {activeTab==='questions'&&can('questions')&&<Questions {...shared}/>}
  {activeTab==='areas'&&can('areas')&&<Areas {...shared}/>}
  {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action}/>}
+ {activeTab==='campaigns'&&can('campaigns')&&<Campaigns action={action}/>}
  {activeTab==='reports'&&can('reports')&&<Reports version={version}/>}
  {activeTab==='staff'&&role==='admin'&&<StaffPage action={action}/>}
  {activeTab==='settings'&&can('settings')&&<SettingsPage {...shared}/>}

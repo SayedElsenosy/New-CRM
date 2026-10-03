@@ -13,7 +13,7 @@ function bad(message,status=400){return Object.assign(new Error(message),{status
 const PERMISSIONS=new Set(['applicants','areas','reports','campaigns','questions','whatsapp','settings']);
 const DEFAULT_RECRUITER_PERMISSIONS=['applicants','areas','reports'];
 const cleanPermissions=value=>Array.isArray(value)?[...new Set(value.filter(v=>PERMISSIONS.has(v)))]:[...DEFAULT_RECRUITER_PERMISSIONS];
-export function makeApi({db,connection,connections,worker,serial,origins,dashboardDist=null}){
+export function makeApi({db,connection,connections,worker,speech=null,serial,origins,dashboardDist=null}){
  const whatsapp=connections||{
   configured:false,
   defaultAccountId:()=>null,
@@ -122,7 +122,7 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
     const t=Date.parse(x.created_at),from=Date.parse(started),to=until?Date.parse(until):Infinity;
     return Number.isFinite(t)&&t>=from&&t<=to;
    }).length:0;
-   return {configured:true,learning_mode_configured:learningModeConfigured,settings:{
+   return {configured:true,learning_mode_configured:learningModeConfigured,voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:{
     ai_knowledge_enabled:s.ai_knowledge_enabled!==false,
     ai_learning_enabled:s.ai_learning_enabled!==false,
     ai_confidence_threshold:Number(s.ai_confidence_threshold||0.62),
@@ -136,7 +136,7 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
     training_suggestions:trainingSuggestions
    }};
   }catch(e){
-   if(schemaMissing(e))return {configured:false,learning_mode_configured:false,settings:null,knowledge:[],suggestions:[],stats:{active:0,total:0,pending:0,learned:0,usage:0,training_suggestions:0}};
+   if(schemaMissing(e))return {configured:false,learning_mode_configured:false,voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:null,knowledge:[],suggestions:[],stats:{active:0,total:0,pending:0,learned:0,usage:0,training_suggestions:0}};
    throw e;
   }
  }

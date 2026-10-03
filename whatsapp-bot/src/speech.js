@@ -7,7 +7,7 @@ function command(bin,args,{timeoutMs=180000}={}){
  return new Promise((resolve,reject)=>{
   const child=spawn(bin,args,{stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='',settled=false;
-  const timer=setTimeout(()=>{if(!settled){child.kill('SIGKILL');}},timeoutMs);
+  const timer=setTimeout(()=>{if(!settled)child.kill('SIGKILL');},timeoutMs);
   child.stdout.on('data',d=>stdout+=d.toString());
   child.stderr.on('data',d=>stderr+=d.toString());
   child.on('error',e=>{settled=true;clearTimeout(timer);reject(e);});
@@ -32,18 +32,39 @@ export function audioExtension(mime){
  return '.ogg';
 }
 
+export function transcriptResult(json,minConfidence=.56){
+ const segments=Array.isArray(json?.transcription)?json.transcription:[];
+ const text=cleanTranscript(segments.map(x=>x?.text||'').join(' '));
+ const probs=[];
+ for(const segment of segments){
+  for(const token of segment?.tokens||[]){
+   const p=Number(token?.p),tokenText=String(token?.text||'');
+   if(Number.isFinite(p)&&p>=0&&p<=1&&tokenText&&!/^<\|.*\|>$/.test(tokenText.trim()))probs.push(p);
+  }
+ }
+ const confidence=probs.length?probs.reduce((n,p)=>n+p,0)/probs.length:0;
+ const lowShare=probs.length?probs.filter(p=>p<.35).length/probs.length:1;
+ const trusted=Boolean(text)&&probs.length>=2&&confidence>=minConfidence&&lowShare<=.4;
+ return {text:text.slice(0,10000),confidence:Math.round(confidence*1000)/1000,trusted,low_share:Math.round(lowShare*1000)/1000};
+}
+
+const DEFAULT_PROMPT='محادثة عربية مصرية طبيعية عن التوظيف والدليفري في مصر. كلمات متوقعة: سبيد دليفري، بريدفاست، دليفري، مندوب توصيل، موتوسيكل، رخصة، تأمين طبي، تأمين اجتماعي، مرتب، قبض، شيفت، أكتوبر، الشيخ زايد، حدائق الأهرام، الفردوس، الشروق، العبور، مدينتي، القاهرة الجديدة، المعادي، مدينة نصر، محاضرة، تعيين.';
+
 export class SpeechTranscriber{
  constructor({
   binary=process.env.WHISPER_BIN||'/opt/whisper/whisper-cli',
-  model=process.env.WHISPER_MODEL||'/opt/whisper/models/ggml-base.bin',
+  model=process.env.WHISPER_MODEL||'/opt/whisper/models/ggml-small-q5_1.bin',
   ffmpeg=process.env.FFMPEG_BIN||'ffmpeg',
   language=process.env.WHISPER_LANGUAGE||'ar',
   threads=Number(process.env.WHISPER_THREADS||2),
   maxSeconds=Number(process.env.WHISPER_MAX_SECONDS||180),
+  minConfidence=Number(process.env.WHISPER_MIN_CONFIDENCE||.56),
+  prompt=process.env.WHISPER_PROMPT||DEFAULT_PROMPT,
+  beamSize=Number(process.env.WHISPER_BEAM_SIZE||5),
   runner=command,
   skipAvailabilityCheck=false
  }={}){
-  Object.assign(this,{binary,model,ffmpeg,language,threads,maxSeconds,runner,skipAvailabilityCheck});
+  Object.assign(this,{binary,model,ffmpeg,language,threads,maxSeconds,minConfidence,prompt,beamSize,runner,skipAvailabilityCheck});
   this.available=false;this.error=null;
  }
  async init(){
@@ -56,7 +77,7 @@ export class SpeechTranscriber{
   }
   return this.available;
  }
- snapshot(){return {available:this.available,error:this.error,language:this.language,model:path.basename(this.model)};}
+ snapshot(){return {available:this.available,error:this.error,language:this.language,model:path.basename(this.model),min_confidence:this.minConfidence};}
  async transcribe(buffer,mime){
   if(!this.available)throw new Error(this.error||'Speech transcription unavailable');
   if(!Buffer.isBuffer(buffer)||!buffer.length)throw new Error('Empty audio');
@@ -69,14 +90,18 @@ export class SpeechTranscriber{
     '-t',String(Math.max(5,Math.min(600,this.maxSeconds))),
     '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',wav
    ],{timeoutMs:90000});
-   await this.runner(this.binary,[
+   const args=[
     '-m',this.model,'-f',wav,'-l',this.language,
     '-t',String(Math.max(1,Math.min(8,this.threads))),
-    '-nt','-np','-otxt','-of',prefix
-   ],{timeoutMs:240000});
-   const text=cleanTranscript(await fs.readFile(prefix+'.txt','utf8'));
-   if(!text)throw new Error('No speech detected');
-   return text.slice(0,10000);
+    '-bs',String(Math.max(1,Math.min(8,this.beamSize))),
+    '-nt','-np','-ojf','-of',prefix
+   ];
+   if(this.prompt)args.push('--prompt',this.prompt);
+   await this.runner(this.binary,args,{timeoutMs:300000});
+   const json=JSON.parse(await fs.readFile(prefix+'.json','utf8'));
+   const result=transcriptResult(json,this.minConfidence);
+   if(!result.text)throw new Error('No speech detected');
+   return result;
   }finally{
    await fs.rm(dir,{recursive:true,force:true}).catch(()=>{});
   }

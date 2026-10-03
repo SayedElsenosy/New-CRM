@@ -9,7 +9,7 @@ const origins=(process.env.DASHBOARD_ORIGIN||'http://localhost:5173').split(',')
 if(process.env.RAILWAY_PUBLIC_DOMAIN)origins.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
 const sessionPath=path.resolve(process.env.SESSION_PATH||'./sessions');
 let worker;
-const connection=new WhatsAppConnection({sessionPath,onMessage:(client,msg)=>worker.receive(client,msg)});
+const connection=new WhatsAppConnection({sessionPath,onMessage:record=>worker.receive(record)});
 worker=new Worker({db,connection,serial,sessionPath});
 await worker.init();await connection.init();
 const dashboardDist=process.env.DASHBOARD_DIST?path.resolve(process.env.DASHBOARD_DIST):null;

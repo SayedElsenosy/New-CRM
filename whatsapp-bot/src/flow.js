@@ -79,7 +79,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:current?{awaiting_id:current.id}:{},reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
  }
 
- if(settings.ai_enabled&&settings.ai_knowledge_enabled!==false&&looksLikeQuestion(m.body)){
+ if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
   const threshold=Number(settings.ai_confidence_threshold||0.62);
   const match=findKnowledgeAnswer(m.body,knowledge,threshold);
   if(match){

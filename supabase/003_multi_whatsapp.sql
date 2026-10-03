@@ -44,6 +44,8 @@ create unique index if not exists masar_applicants_account_contact on public.mas
 create unique index if not exists masar_applicants_account_phone on public.masar_applicants(whatsapp_account_id,phone) where phone is not null;
 create index if not exists masar_applicants_account_time on public.masar_applicants(whatsapp_account_id,created_at desc);
 create index if not exists masar_messages_account_time on public.masar_messages(whatsapp_account_id,created_at desc);
+alter table public.masar_messages drop constraint if exists masar_messages_wa_id_key;
+create unique index if not exists masar_messages_account_wa_id on public.masar_messages(whatsapp_account_id,wa_id) where wa_id is not null;
 
 -- contact_id is only unique inside a linked WhatsApp account.
 alter table public.masar_contacts drop constraint if exists masar_contacts_pkey;

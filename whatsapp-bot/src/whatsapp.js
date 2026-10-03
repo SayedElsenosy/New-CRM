@@ -2,6 +2,8 @@ import makeWASocket,{DisconnectReason,useMultiFileAuthState,downloadMediaMessage
 import QRCode from 'qrcode';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+const noop=()=>{};
+const silentLogger={trace:noop,debug:noop,info:noop,warn:noop,error:noop,fatal:noop,child(){return this;}};
 
 function jidPhone(jid){
  const s=String(jid||'');
@@ -96,7 +98,8 @@ export class WhatsAppConnection{
     syncFullHistory:false,
     generateHighQualityLinkPreview:false,
     browser:['Masar','Chrome','1.0.0'],
-    getMessage:async()=>undefined
+    getMessage:async()=>undefined,
+    logger:silentLogger
    });
    this.client=sock;
    sock.ev.on('creds.update',saveCreds);

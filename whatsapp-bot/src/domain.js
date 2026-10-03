@@ -49,11 +49,22 @@ export function questionPrompt(q,areas) {
  if(!q.required)text+='\n(اختياري؛ اكتب «تخطي» لو مش حابب تجاوب)';
  return text;
 }
+export function areaRejected(text,area) {
+ const n=norm(text),name=norm(area?.name);
+ if(!name)return false;
+ const index=n.indexOf(name);if(index<0)return false;
+ const before=n.slice(0,index);
+ const segment=(before.split(/(?:^|\s)(?:بس|لكن|لاكن|انما)(?:\s|$)|[،,؛;.!?؟]/).pop()||'').trim();
+ const tail=segment.split(/\s+/).slice(-10).join(' ');
+ return /(?:^|\s)(?:مش|ما)\s+(?:عايز|عاوز|حابب|موافق|ناوي)(?:\s|$)/.test(tail)
+  ||/(?:^|\s)(?:مش\s+مناسب|مش\s+مناسبه|ماينفعش|مينفعش|بعيد\s+عن|ابعد\s+عن)(?:\s|$)/.test(tail)
+  ||/(?:^|\s)(?:غير|بدون|لا|لاء|مش)\s*$/.test(tail);
+}
 export function areaInquiry(text,areas) {
  const n=norm(text);
  const inquiry=/[?؟]/.test(text)||/(تفاصيل|مرتب|قبض|عنوان|مكان|مواعيد|ساعات|شغل|نظام|مميزات|راتب|بونص)/.test(n);
  if(!inquiry)return null;
- const hits=areas.filter(a=>a.active&&n.includes(norm(a.name)));
+ const hits=areas.filter(a=>a.active&&n.includes(norm(a.name))&&!areaRejected(text,a));
  return hits.length===1?hits[0]:null;
 }
 export function areaDetails(area) { return `📍 ${area.name}\n${area.details.trim()||'تفاصيل المنطقة لسه مش مضافة. مسؤول التوظيف يقدر يوضحها ليك.'}`; }

@@ -1,4 +1,14 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
+function rejectedAreaReply(area,current,areas){
+ const alternatives=areas.filter(z=>z.active&&z.id!==area.id);
+ const intro=`تمام، مش هختار ${area.name}.`;
+ if(!current)return intro;
+ if(current.kind==='area'){
+  const options=alternatives.length?'\n'+alternatives.map(z=>`• ${z.name}`).join('\n'):'\nمفيش مناطق بديلة متاحة حالياً، ومسؤول التوظيف هيتابع معاك.';
+  return intro+'\n'+current.label+options;
+ }
+ return intro+'\n\nنكمل التقديم: '+questionPrompt(current,areas);
+}
 export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret}) {
  if(!a.bot_enabled||['lecture','working'].includes(a.stage))return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
@@ -9,8 +19,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(inquiry)return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(inquiry)+(current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'')};
  const areaQuestion=/(تفاصيل|مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(norm(m.body));
  if(areaQuestion){
-  let area=null;
-  if(settings.ai_enabled){const intent=await interpret(m.body,current,areas);if(intent?.intent==='area_info')area=areas.find(z=>z.active&&z.id===intent.area_id);}
+  let area=null,intent=null;
+  if(settings.ai_enabled){intent=await interpret(m.body,current,areas);if(intent?.intent==='area_info')area=areas.find(z=>z.active&&z.id===intent.area_id);}
+  if(intent?.intent==='area_reject'){
+   const rejected=areas.find(z=>z.active&&z.id===intent.area_id);
+   if(rejected)return {patch:current?{awaiting_id:current.id}:{},reply:rejectedAreaReply(rejected,current,areas)};
+  }
   if(!area){const saved=Object.values(answers).find(v=>v.kind==='area');area=areas.find(z=>z.active&&z.id===saved?.value);}
   const info=area?areaDetails(area):'تقصد أنهي منطقة؟ المناطق المتاحة: '+areas.filter(z=>z.active).map(z=>z.name).join('، ');
   return {patch:current?{awaiting_id:current.id}:{},reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
@@ -25,6 +39,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(ai?.intent==='area_info') {
    const area=areas.find(z=>z.active&&z.id===ai.area_id);
    if(area)return {patch:{},reply:areaDetails(area)+'\n\n'+questionPrompt(current,areas)};
+  }
+  if(ai?.intent==='area_reject'){
+   const rejected=areas.find(z=>z.active&&z.id===ai.area_id);
+   if(rejected)return {patch:{awaiting_id:current.id},reply:rejectedAreaReply(rejected,current,areas)};
   }
   if(!parsed.ok&&ai?.intent==='answer'&&!String(ai.answer).includes('محجوب')) parsed=validateAnswer(current,ai.answer,areas,null);
   if(!parsed.ok)return {patch:{},reply:(m.media_error?m.media_error+'\n':'محتاج أوضح إجابتك علشان أسجلها صح.\n')+questionPrompt(current,areas)};

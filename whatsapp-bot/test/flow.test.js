@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI} from '../src/domain.js';
+import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry} from '../src/domain.js';
 import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
@@ -28,6 +28,21 @@ test('CSV protects against spreadsheet formulas',()=>{assert.equal(csvCell('=1+1
 test('privacy helper still redacts long phone/ID strings',()=>assert.ok(!redactForAI('رقمي ٠١٠١٢٣٤٥٦٧٨').includes('01012345678')));
 test('local interpreter understands indirect Egyptian replies without external AI',async()=>{assert.equal((await interpret('لسه مجبتش موتوسيكل',questions[2],areas)).answer,'no');assert.equal((await interpret('اه معايا الحمد لله',questions[2],areas)).answer,'yes');assert.equal((await interpret('انا عندي ٢٨ سنة',{kind:'number'},areas)).answer,'28');});
 test('local interpreter resolves active areas and rejects unknown text',async()=>{assert.equal((await interpret('تفاصيل الشغل في أكتوبر؟',questions[0],areas)).area_id,'oct');assert.equal((await interpret('عايز الشيخ زايد',questions[1],areas)).intent,'clarify');assert.equal((await interpret('كلام مش واضح',questions[2],areas)).intent,'clarify');});
+test('negative area wording is treated as rejection, never a selection',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ assert.equal(areaRejected('لا مش عاوز اشتغل في الشيخ زايد',liveAreas[1]),true);
+ assert.equal(areaInquiry('مش عايز تفاصيل الشغل في الشيخ زايد',liveAreas),null);
+ const intent=await interpret('لا مش عاوز اشتغل في الشيخ زايد',questions[1],liveAreas);
+ assert.equal(intent.intent,'area_reject');assert.equal(intent.area_id,'zayed');
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'لا مش عاوز اشتغل في الشيخ زايد'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(r.patch.answers,undefined);assert.equal(r.patch.awaiting_id,'area');assert.match(r.reply,/مش هختار الشيخ زايد/);assert.doesNotMatch(r.reply,/تفاصيل الشيخ زايد/);
+});
+test('a rejected area plus a positive alternative selects only the alternative',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const intent=await interpret('مش عايز الشيخ زايد، عايز أكتوبر',questions[1],liveAreas);
+ assert.equal(intent.intent,'answer');assert.equal(intent.answer,'oct');
+});
 
 test('old bare LIDs are not migrated as phone numbers',async()=>{const {legacyPhone}=await import('../src/domain.js');assert.equal(legacyPhone('123456789012345'),null);assert.equal(legacyPhone('201012345678'),'+201012345678');});
 test('previously skipped question is asked if changed to required',async()=>{const r=await run({...applicant,answers:{name:{skipped:true}},awaiting_id:null},'أهلا');assert.equal(r.patch.awaiting_id,'name');});

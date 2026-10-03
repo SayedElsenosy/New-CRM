@@ -11,7 +11,8 @@ let worker;
 const connection=new WhatsAppConnection({sessionPath,onMessage:(client,msg)=>worker.receive(client,msg)});
 worker=new Worker({db,connection,serial,sessionPath});
 await worker.init();await connection.init();
-const app=makeApi({db,connection,worker,serial,origins});
+const dashboardDist=process.env.DASHBOARD_DIST?path.resolve(process.env.DASHBOARD_DIST):null;
+const app=makeApi({db,connection,worker,serial,origins,dashboardDist});
 const server=app.listen(Number(process.env.PORT)||3001,'0.0.0.0',()=>console.log('Masar service ready'));
 async function shutdown(){worker.stop();server.close();await connection.close();process.exit(0);}
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);

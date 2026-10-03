@@ -3,10 +3,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
     container_name: masar
     restart: unless-stopped
     env_file:
-      - ./whatsapp-bot/.env
+      - ./oracle/.env
     environment:
       PORT: 3001
       SESSION_PATH: /data/whatsapp

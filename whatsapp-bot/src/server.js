@@ -16,7 +16,7 @@ const connections=new WhatsAppManager({db,sessionPath,onMessage:record=>worker.r
 worker=new Worker({db,connections,serial,sessionPath,speech});
 await worker.init();await connections.init();
 const dashboardDist=process.env.DASHBOARD_DIST?path.resolve(process.env.DASHBOARD_DIST):null;
-const app=makeApi({db,connections,worker,serial,origins,dashboardDist});
+const app=makeApi({db,connections,worker,speech,serial,origins,dashboardDist});
 const server=app.listen(Number(process.env.PORT)||3001,'0.0.0.0',()=>console.log('Speed Delivery recruitment service ready'));
 async function shutdown(){worker.stop();server.close();await connections.close();process.exit(0);}
 process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);

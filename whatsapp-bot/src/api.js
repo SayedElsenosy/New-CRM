@@ -180,14 +180,19 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
   const match=findKnowledgeAnswer(text,state.knowledge.filter(x=>x.active),state.settings.ai_confidence_threshold);
   res.json(match?{matched:true,id:match.id,question:match.question,answer:match.answer,confidence:Math.round(match.confidence*1000)/1000}:{matched:false,answer:state.settings.ai_fallback,confidence:null});
  });
- adminRoute('post','/intelligence/training/start',async(_req,res)=>{
+ async function suppressQueuedBotReplies(){
+  const result=await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي بسبب إيقاف البوت أو وضع التعلّم.'}).eq('direction','out').eq('sender','bot').eq('status','queued');
+  if(result.error)throw result.error;
+ }
+ adminRoute('post','/intelligence/training/start',async(req,res)=>{
   const now=new Date(),until=new Date(now.getTime()+72*60*60*1000);
   try{
    must(await db.from('masar_settings').update({
     ai_run_mode:'training',ai_training_started_at:now.toISOString(),ai_training_until:until.toISOString(),ai_learning_enabled:true
    }).eq('id',true));
   }catch(e){if(['42703','PGRST204'].includes(e.code))throw bad('فعّل وضع التعلّم أولاً بتشغيل ملف supabase/005_learning_mode.sql في Supabase SQL Editor.',503);throw e;}
-  must(await db.from('masar_events').insert({kind:'ai_training_started',staff_id:_req.user.id,detail:{until:until.toISOString(),duration_hours:72}}));
+  await suppressQueuedBotReplies();
+  must(await db.from('masar_events').insert({kind:'ai_training_started',staff_id:req.user.id,detail:{until:until.toISOString(),duration_hours:72}}));
   res.json(await intelligenceState());
  });
  adminRoute('post','/intelligence/training/stop',async(req,res)=>{
@@ -205,6 +210,7 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
  adminRoute('post','/intelligence/pause',async(req,res)=>{
   try{must(await db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}
   catch(e){if(['42703','PGRST204'].includes(e.code))throw bad('فعّل وضع التعلّم أولاً بتشغيل ملف supabase/005_learning_mode.sql في Supabase SQL Editor.',503);throw e;}
+  await suppressQueuedBotReplies();
   must(await db.from('masar_events').insert({kind:'ai_bot_paused',staff_id:req.user.id,detail:{learning_continues:true}}));
   res.json(await intelligenceState());
  });

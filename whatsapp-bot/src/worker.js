@@ -31,7 +31,14 @@ export class Worker {
   if(media){
    const bytes=Buffer.from(media.data,'base64');
    media_path=`${applicantId}/${createHash('sha256').update(String(accountId||'legacy')+':'+record.id).digest('hex')}`;
-   must(await this.db.storage.from('masar-documents').upload(media_path,bytes,{contentType:media.type,upsert:true}));
+   try{
+    must(await this.db.storage.from('masar-documents').upload(media_path,bytes,{contentType:media.type,upsert:true}));
+   }catch(e){
+    if(media.kind!=='audio')throw e;
+    media_path=null;
+    media_error='تم استلام الرسالة الصوتية لكن تعذر حفظ ملف التسجيل في التخزين.';
+    console.warn('Voice storage failed:',e.code||e.name||'Error');
+   }
    if(media.kind==='audio'&&!body.trim()){
     try{
      if(!this.speech?.available)throw new Error(this.speech?.error||'speech unavailable');
@@ -39,7 +46,7 @@ export class Worker {
      transcribed=true;
     }catch(e){
      body='🎤 رسالة صوتية';
-     media_error='تم حفظ الرسالة الصوتية لكن تعذر تحويلها إلى نص تلقائياً. يمكن لمسؤول التوظيف تشغيل التسجيل ومراجعته.';
+     media_error=media_path?'تم حفظ الرسالة الصوتية لكن تعذر تحويلها إلى نص تلقائياً. يمكن لمسؤول التوظيف تشغيل التسجيل ومراجعته.':'تعذر حفظ الرسالة الصوتية أو تحويلها إلى نص تلقائياً؛ يحتاج مسؤول التوظيف لمراجعتها من واتساب.';
      console.warn('Voice transcription failed:',e.code||e.name||'Error');
     }
    }

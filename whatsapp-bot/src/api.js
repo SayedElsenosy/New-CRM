@@ -261,7 +261,7 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
   await serial(async()=>{const a=await applicantById(req,req.params.id,whatsapp.configured?'id,contact_id,whatsapp_account_id':'id,contact_id');if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');must(await db.from('masar_applicants').update({bot_enabled:false}).eq('id',a.id));const row={applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'};if(whatsapp.configured)row.whatsapp_account_id=a.whatsapp_account_id;must(await db.from('masar_messages').insert(row));});res.json({ok:true});
  });
  permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{
-  const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single()),a=await applicantById(req,m.applicant_id,'id,whatsapp_account_id');
+  const m=must(await db.from('masar_messages').select('*').eq('id',req.params.id).single()),a=await applicantById(req,m.applicant_id,whatsapp.configured?'id,whatsapp_account_id':'id');
   if(!['failed','uncertain'].includes(m.status))throw bad('هذه الرسالة لا تحتاج إعادة محاولة');if(m.status==='uncertain'&&req.body.confirm!==true)throw bad('راجع واتساب ثم أكد إعادة الإرسال');
   must(await db.from('masar_messages').update({status:m.direction==='in'?'pending':'queued',attempts:0,error:null}).eq('id',m.id));
  });res.json({ok:true});});

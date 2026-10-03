@@ -12,7 +12,15 @@ function bad(message,status=400){return Object.assign(new Error(message),{status
 const PERMISSIONS=new Set(['applicants','areas','reports','campaigns','questions','whatsapp','settings']);
 const DEFAULT_RECRUITER_PERMISSIONS=['applicants','areas','reports'];
 const cleanPermissions=value=>Array.isArray(value)?[...new Set(value.filter(v=>PERMISSIONS.has(v)))]:[...DEFAULT_RECRUITER_PERMISSIONS];
-export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}){
+export function makeApi({db,connection,connections,worker,serial,origins,dashboardDist=null}){
+ const whatsapp=connections||{
+  configured:false,
+  defaultAccountId:()=>null,
+  snapshot:()=>connection?.snapshot?.()||{status:'disconnected'},
+  snapshots:async()=>[{id:null,name:'الرقم الرئيسي',legacy_session:true,...(connection?.snapshot?.()||{status:'disconnected'})}],
+  connect:async()=>{await connection?.connect?.();return connection?.snapshot?.()||{status:'disconnected'};},
+  disconnect:async()=>{await connection?.disconnect?.();return connection?.snapshot?.()||{status:'disconnected'};}
+ };
  const app=express();app.set('trust proxy',1);app.use(helmet({
   contentSecurityPolicy:{
    directives:{

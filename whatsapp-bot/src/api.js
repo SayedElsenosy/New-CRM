@@ -110,7 +110,7 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
    {field_key:'motorcycle',label:'معاك موتوسيكل؟',kind:'yes_no'},
    {field_key:'license',label:'معاك رخصة موتوسيكل سارية؟',kind:'yes_no'},
    {field_key:'document',label:'ابعت المستند المطلوب للتقديم بعد مراجعة مسؤول التوظيف لنوعه.',kind:'image',required:false,active:false}
-  ].map((q,i)=>({...q,position:i+1}))));
+  ].map((q,i)=>({...q,required:q.required!==false,active:q.active!==false,position:i+1}))));
  });res.json({ok:true});});
  if(dashboardDist&&fs.existsSync(dashboardDist)){
   app.use(express.static(dashboardDist,{index:false}));

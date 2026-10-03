@@ -53,7 +53,7 @@ const DEFAULT_PROMPT='محادثة عربية مصرية طبيعية عن ال�
 export class SpeechTranscriber{
  constructor({
   binary=process.env.WHISPER_BIN||'/opt/whisper/whisper-cli',
-  model=process.env.WHISPER_MODEL||'/opt/whisper/models/ggml-small-q5_1.bin',
+  model=process.env.WHISPER_MODEL||'/opt/whisper/models/ggml-medium-q5_0.bin',
   ffmpeg=process.env.FFMPEG_BIN||'ffmpeg',
   language=process.env.WHISPER_LANGUAGE||'ar',
   threads=Number(process.env.WHISPER_THREADS||2),
@@ -97,7 +97,7 @@ export class SpeechTranscriber{
     '-nt','-np','-ojf','-of',prefix
    ];
    if(this.prompt)args.push('--prompt',this.prompt);
-   await this.runner(this.binary,args,{timeoutMs:300000});
+   await this.runner(this.binary,args,{timeoutMs:420000});
    const json=JSON.parse(await fs.readFile(prefix+'.json','utf8'));
    const result=transcriptResult(json,this.minConfidence);
    if(!result.text)throw new Error('No speech detected');

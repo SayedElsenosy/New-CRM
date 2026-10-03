@@ -118,13 +118,6 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   if(target.data.user.app_metadata?.masar_role!=='recruiter')throw bad('يمكن تغيير كلمة مرور حسابات مسؤولي التوظيف فقط',403);
   const changed=await db.auth.admin.updateUserById(req.params.id,{password});if(changed.error)throw changed.error;res.json({ok:true});
  });
- adminRoute('delete','/staff/:id',async(req,res)=>{
-  if(!uuid(req.params.id))throw bad('معرف الحساب غير صحيح');
-  if(req.params.id===req.user.id)throw bad('لا يمكن حذف حسابك الحالي');
-  const target=await db.auth.admin.getUserById(req.params.id);if(target.error||!target.data.user)throw bad('الحساب غير موجود',404);
-  if(target.data.user.app_metadata?.masar_role!=='recruiter')throw bad('يمكن حذف حسابات مسؤولي التوظيف فقط',403);
-  const removed=await db.auth.admin.deleteUser(req.params.id);if(removed.error)throw removed.error;res.json({ok:true});
- });
  let importJob={status:'idle',result:null,error:null};
  adminRoute('get','/legacy/import',async(_req,res)=>res.json(importJob));
  adminRoute('post','/legacy/import',async(_req,res)=>{

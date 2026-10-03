@@ -26,16 +26,17 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
   const token=req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];if(!token)throw bad('سجل الدخول أولاً',401);
   const {data,error}=await db.auth.getUser(token);if(error||!data.user)throw bad('انتهت الجلسة؛ سجل الدخول مجدداً',401);
   const staff=must(await db.from('masar_staff').select('user_id').eq('user_id',data.user.id).maybeSingle());if(!staff)throw bad('الحساب غير مصرح له بإدارة مسار',403);
-  req.user=data.user;next();
+  req.user=data.user;req.role=data.user.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';next();
  }catch(e){next(e);}});
  const route=(method,url,fn)=>app[method]('/api'+url,async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}});
- route('get','/bootstrap',async(_r,res)=>res.json({...await config(db),ai_configured:true,ai_provider:'local'}));
- route('get','/whatsapp',async(_r,res)=>res.json({...connection.snapshot(),worker_error:worker.lastError}));
- route('post','/whatsapp/connect',async(_r,res)=>{await connection.connect();res.json(connection.snapshot());});
- route('post','/whatsapp/disconnect',async(_r,res)=>{await connection.disconnect();res.json(connection.snapshot());});
- route('put','/settings',async(req,res)=>{const b=req.body;if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');must(await db.from('masar_settings').update({ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion}).eq('id',true));res.json({ok:true});});
+ const adminRoute=(method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin')throw bad('هذه الصفحة متاحة لمسؤول النظام فقط',403);await fn(req,res);});
+ route('get','/bootstrap',async(req,res)=>{const c=await config(db);const profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};res.json(req.role==='admin'?{...c,role:req.role,profile,ai_configured:true,ai_provider:'local'}:{areas:c.areas,role:req.role,profile,ai_configured:true,ai_provider:'local'});});
+ adminRoute('get','/whatsapp',async(_r,res)=>res.json({...connection.snapshot(),worker_error:worker.lastError}));
+ adminRoute('post','/whatsapp/connect',async(_r,res)=>{await connection.connect();res.json(connection.snapshot());});
+ adminRoute('post','/whatsapp/disconnect',async(_r,res)=>{await connection.disconnect();res.json(connection.snapshot());});
+ adminRoute('put','/settings',async(req,res)=>{const b=req.body;if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');must(await db.from('masar_settings').update({ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion}).eq('id',true));res.json({ok:true});});
  for(const type of ['areas','questions']){
-  route('post','/'+type,async(req,res)=>{await serial(async()=>{
+  (type==='questions'?adminRoute:route)('post','/'+type,async(req,res)=>{await serial(async()=>{
    const b=req.body;let row;
    if(type==='areas'){
     if(typeof b.name!=='string'||!b.name.trim()||b.name.length>100||typeof b.details!=='string'||b.details.length>4000)throw bad('راجع اسم المنطقة وتفاصيلها');
@@ -49,7 +50,7 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
    res.json(must(await query.select().single()));
   });});
  }
- route('post','/questions/reorder',async(req,res)=>{await serial(async()=>{
+ adminRoute('post','/questions/reorder',async(req,res)=>{await serial(async()=>{
   const qs=must(await db.from('masar_questions').select('id'));
   const ids=req.body.ids;if(!Array.isArray(ids)||ids.length!==qs.length||new Set(ids).size!==ids.length||ids.some(id=>!qs.some(q=>q.id===id)))throw bad('تم تغيير قائمة الأسئلة؛ حدّث الصفحة');
   must(await db.rpc('masar_reorder_questions',{p_ids:ids}));res.json({ok:true});
@@ -92,16 +93,41 @@ export function makeApi({db,connection,worker,serial,origins,dashboardDist=null}
  route('get','/reports.csv',async(req,res)=>{
   const {rows}=await applicantList(req);const lines=[['رقم واتساب','الاسم','الحالة','المنطقة','اكتمال البيانات','تاريخ التسجيل'],...rows.map(a=>[a.phone||'غير متاح',Object.values(a.answers).find(v=>v.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers).find(v=>v.kind==='area')?.display||'',a.completion.percent+'%',a.created_at])];res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="masar-report.csv"');res.send('\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n'));
  });
+ async function staffRows(){
+  const rows=must(await db.from('masar_staff').select('user_id,created_at').order('created_at',{ascending:true}));
+  const {data,error}=await db.auth.admin.listUsers({page:1,perPage:1000});if(error)throw error;
+  const byId=new Map((data.users||[]).map(u=>[u.id,u]));
+  return rows.map(r=>{const u=byId.get(r.user_id);return {id:r.user_id,name:String(u?.user_metadata?.full_name||''),email:u?.email||'',role:u?.app_metadata?.masar_role==='recruiter'?'recruiter':'admin',created_at:r.created_at,last_sign_in_at:u?.last_sign_in_at||null};});
+ }
+ adminRoute('get','/staff',async(_req,res)=>res.json({items:await staffRows()}));
+ adminRoute('post','/staff',async(req,res)=>{
+  const name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase(),password=String(req.body.password||'');
+  if(name.length<2||name.length>100)throw bad('اكتب اسم مسؤول التوظيف');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw bad('اكتب بريد إلكتروني صحيح');
+  if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');
+  const created=await db.auth.admin.createUser({email,password,email_confirm:true,app_metadata:{masar_role:'recruiter'},user_metadata:{full_name:name}});
+  if(created.error)throw bad(created.error.message.includes('already')?'البريد الإلكتروني مستخدم بالفعل':'تعذر إنشاء الحساب');
+  try{must(await db.from('masar_staff').insert({user_id:created.data.user.id}));}
+  catch(e){await db.auth.admin.deleteUser(created.data.user.id).catch(()=>{});throw e;}
+  res.status(201).json({id:created.data.user.id,name,email,role:'recruiter'});
+ });
+ adminRoute('put','/staff/:id/password',async(req,res)=>{
+  if(!uuid(req.params.id))throw bad('معرف الحساب غير صحيح');
+  const password=String(req.body.password||'');if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');
+  const target=await db.auth.admin.getUserById(req.params.id);if(target.error||!target.data.user)throw bad('الحساب غير موجود',404);
+  if(target.data.user.app_metadata?.masar_role!=='recruiter')throw bad('يمكن تغيير كلمة مرور حسابات مسؤولي التوظيف فقط',403);
+  const changed=await db.auth.admin.updateUserById(req.params.id,{password});if(changed.error)throw changed.error;res.json({ok:true});
+ });
  let importJob={status:'idle',result:null,error:null};
- route('get','/legacy/import',async(_req,res)=>res.json(importJob));
- route('post','/legacy/import',async(_req,res)=>{
+ adminRoute('get','/legacy/import',async(_req,res)=>res.json(importJob));
+ adminRoute('post','/legacy/import',async(_req,res)=>{
   if(importJob.status!=='running'){
    importJob={status:'running',result:null,error:null};
    serial(()=>legacyImport(db)).then(result=>{importJob={status:'done',result,error:null};}).catch(()=>{importJob={status:'error',result:null,error:'تعذر الاستيراد. تحقق من الجداول القديمة ثم أعد المحاولة؛ لن تتكرر السجلات المحفوظة.'};});
   }
   res.status(202).json(importJob);
  });
- route('post','/questions/defaults',async(_req,res)=>{await serial(async()=>{
+ adminRoute('post','/questions/defaults',async(_req,res)=>{await serial(async()=>{
   const existing=must(await db.from('masar_questions').select('id').limit(1));if(existing.length)throw bad('الأسئلة موجودة بالفعل؛ استخدم صفحة الأسئلة لتعديلها');
   must(await db.from('masar_questions').insert([
    {field_key:'full_name',label:'اسمك بالكامل إيه؟',kind:'name'},

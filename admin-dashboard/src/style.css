@@ -258,3 +258,8 @@ tbody tr:hover{background:#fbfdf5}
 .training-countdown strong{font-size:20px;color:#617a00}
 .training-countdown small{color:#68716b}
 @media(max-width:900px){.training-mode-card{align-items:flex-start;flex-direction:column}.training-mode-actions{width:100%;justify-content:flex-start}.training-mode-actions button{flex:1}.training-mode-copy{width:100%}}
+
+
+/* Voice transcription */
+.voice-transcript-label{display:inline-flex;align-items:center;gap:5px;margin-bottom:5px;color:#607a74;font-weight:700}
+.voice-player{width:min(100%,340px);display:block;margin:8px 0 4px}

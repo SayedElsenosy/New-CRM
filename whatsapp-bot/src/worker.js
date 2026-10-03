@@ -46,11 +46,17 @@ export class Worker {
    if(this.connection.snapshot().status==='connected'){
     const outgoing=must(await this.db.from('masar_messages').select('*').eq('status','queued').order('sequence').limit(20));
     const sendConfig=outgoing.length?await config(this.db):null;
-    for(const m of outgoing){const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled').eq('id',m.applicant_id).single());
+    for(const m of outgoing){const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled,answers').eq('id',m.applicant_id).single());
      let buttons=[];
      if(m.sender==='bot'&&a.bot_enabled&&sendConfig){
       const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);
-      if(q?.kind==='area')buttons=sendConfig.areas.filter(area=>area.active).map(area=>({id:area.id,text:area.name}));
+      if(q?.kind==='area'){
+       const activeAreas=sendConfig.areas.filter(area=>area.active);
+       const previewId=a.answers?.__area_preview?.value;
+       const preview=activeAreas.find(area=>area.id===previewId);
+       if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ تأكيد '+preview.name});
+       buttons.push(...activeAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
+      }
      }
      must(await this.db.from('masar_messages').update({status:'sending'}).eq('id',m.id));
      try{const sent=await this.connection.send(a.contact_id,m.body,{buttons});must(await this.db.from('masar_messages').update({status:'sent',wa_id:sent?.key?.id||sent?.id?._serialized||null,error:null}).eq('id',m.id));}

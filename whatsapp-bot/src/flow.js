@@ -65,8 +65,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(intent?.intent==='area_reject'){
    const rejected=areas.find(z=>z.active&&z.id===intent.area_id);
    if(rejected){
-    if(answers.__area_preview?.value===rejected.id)delete answers.__area_preview;
-    return {patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers},reply:rejectedAreaReply(rejected,current,areas)};
+    const cleared=answers.__area_preview?.value===rejected.id;
+    if(cleared)delete answers.__area_preview;
+    const patch=current
+     ?(cleared?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{awaiting_id:current.id})
+     :(cleared?{answers}:{});
+    return {patch,reply:rejectedAreaReply(rejected,current,areas)};
    }
   }
   if(!area){const saved=Object.values(answers).find(v=>v.kind==='area');area=areas.find(z=>z.active&&z.id===saved?.value);}
@@ -97,8 +101,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(ai?.intent==='area_reject'){
    const rejected=areas.find(z=>z.active&&z.id===ai.area_id);
    if(rejected){
-    if(answers.__area_preview?.value===rejected.id)delete answers.__area_preview;
-    return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:rejectedAreaReply(rejected,current,areas)};
+    const cleared=answers.__area_preview?.value===rejected.id;
+    if(cleared)delete answers.__area_preview;
+    return {patch:cleared?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{awaiting_id:current.id},reply:rejectedAreaReply(rejected,current,areas)};
    }
   }
 

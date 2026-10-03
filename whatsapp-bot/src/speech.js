@@ -53,7 +53,7 @@ const DEFAULT_PROMPT='محادثة عربية مصرية طبيعية عن ال�
 export class SpeechTranscriber{
  constructor({
   binary=process.env.WHISPER_BIN||'/opt/whisper/whisper-cli',
-  model=process.env.WHISPER_MODEL||'/opt/whisper/models/ggml-medium-q5_0.bin',
+  model=process.env.WHISPER_MODEL||'/opt/whisper/models/ggml-small-q8_0.bin',
   ffmpeg=process.env.FFMPEG_BIN||'ffmpeg',
   language=process.env.WHISPER_LANGUAGE||'ar',
   threads=Number(process.env.WHISPER_THREADS||2),
@@ -78,6 +78,7 @@ export class SpeechTranscriber{
   return this.available;
  }
  snapshot(){return {available:this.available,error:this.error,language:this.language,model:path.basename(this.model),min_confidence:this.minConfidence};}
+ classifyError(e){const m=String(e?.message||e||'').toLowerCase();if(m.includes('killed')||m.includes('sigkill')||m.includes('137')||m.includes('cannot allocate')||m.includes('memory'))return 'resource_limit';if(m.includes('timed')||m.includes('timeout'))return 'timeout';return 'transcription_failed';}
  async transcribe(buffer,mime){
   if(!this.available)throw new Error(this.error||'Speech transcription unavailable');
   if(!Buffer.isBuffer(buffer)||!buffer.length)throw new Error('Empty audio');
@@ -97,7 +98,7 @@ export class SpeechTranscriber{
     '-nt','-np','-ojf','-of',prefix
    ];
    if(this.prompt)args.push('--prompt',this.prompt);
-   await this.runner(this.binary,args,{timeoutMs:420000});
+   await this.runner(this.binary,args,{timeoutMs:300000});
    const json=JSON.parse(await fs.readFile(prefix+'.json','utf8'));
    const result=transcriptResult(json,this.minConfidence);
    if(!result.text)throw new Error('No speech detected');

@@ -263,3 +263,6 @@ tbody tr:hover{background:#fbfdf5}
 /* Voice transcription */
 .voice-transcript-label{display:inline-flex;align-items:center;gap:5px;margin-bottom:5px;color:#607a74;font-weight:700}
 .voice-player{width:min(100%,340px);display:block;margin:8px 0 4px}
+
+.intelligence-loading>svg{animation:intelligence-spin 1.1s linear infinite}
+@keyframes intelligence-spin{to{transform:rotate(360deg)}}

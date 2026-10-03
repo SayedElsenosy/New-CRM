@@ -300,11 +300,35 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
    return [a.phone||'غير متاح',account?.name||'',account?.phone||'',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers||{}).find(v=>v?.kind==='area')?.display||'',a.completion.percent+'%',campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ref.ctwa_clid||'',Number(ad?.spend||0),ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];
   })];res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="speed-delivery-campaign-report.csv"');res.send('\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n'));
  });
+ async function normalizedStaffAccountIds(value){
+  if(!whatsapp.configured)return [];
+  if(!Array.isArray(value))throw bad('حدد أرقام واتساب المسموح بها');
+  const requested=[...new Set(value.map(String))];
+  if(requested.some(id=>!uuid(id)))throw bad('أحد أرقام واتساب المختارة غير صحيح');
+  const available=(await whatsapp.snapshots()).map(x=>x.id);
+  if(requested.some(id=>!available.includes(id)))throw bad('تم تغيير قائمة أرقام واتساب؛ حدّث الصفحة');
+  return requested;
+ }
+ async function saveStaffAccountAccess(userId,ids){
+  if(!whatsapp.configured)return;
+  must(await db.from('masar_staff_whatsapp_access').delete().eq('user_id',userId));
+  if(ids.length)must(await db.from('masar_staff_whatsapp_access').insert(ids.map(whatsapp_account_id=>({user_id:userId,whatsapp_account_id}))));
+ }
  async function staffRows(){
   const rows=must(await db.from('masar_staff').select('user_id,created_at').order('created_at',{ascending:true}));
   const {data,error}=await db.auth.admin.listUsers({page:1,perPage:1000});if(error)throw error;
   const byId=new Map((data.users||[]).map(u=>[u.id,u]));
-  return rows.map(r=>{const u=byId.get(r.user_id);const role=u?.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';return {id:r.user_id,name:String(u?.user_metadata?.full_name||''),email:u?.email||'',role,permissions:role==='admin'?[...PERMISSIONS]:cleanPermissions(u?.app_metadata?.masar_permissions),created_at:r.created_at,last_sign_in_at:u?.last_sign_in_at||null};});
+  const access=whatsapp.configured?must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id')):[];
+  const accessByUser=new Map();
+  for(const row of access){if(!accessByUser.has(row.user_id))accessByUser.set(row.user_id,[]);accessByUser.get(row.user_id).push(row.whatsapp_account_id);}
+  const accounts=(await whatsapp.snapshots()).map(({id,name,phone,status})=>({id,name,phone,status}));
+  const items=rows.map(r=>{const u=byId.get(r.user_id),role=u?.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';return {
+   id:r.user_id,name:String(u?.user_metadata?.full_name||''),email:u?.email||'',role,
+   permissions:role==='admin'?[...PERMISSIONS]:cleanPermissions(u?.app_metadata?.masar_permissions),
+   whatsapp_account_ids:role==='admin'?accounts.map(x=>x.id):accessByUser.get(r.user_id)||[],
+   created_at:r.created_at,last_sign_in_at:u?.last_sign_in_at||null
+  };});
+  return {items,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured};
  }
  async function recruiterTarget(id){
   if(!uuid(id))throw bad('معرف الحساب غير صحيح');
@@ -312,27 +336,31 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
   if(target.data.user.app_metadata?.masar_role!=='recruiter')throw bad('يمكن تعديل حسابات مسؤولي التوظيف فقط',403);
   return target.data.user;
  }
- adminRoute('get','/staff',async(_req,res)=>res.json({items:await staffRows()}));
+ adminRoute('get','/staff',async(_req,res)=>res.json(await staffRows()));
  adminRoute('post','/staff',async(req,res)=>{
   const name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase(),password=String(req.body.password||''),permissions=cleanPermissions(req.body.permissions);
+  const accountIds=await normalizedStaffAccountIds(req.body.whatsapp_account_ids||[]);
   if(name.length<2||name.length>100)throw bad('اكتب اسم مسؤول التوظيف');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw bad('اكتب بريد إلكتروني صحيح');
   if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');
+  if(whatsapp.configured&&!accountIds.length)throw bad('اختر رقم واتساب واحد على الأقل للمسؤول');
   const created=await db.auth.admin.createUser({email,password,email_confirm:true,app_metadata:{masar_role:'recruiter',masar_permissions:permissions},user_metadata:{full_name:name}});
   if(created.error)throw bad(created.error.message.includes('already')?'البريد الإلكتروني مستخدم بالفعل':'تعذر إنشاء الحساب');
-  try{must(await db.from('masar_staff').insert({user_id:created.data.user.id}));}
+  try{must(await db.from('masar_staff').insert({user_id:created.data.user.id}));await saveStaffAccountAccess(created.data.user.id,accountIds);}
   catch(e){await db.auth.admin.deleteUser(created.data.user.id).catch(()=>{});throw e;}
-  res.status(201).json({id:created.data.user.id,name,email,role:'recruiter',permissions});
+  res.status(201).json({id:created.data.user.id,name,email,role:'recruiter',permissions,whatsapp_account_ids:accountIds});
  });
  adminRoute('put','/staff/:id',async(req,res)=>{
-  const target=await recruiterTarget(req.params.id);const name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase();
+  const target=await recruiterTarget(req.params.id),name=String(req.body.name||'').trim(),email=String(req.body.email||'').trim().toLowerCase();
   if(name.length<2||name.length>100)throw bad('اكتب اسم مسؤول التوظيف');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw bad('اكتب بريد إلكتروني صحيح');
   if(!Array.isArray(req.body.permissions))throw bad('حدد صلاحيات الحساب');
-  const permissions=cleanPermissions(req.body.permissions);
+  const permissions=cleanPermissions(req.body.permissions),accountIds=await normalizedStaffAccountIds(req.body.whatsapp_account_ids||[]);
+  if(whatsapp.configured&&!accountIds.length)throw bad('اختر رقم واتساب واحد على الأقل للمسؤول');
   const changed=await db.auth.admin.updateUserById(req.params.id,{email,email_confirm:true,user_metadata:{...(target.user_metadata||{}),full_name:name},app_metadata:{...(target.app_metadata||{}),masar_role:'recruiter',masar_permissions:permissions}});
   if(changed.error)throw bad(changed.error.message.includes('already')?'البريد الإلكتروني مستخدم بالفعل':'تعذر تعديل الحساب');
-  res.json({id:req.params.id,name,email,role:'recruiter',permissions});
+  await saveStaffAccountAccess(req.params.id,accountIds);
+  res.json({id:req.params.id,name,email,role:'recruiter',permissions,whatsapp_account_ids:accountIds});
  });
  adminRoute('put','/staff/:id/password',async(req,res)=>{
   await recruiterTarget(req.params.id);const password=String(req.body.password||'');if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');

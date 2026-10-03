@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {interpret} from './ai.js';
+import {loadKnowledge,schemaMissing} from './knowledge.js';
 
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath}){
@@ -99,9 +100,18 @@ export class Worker {
     const prior=must(await this.db.from('masar_messages').select('id').eq('applicant_id',m.applicant_id).eq('direction','in').eq('status','failed').lte('sequence',m.sequence).limit(1));
     if(prior.length){blocked.add(m.applicant_id);continue;}
     try{
-     const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db);
-     const turn=await planTurn({applicant:a,message:m,...c,interpret});
+     const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db),knowledge=await loadKnowledge(this.db);
+     const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge});
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
+     if(turn.knowledge_id){
+      try{
+       const row=must(await this.db.from('masar_knowledge').select('usage_count').eq('id',turn.knowledge_id).single());
+       must(await this.db.from('masar_knowledge').update({usage_count:Number(row.usage_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',turn.knowledge_id));
+      }catch(e){if(!schemaMissing(e))throw e;}
+     }
+     if(turn.handoff){
+      must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question:String(m.body||'').slice(0,1000),reason:'low_confidence'}}));
+     }
     }catch(e){
      blocked.add(m.applicant_id);const attempts=m.attempts+1;
      must(await this.db.from('masar_messages').update({attempts,status:attempts>=3?'failed':'pending',error:'تعذر معالجة الرسالة؛ أعد المحاولة من ملف المتقدم.'}).eq('id',m.id));

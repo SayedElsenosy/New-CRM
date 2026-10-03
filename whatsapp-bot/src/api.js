@@ -161,11 +161,14 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
   const completed=rows.filter(a=>['complete','lecture','working'].includes(a.stage)).length;
   return {total:rows.length,completed,stages};
  };
- permissionRoute('campaigns','get','/campaigns',async(_req,res)=>{
-  const {campaigns,ads}=await discoverAds();
-  const cfg=await config(db),applicants=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas)}));
-  const stats=Object.fromEntries(ads.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
-  res.json({campaigns,ads:ads.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
+ permissionRoute('campaigns','get','/campaigns',async(req,res)=>{
+  const {campaigns,ads}=await discoverAds(),applicants=(await applicantList(req)).rows;
+  const visibleIds=new Set(applicants.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+  const scopedAds=req.role==='admin'?ads:ads.filter(ad=>visibleIds.has(ad.ad_id));
+  const scopedCampaignIds=new Set(scopedAds.map(ad=>ad.campaign_id).filter(Boolean));
+  const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>scopedCampaignIds.has(x.id));
+  const stats=Object.fromEntries(scopedAds.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
+  res.json({campaigns:scopedCampaigns,ads:scopedAds.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
  });
  permissionRoute('campaigns','post','/campaigns',async(req,res)=>{await serial(async()=>{
   const b=req.body,name=String(b.name||'').trim(),meta=String(b.meta_campaign_id||'').trim()||null;
@@ -188,9 +191,16 @@ export function makeApi({db,connection,connections,worker,serial,origins,dashboa
   const patch={campaign_id:campaignId,name,spend:Math.round(spend*100)/100,updated_at:new Date().toISOString()};
   res.json(must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single()));
  });});
- permissionRoute('reports','get','/reports/options',async(_req,res)=>{
-  try{const {campaigns,ads}=await discoverAds();res.json({campaigns,ads,configured:true});}
-  catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],configured:false});throw e;}
+ permissionRoute('reports','get','/reports/options',async(req,res)=>{
+  try{
+   const {campaigns,ads}=await discoverAds(),rows=(await applicantList(req)).rows;
+   const ids=new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+   const scopedAds=req.role==='admin'?ads:ads.filter(x=>ids.has(x.ad_id));
+   const campaignIds=new Set(scopedAds.map(x=>x.campaign_id).filter(Boolean));
+   const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>campaignIds.has(x.id));
+   const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
+   res.json({campaigns:scopedCampaigns,ads:scopedAds,accounts,configured:true,multi_whatsapp_configured:whatsapp.configured});
+  }catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],accounts:[],configured:false,multi_whatsapp_configured:whatsapp.configured});throw e;}
  });
 
  async function ensureApplicantAccess(req,a){

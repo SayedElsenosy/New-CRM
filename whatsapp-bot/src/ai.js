@@ -1,4 +1,4 @@
-import {norm,digits} from './domain.js';
+import {norm,digits,areaRejected} from './domain.js';
 
 const INFO_WORDS=['تفاصيل','مرتب','راتب','قبض','عنوان','مكان','مواعيد','ساعات','شفت','شغل','نظام','مميزات','بونص','زون'];
 const NEGATIVE=[
@@ -54,8 +54,13 @@ export async function interpret(text,question,areas){
  const n=clean(text);
  if(!n)return null;
 
- const hits=areaHits(text,areas);
+ const mentioned=areaHits(text,areas);
+ const rejected=mentioned.filter(a=>areaRejected(text,a));
+ const hits=mentioned.filter(a=>!areaRejected(text,a));
  const asksInfo=hasAny(n,INFO_WORDS) || /[?؟]/.test(String(text));
+ if(rejected.length===1&&hits.length===0){
+  return {intent:'area_reject',answer:'',area_id:rejected[0].id,confidence:0.99};
+ }
  if(asksInfo&&hits.length===1){
   return {intent:'area_info',answer:'',area_id:hits[0].id,confidence:0.98};
  }

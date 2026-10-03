@@ -46,3 +46,54 @@ test('a rejected area plus a positive alternative selects only the alternative',
 
 test('old bare LIDs are not migrated as phone numbers',async()=>{const {legacyPhone}=await import('../src/domain.js');assert.equal(legacyPhone('123456789012345'),null);assert.equal(legacyPhone('201012345678'),'+201012345678');});
 test('previously skipped question is asked if changed to required',async()=>{const r=await run({...applicant,answers:{name:{skipped:true}},awaiting_id:null},'أهلا');assert.equal(r.patch.awaiting_id,'name');});
+
+
+test('area button previews details without saving the final area',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'area_preview:zayed'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(r.patch.awaiting_id,'area');
+ assert.equal(r.patch.answers.area,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'zayed');
+ assert.match(r.reply,/تفاصيل الشيخ زايد/);
+ assert.match(r.reply,/تأكيد الشيخ زايد/);
+});
+
+test('applicant can preview multiple areas before confirming one',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const base={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'},__area_preview:{value:'zayed',kind:'area_preview'}}};
+ const r=await planTurn({applicant:base,message:{body:'area_preview:oct'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(r.patch.answers.area,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'oct');
+ assert.match(r.reply,/الشفت 9 ساعات/);
+});
+
+test('final area is saved only after explicit confirmation',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'},__area_preview:{value:'zayed',display:'الشيخ زايد',kind:'area_preview'}}};
+ const r=await planTurn({applicant:a,message:{body:'confirm_area:zayed'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(r.patch.answers.area.value,'zayed');
+ assert.equal(r.patch.answers.__area_preview,undefined);
+ assert.equal(r.patch.awaiting_id,'bike');
+ assert.match(r.reply,/تم تثبيت منطقة التقديم: الشيخ زايد/);
+});
+
+test('forged confirmation without matching preview cannot choose an area',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'confirm_area:zayed'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(r.patch.answers,undefined);
+ assert.equal(r.patch.awaiting_id,'area');
+ assert.match(r.reply,/اختار المنطقة الأول/);
+});
+
+test('plain text fallback previews first and confirms when repeated',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const first=await planTurn({applicant:a,message:{body:'أكتوبر'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(first.patch.answers.area,undefined);
+ assert.equal(first.patch.answers.__area_preview.value,'oct');
+ const second=await planTurn({applicant:{...a,answers:first.patch.answers},message:{body:'أكتوبر'},questions,areas:liveAreas,settings,interpret});
+ assert.equal(second.patch.answers.area.value,'oct');
+ assert.equal(second.patch.awaiting_id,'bike');
+});

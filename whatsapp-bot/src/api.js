@@ -475,6 +475,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    }
    must(await db.from('masar_applicants').update(patch).eq('id',a.id));
    must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined,resumed_message_id:resumedMessageId}}));
+   if(b.bot_enabled===true||['lecture','working'].includes(b.stage))await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:b.bot_enabled===true?'bot_resumed':'stage_handled'});
   });
   if(resumedMessageId)worker.tick();
   res.json({ok:true,resumed_message_id:resumedMessageId});
@@ -500,6 +501,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
      if(source)await createLearningSuggestion(db,{applicantId:a.id,sourceMessage:source,staffMessageId:staffMessage.id,answer:body,staffId:req.user.id,force:runMode==='training'});
     }catch(e){if(!schemaMissing(e))throw e;}
    }
+   await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:'crm_reply'});
   });res.json({ok:true});
  });
  permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{

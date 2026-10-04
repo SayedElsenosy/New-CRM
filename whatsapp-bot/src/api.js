@@ -98,7 +98,19 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  });});
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/connect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.connect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/disconnect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.disconnect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
- permissionRoute('settings','put','/settings',async(req,res)=>{const b=req.body;if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');must(await db.from('masar_settings').update({ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion}).eq('id',true));res.json({ok:true});});
+ permissionRoute('settings','put','/settings',async(req,res)=>{
+  const b=req.body;
+  if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');
+  const patch={ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion};
+  if(b.followup_enabled!==undefined||b.followup_hours!==undefined){
+   const hours=Number(b.followup_hours);
+   if(typeof b.followup_enabled!=='boolean'||!Number.isInteger(hours)||hours<1||hours>72)throw bad('متابعة البيانات الناقصة لازم تكون من 1 إلى 72 ساعة');
+   patch.followup_enabled=b.followup_enabled;patch.followup_hours=hours;
+  }
+  try{must(await db.from('masar_settings').update(patch).eq('id',true));}
+  catch(e){if(['42703','PGRST204'].includes(e?.code))throw bad('فعّل المتابعة التلقائية أولاً بتشغيل ملف supabase/007_applicant_followups.sql في Supabase SQL Editor.',503);throw e;}
+  res.json({ok:true});
+ });
  const cleanKeywords=value=>Array.isArray(value)?[...new Set(value.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20).map(x=>x.slice(0,80)))]:[];
  const effectiveRunMode=s=>{
   const mode=s?.ai_run_mode||'live';

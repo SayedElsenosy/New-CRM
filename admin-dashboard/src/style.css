@@ -276,3 +276,5 @@ tbody tr:hover{background:#fbfdf5}
 .danger-zone strong{color:#a63d34}
 .danger-zone small{color:#775c59;line-height:1.7}
 @media(max-width:700px){.danger-zone{align-items:stretch;flex-direction:column}.danger-zone button{width:100%}}
+
+.settings-divider{height:1px;background:var(--border);margin:22px 0}

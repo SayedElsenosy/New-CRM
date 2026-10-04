@@ -1,5 +1,5 @@
 import {useEffect,useState,useCallback,useRef} from 'react';
-import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown,Trash2} from 'lucide-react';
+import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown,Trash2,Bell,BellRing} from 'lucide-react';
 import {api,send,supabase,configured,STAGES,KINDS,personName,date,dateParams} from './api';
 import {BRAND_IMAGE} from './brandAssets';
 const PERMISSION_OPTIONS=[
@@ -19,22 +19,47 @@ function InboxIcon(){return <Users size={30}/>;}
 function Progress({value}){return <div className="progress"><span style={{width:(value||0)+'%'}}/></div>;}
 function Modal({title,onClose,children,wide=false}){useEffect(()=>{const fn=e=>{if(e.key==='Escape')onClose();};document.addEventListener('keydown',fn);return()=>document.removeEventListener('keydown',fn);},[onClose]);return <div className="overlay" onClick={onClose}><section role="dialog" aria-modal="true" aria-label={title} className={'modal '+(wide?'wide':'')} onClick={e=>e.stopPropagation()}><header><h2>{title}</h2><button className="icon" onClick={onClose} aria-label="إغلاق"><X/></button></header>{children}</section></div>;}
 export default function App(){
- const [session,setSession]=useState(null),[ready,setReady]=useState(false),[tab,setTab]=useState('overview'),[menu,setMenu]=useState(false),[bootstrap,setBootstrap]=useState(null),[error,setError]=useState(''),[toast,setToast]=useState(''),[selected,setSelected]=useState(null),[version,setVersion]=useState(0);
+ const [session,setSession]=useState(null),[ready,setReady]=useState(false),[tab,setTab]=useState('overview'),[menu,setMenu]=useState(false),[bootstrap,setBootstrap]=useState(null),[error,setError]=useState(''),[toast,setToast]=useState(''),[selected,setSelected]=useState(null),[version,setVersion]=useState(0),[alerts,setAlerts]=useState({configured:true,items:[],unread:0,open_count:0}),[alertsOpen,setAlertsOpen]=useState(false),[notificationPermission,setNotificationPermission]=useState(()=>typeof Notification==='undefined'?'unsupported':Notification.permission);
+ const alertsSeen=useRef(new Set()),alertsInitialized=useRef(false);
  useEffect(()=>{if(!supabase){setReady(true);return;}supabase.auth.getSession().then(({data})=>{setSession(data.session);setReady(true);});const {data}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s));return()=>data.subscription.unsubscribe();},[]);
  const load=useCallback(async()=>{try{setBootstrap(await api('/bootstrap'));setError('');}catch(e){setError(e.message);}},[]);
  useEffect(()=>{if(session)load();else setBootstrap(null);},[session,load]);
+ const alertsAllowed=Boolean(bootstrap&&(bootstrap.role==='admin'||(bootstrap.permissions||[]).includes('applicants')));
+ const loadAlerts=useCallback(async()=>{
+  if(!session||!alertsAllowed)return;
+  try{
+   const next=await api('/alerts');
+   if(alertsInitialized.current&&next.configured&&typeof Notification!=='undefined'&&Notification.permission==='granted'){
+    for(const item of next.items||[]){
+     if(!item.read&&!alertsSeen.current.has(item.id)){
+      try{
+       const n=new Notification('متقدم يحتاج تدخل',{body:(item.phone?item.phone+' · ':'')+(item.body||'افتح المحادثة لمتابعة المتقدم'),tag:'speed-alert-'+item.id});
+       n.onclick=()=>{window.focus();send('/alerts/'+item.id+'/read').catch(()=>{});setSelected(item.applicant_id);setTab('applicants');setAlertsOpen(false);};
+      }catch{}
+     }
+    }
+   }
+   alertsSeen.current=new Set((next.items||[]).map(x=>x.id));
+   alertsInitialized.current=true;setAlerts(next);
+  }catch{}
+ },[session,alertsAllowed]);
+ useEffect(()=>{if(!session||!alertsAllowed){setAlerts({configured:true,items:[],unread:0,open_count:0});return;}loadAlerts();const t=setInterval(loadAlerts,10000);return()=>clearInterval(t);},[session,alertsAllowed,loadAlerts]);
  useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),4000);return()=>clearTimeout(t);}},[toast]);
  const refresh=async()=>{await load();setVersion(v=>v+1);};
  const action=async(fn,success='تم الحفظ بنجاح')=>{try{await fn();setToast(success);return true;}catch(e){setError(e.message);setToast('تعذّر التنفيذ: '+e.message);return false;}};
+ const openAlert=async item=>{try{if(!item.read)await send('/alerts/'+item.id+'/read');}catch{}setAlertsOpen(false);setTab('applicants');setSelected(item.applicant_id);setVersion(v=>v+1);loadAlerts();};
+ const markAlertsRead=async()=>{await action(async()=>{await send('/alerts/read-all');await loadAlerts();},'تم تعليم التنبيهات كمقروءة');};
+ const resolveAlert=async item=>{await action(async()=>{await send('/alerts/'+item.id+'/resolve');await loadAlerts();setVersion(v=>v+1);},'تم تسجيل أن الحالة اتعمل لها متابعة');};
+ const enableBrowserNotifications=async()=>{if(typeof Notification==='undefined'){setToast('إشعارات الجهاز غير مدعومة في المتصفح ده');return;}const p=await Notification.requestPermission();setNotificationPermission(p);if(p==='granted')setToast('تم تفعيل إشعارات الجهاز');};
  if(!configured)return <div className="login"><div className="login-card"><Brand/><h2>خطوة واحدة لتجهيز اللوحة</h2><p>أضف إعدادات الاتصال الثلاثة في Vercel ثم أعد النشر، كما هو موضح في دليل التشغيل.</p><code>VITE_SUPABASE_URL<br/>VITE_SUPABASE_ANON_KEY<br/>VITE_BOT_API_URL</code></div></div>;
  if(!ready)return <div className="loading">جارٍ فتح Speed Delivery…</div>;
  if(!session)return <Login/>;
  const role=bootstrap?.role||'recruiter',permissions=bootstrap?.permissions||[],can=permission=>role==='admin'||!permission||permissions.includes(permission),nav=NAV.filter(n=>n[3]==='admin'?role==='admin':can(n[3])),activeTab=nav.some(n=>n[0]===tab)?tab:'overview';
  const shared={data:bootstrap,refresh,action};
  return <div className="app"><aside className={menu?'open':''}><Brand/><p className="nav-label">مساحة العمل</p><nav>{nav.map(([key,label,Icon])=><button key={key} className={activeTab===key?'active':''} onClick={()=>{setTab(key);setMenu(false);}}><Icon size={20}/>{label}{activeTab===key&&<span className="nav-dot"/>}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">{(bootstrap?.profile?.name||'م')[0]}</div><div><strong>{bootstrap?.profile?.name||'إدارة التوظيف'}</strong><small>{session.user.email}</small></div><button className="icon" title="تسجيل الخروج" onClick={()=>supabase.auth.signOut()}><LogOut size={18}/></button></div></aside>
- <main><div className="topbar"><button className="icon mobile" onClick={()=>setMenu(!menu)} aria-label="القائمة"><Menu/></button><span>مساحة العمل <span className="slash">/</span> {nav.find(n=>n[0]===activeTab)?.[1]}</span><span className="secure"><ShieldCheck size={15}/> {role==='admin'?'حساب مسؤول النظام':'حساب مسؤول توظيف'}</span></div><div className="page"><Notice>{error}</Notice>{error&&<button className="text-button" onClick={()=>{setError('');refresh();}}>إعادة المحاولة</button>}{!bootstrap?<div className="loading">جارٍ تحميل البيانات…</div>:<>
+ <main><div className="topbar"><button className="icon mobile" onClick={()=>setMenu(!menu)} aria-label="القائمة"><Menu/></button><span>مساحة العمل <span className="slash">/</span> {nav.find(n=>n[0]===activeTab)?.[1]}</span><div className="topbar-actions">{can('applicants')&&<div className="alert-anchor"><button className={'icon alert-bell '+(alerts.open_count?'has-alerts':'')} onClick={()=>setAlertsOpen(v=>!v)} aria-label="تنبيهات التدخل البشري" title="تنبيهات التدخل البشري">{alerts.open_count?<BellRing size={20}/>:<Bell size={20}/>} {alerts.unread>0&&<span className="alert-count">{alerts.unread>99?'99+':alerts.unread}</span>}</button>{alertsOpen&&<AlertCenter data={alerts} permission={notificationPermission} onEnable={enableBrowserNotifications} onOpen={openAlert} onResolve={resolveAlert} onReadAll={markAlertsRead} onClose={()=>setAlertsOpen(false)}/>}</div>}<span className="secure"><ShieldCheck size={15}/> {role==='admin'?'حساب مسؤول النظام':'حساب مسؤول توظيف'}</span></div></div><div className="page"><Notice>{error}</Notice>{error&&<button className="text-button" onClick={()=>{setError('');refresh();}}>إعادة المحاولة</button>}{!bootstrap?<div className="loading">جارٍ تحميل البيانات…</div>:<>
  {activeTab==='overview'&&<Overview version={version} onTab={setTab} onSelect={setSelected} role={role} permissions={permissions}/>}
- {activeTab==='applicants'&&can('applicants')&&<Applicants version={version} onSelect={setSelected} accounts={bootstrap.whatsapp_accounts||[]}/>} 
+ {activeTab==='applicants'&&can('applicants')&&<Applicants version={version} onSelect={setSelected} accounts={bootstrap.whatsapp_accounts||[]} interventionCount={alerts.open_count}/>} 
  {activeTab==='questions'&&can('questions')&&<Questions {...shared}/>}
  {activeTab==='areas'&&can('areas')&&<Areas {...shared}/>}
  {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action} role={role}/>} 

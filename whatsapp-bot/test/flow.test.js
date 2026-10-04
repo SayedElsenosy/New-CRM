@@ -222,7 +222,7 @@ test('area button pagination changes page without listing names in message text'
 });
 
 
-test('unknown side question while previewing an area produces a handoff reply and preserves the area preview',async()=>{
+test('truly unknown side question while previewing an area produces a handoff reply and preserves the area preview',async()=>{
  const liveAreas=[
   {id:'zayed-market',name:'الشيخ زايد',active:true,details:'تفاصيل ماركت'},
   {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,details:'تفاصيل مطاعم'}
@@ -233,7 +233,7 @@ test('unknown side question while previewing an area produces a handoff reply an
  }};
  const r=await planTurn({
   applicant:a,
-  message:{body:'طيب ايه الفرق بين المطاعم والماركت'},
+  message:{body:'هل في سكن للموظفين؟'},
   questions,areas:liveAreas,
   settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.62,ai_fallback:'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق.'},
   interpret,knowledge:[]
@@ -241,7 +241,7 @@ test('unknown side question while previewing an area produces a handoff reply an
  assert.equal(r.handoff,true);
  assert.equal(r.patch.bot_enabled,false);
  assert.equal(r.patch.answers.__area_preview.value,'zayed-rest');
- assert.equal(r.patch.answers.__ai_handoff.question,'طيب ايه الفرق بين المطاعم والماركت');
+ assert.equal(r.patch.answers.__ai_handoff.question,'هل في سكن للموظفين؟');
  assert.match(r.reply,/هحوّل المحادثة للفريق/);
 });
 

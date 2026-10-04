@@ -31,7 +31,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  const app=express();app.set('trust proxy',1);app.use(helmet({
   contentSecurityPolicy:{
    directives:{
-    connectSrc:["'self'","https://*.supabase.co","wss://*.supabase.co"]
+    connectSrc:["'self'","https://*.supabase.co","wss://*.supabase.co"],
+    imgSrc:["'self'","data:","blob:","https://*.supabase.co"]
    }
   }
  }));
@@ -117,9 +118,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const visibleApplicants=req.officeId&&req.role!=='admin'?applicantRows.filter(x=>x.office_id===req.officeId):(allowed===null?applicantRows:applicantRows.filter(x=>visibleOfficeIds.has(x.office_id)));
    let interviews=[];
    try{interviews=must(await db.from('masar_interviews').select('office_id,status'));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
-   let access=[];
+   let access=[],staffOfficeRows=[];
    if(['admin','office_admin'].includes(req.role)){
     try{access=must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id'));}catch(e){if(!schemaMissing(e))throw e;}
+    try{staffOfficeRows=must(await db.from('masar_staff').select('user_id,office_id'));}catch(e){if(!schemaMissing(e)&&e.code!=='42703'&&e.code!=='PGRST204')throw e;}
    }
    const accountOffice=new Map(dbAccounts.map(x=>[x.id,x.office_id]));
    const publicAccounts=visibleAccounts.map(x=>{const live=snapshots.get(x.id)||{};return {id:x.id,name:x.name,phone:live.phone||x.phone||null,status:live.status||'disconnected',active:x.active,office_id:x.office_id||null};});
@@ -127,6 +129,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     const accounts=publicAccounts.filter(x=>x.office_id===o.id);
     const applicantSubset=visibleApplicants.filter(x=>x.office_id===o.id);
     const staffIds=new Set(access.filter(x=>accountOffice.get(x.whatsapp_account_id)===o.id).map(x=>x.user_id));
+    staffOfficeRows.filter(x=>x.office_id===o.id).forEach(x=>staffIds.add(x.user_id));
     return {...o,whatsapp_accounts:accounts,applicant_count:applicantSubset.length,hired_count:applicantSubset.filter(x=>recruitmentStageOf(x)==='hired').length,interview_count:interviews.filter(x=>x.office_id===o.id&&x.status==='scheduled').length,staff_count:['admin','office_admin'].includes(req.role)?staffIds.size:null};
    })};
   }catch(e){

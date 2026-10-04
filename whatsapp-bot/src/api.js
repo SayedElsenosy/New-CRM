@@ -110,14 +110,15 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     try{access=must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id'));}catch(e){if(!schemaMissing(e))throw e;}
    }
    const accountOffice=new Map(dbAccounts.map(x=>[x.id,x.office_id]));
-   return {configured:true,items:offices.map(o=>{
-    const accounts=visibleAccounts.filter(x=>x.office_id===o.id).map(x=>{const live=snapshots.get(x.id)||{};return {id:x.id,name:x.name,phone:live.phone||x.phone||null,status:live.status||'disconnected',active:x.active};});
+   const publicAccounts=visibleAccounts.map(x=>{const live=snapshots.get(x.id)||{};return {id:x.id,name:x.name,phone:live.phone||x.phone||null,status:live.status||'disconnected',active:x.active,office_id:x.office_id||null};});
+   return {configured:true,whatsapp_accounts:publicAccounts,items:offices.map(o=>{
+    const accounts=publicAccounts.filter(x=>x.office_id===o.id);
     const applicantSubset=visibleApplicants.filter(x=>x.office_id===o.id);
     const staffIds=new Set(access.filter(x=>accountOffice.get(x.whatsapp_account_id)===o.id).map(x=>x.user_id));
     return {...o,whatsapp_accounts:accounts,applicant_count:applicantSubset.length,hired_count:applicantSubset.filter(x=>recruitmentStageOf(x)==='hired').length,interview_count:interviews.filter(x=>x.office_id===o.id&&x.status==='scheduled').length,staff_count:req.role==='admin'?staffIds.size:null};
    })};
   }catch(e){
-   if(schemaMissing(e)||e.code==='PGRST204'||e.code==='42703')return {configured:false,items:[]};
+   if(schemaMissing(e)||e.code==='PGRST204'||e.code==='42703')return {configured:false,whatsapp_accounts:[],items:[]};
    throw e;
   }
  }
@@ -545,9 +546,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const name=String(req.body.name||'').trim(),phone=String(req.body.phone||'').trim()||null;
   if(name.length<2||name.length>120)throw bad('اكتب اسم المرشح');
   if(phone&&!/^\+[1-9][0-9]{7,14}$/.test(phone))throw bad('رقم الهاتف لازم يبدأ بكود الدولة، مثال +2010...');
-  if(phone){const existing=must(await db.from('masar_applicants').select('id').eq('phone',phone).maybeSingle());if(existing)throw bad('رقم الهاتف موجود بالفعل');}
   const officeAccounts=office.whatsapp_accounts||[];if(!officeAccounts.length)throw bad('اربط رقم واتساب بالمكتب قبل إضافة مرشح يدويًا');
   const primary=officeAccounts[0];
+  if(phone){const existing=must(await db.from('masar_applicants').select('id').eq('whatsapp_account_id',primary.id).eq('phone',phone).maybeSingle());if(existing)throw bad('رقم الهاتف موجود بالفعل في نفس المكتب');}
   const row={contact_id:'manual:'+crypto.randomUUID(),phone,display_name:name,whatsapp_account_id:primary.id,office_id:office.id,recruitment_stage:'new',bot_enabled:false,last_message_at:new Date().toISOString()};
   const applicant=must(await db.from('masar_applicants').insert(row).select().single());
   must(await db.from('masar_contacts').insert({whatsapp_account_id:primary.id,contact_id:row.contact_id,applicant_id:applicant.id}));
@@ -672,20 +673,18 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  });
  permissionRoute('reports','get','/dashboard',async(req,res)=>{
   const officeData=await officeState(req);
-  if(!officeData.configured)return res.json({configured:false,offices:[],selected_office:null,metrics:{total:0,interviews:0,offices:0,hired:0},recruitment_stages:Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,0])),growth:[],recent:[],upcoming_interviews:[]});
-  if(req.query.office_id)await ensureOfficeAccess(req,String(req.query.office_id));
+  if(req.query.office_id){if(!officeData.configured)throw bad('فعّل نظام المكاتب أولاً بتشغيل ملف supabase/011_multi_office_recruitment.sql في Supabase SQL Editor.',503);await ensureOfficeAccess(req,String(req.query.office_id));}
   const {rows}=await applicantList(req),officeMap=new Map(officeData.items.map(x=>[x.id,{id:x.id,name:x.name,code:x.code}]));
   const stageCounts=Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,rows.filter(a=>recruitmentStageOf(a)===x).length]));
-  let interviews=must(await db.from('masar_interviews').select('*').order('scheduled_at',{ascending:true}).limit(1000));
-  const visibleOfficeIds=new Set(officeData.items.map(x=>x.id));interviews=interviews.filter(x=>visibleOfficeIds.has(x.office_id));
-  if(req.query.office_id)interviews=interviews.filter(x=>x.office_id===String(req.query.office_id));
+  let interviews=[];
+  if(officeData.configured){interviews=must(await db.from('masar_interviews').select('*').order('scheduled_at',{ascending:true}).limit(1000));const visibleOfficeIds=new Set(officeData.items.map(x=>x.id));interviews=interviews.filter(x=>visibleOfficeIds.has(x.office_id));if(req.query.office_id)interviews=interviews.filter(x=>x.office_id===String(req.query.office_id));}
   const months=[];const now=new Date();for(let i=5;i>=0;i--){const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-i,1));months.push({key:d.toISOString().slice(0,7),label:d.toLocaleDateString('ar-EG',{month:'short',timeZone:'Africa/Cairo'}),count:0});}
   const monthMap=new Map(months.map(x=>[x.key,x]));for(const a of rows){const key=monthKey(a.created_at);if(monthMap.has(key))monthMap.get(key).count++;}
   const applicantById=new Map(rows.map(x=>[x.id,x]));
   const upcoming=interviews.filter(x=>x.status==='scheduled'&&Date.parse(x.scheduled_at)>=Date.now()-86400000).slice(0,5).map(x=>{const a=applicantById.get(x.applicant_id);return {...x,applicant_name:a?Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name||'مرشح':'مرشح',applicant_phone:a?.phone||null,office:officeMap.get(x.office_id)||null};});
   res.json({
-   configured:true,offices:officeData.items,selected_office:req.query.office_id?officeMap.get(String(req.query.office_id))||null:null,
-   metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:req.query.office_id?1:officeData.items.filter(x=>x.active).length,hired:stageCounts.hired},
+   configured:officeData.configured,offices:officeData.items,selected_office:req.query.office_id?officeMap.get(String(req.query.office_id))||null:null,
+   metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:officeData.configured?(req.query.office_id?1:officeData.items.filter(x=>x.active).length):0,hired:stageCounts.hired},
    recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,6).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming
   });
  });

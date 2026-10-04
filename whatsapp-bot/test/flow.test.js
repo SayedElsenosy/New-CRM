@@ -26,7 +26,7 @@ test('optional question skip does not block completion',async()=>{const qs=[{...
 test('required question cannot be skipped',async()=>{const r=await run({...applicant,awaiting_id:'name'},'تخطي');assert.equal(r.patch.answers,undefined);});
 test('CSV protects against spreadsheet formulas',()=>{assert.equal(csvCell('=1+1'),'"\'=1+1"');assert.equal(csvCell('سيد "محمد"'),'"سيد ""محمد"""');});
 test('privacy helper still redacts long phone/ID strings',()=>assert.ok(!redactForAI('رقمي ٠١٠١٢٣٤٥٦٧٨').includes('01012345678')));
-test('local interpreter understands indirect Egyptian replies without external AI',async()=>{assert.equal((await interpret('لسه مجبتش موتوسيكل',questions[2],areas)).answer,'no');assert.equal((await interpret('اه معايا الحمد لله',questions[2],areas)).answer,'yes');assert.equal((await interpret('انا عندي ٢٨ سنة',{kind:'number'},areas)).answer,'28');});
+test('local interpreter understands indirect Egyptian replies without external AI',async()=>{assert.equal((await interpret('لسه مجبتش موتوسيكل',questions[2],areas)).answer,'no');assert.equal((await interpret('اه معايا الحمد لله',questions[2],areas)).answer,'yes');assert.equal((await interpret('اه بس مش معايا رخصة',questions[2],areas)).answer,'yes');assert.equal((await interpret('انا عندي ٢٨ سنة',{kind:'number'},areas)).answer,'28');});
 test('local interpreter resolves active areas and rejects unknown text',async()=>{assert.equal((await interpret('تفاصيل الشغل في أكتوبر؟',questions[0],areas)).area_id,'oct');assert.equal((await interpret('عايز الشيخ زايد',questions[1],areas)).intent,'clarify');assert.equal((await interpret('كلام مش واضح',questions[2],areas)).intent,'clarify');});
 test('negative area wording is treated as rejection, never a selection',async()=>{
  const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
@@ -103,6 +103,29 @@ test('knowledge matcher understands Egyptian wording variants',()=>{
  const rows=[{id:'k1',question:'ميعاد بداية التأمين الطبي امتى؟',answer:'من أول يوم',keywords:['تأمين طبي'],active:true}];
  const match=findKnowledgeAnswer('التأمين الطبي بيبدأ امتى؟',rows,.5);
  assert.equal(match.id,'k1');assert.ok(match.confidence>=.5);
+});
+
+test('compound answer is saved once, learned side info is answered, and the same application question is not repeated',async()=>{
+ const kb=[{id:'k-license',question:'مش معايا رخصة',answer:'تقصد رخصة الموتوسيكل ولا الرخصة الشخصية؟',keywords:['رخصة'],active:true}];
+ const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد',kind:'name'},area:{value:'oct',kind:'area'}}};
+ const r=await planTurn({applicant:a,message:{body:'اه بس مش معايا رخصة'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6},interpret,knowledge:kb});
+ assert.equal(r.patch.answers.bike.value,true);
+ assert.equal(r.patch.awaiting_id,null);
+ assert.equal(r.knowledge_id,'k-license');
+ assert.match(r.reply,/رخصة الموتوسيكل/);
+ assert.doesNotMatch(r.reply,/معاك موتوسيكل/);
+ assert.match(r.reply,/تم الاستلام/);
+});
+
+test('learned entry for the same structured question does not create a second answer',async()=>{
+ const kb=[{id:'k-bike',question:'عندك مكنة؟',answer:'الموتوسيكل مطلوب للتقديم.',keywords:['موتوسيكل'],active:true}];
+ const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد',kind:'name'},area:{value:'oct',kind:'area'}}};
+ const r=await planTurn({applicant:a,message:{body:'اه معايا موتوسيكل'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.35},interpret,knowledge:kb});
+ assert.equal(r.patch.answers.bike.value,true);
+ assert.equal(r.patch.awaiting_id,null);
+ assert.equal(r.knowledge_id,undefined);
+ assert.doesNotMatch(r.reply,/الموتوسيكل مطلوب/);
+ assert.match(r.reply,/تم الاستلام/);
 });
 
 test('approved knowledge answers side questions then resumes the pending application question',async()=>{

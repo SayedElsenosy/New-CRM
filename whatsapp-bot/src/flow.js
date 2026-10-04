@@ -1,5 +1,5 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
-import {findKnowledgeAnswer,looksLikeQuestion} from './knowledge.js';
+import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -7,6 +7,23 @@ function areaPreviewReply(area,areas){
  return areaDetails(area)+`\n\nلو ${area.name} هي المنطقة اللي هتنزل فيها اضغط «✅ تأكيد ${area.name}».`+choices;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
+function directAnswerHasExtra(text,current){
+ if(current?.kind!=='yes_no')return false;
+ const parts=norm(text).split(/\s+/).filter(Boolean);
+ if(!parts.length||!['نعم','ايوه','ايوا','اه','لا','لاء','yes','no','yep','yeah'].includes(parts[0]))return false;
+ const rest=parts.slice(1).join(' ').replace(/^(?:بس|لكن|لاكن|و|ولا)\s+/,'').trim();
+ return rest.length>=3;
+}
+async function parseStructuredPendingAnswer({current,message,areas,settings,interpret}){
+ if(!current||!['yes_no','number','name'].includes(current.kind))return null;
+ let parsed=validateAnswer(current,message.body,areas,message.media_path?{path:message.media_path}:null);
+ if(parsed.ok)return parsed;
+ if(!settings.ai_enabled)return null;
+ const ai=await interpret(message.body,current,areas);
+ if(ai?.intent!=='answer'||String(ai.answer).includes('محجوب'))return null;
+ parsed=validateAnswer(current,ai.answer,areas,null);
+ return parsed.ok?parsed:null;
+}
 function areaAction(body){
  const s=String(body||'');
  if(s.startsWith('area_preview:'))return {type:'preview',id:s.slice('area_preview:'.length)};
@@ -171,6 +188,33 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const info=area?areaDetails(area):'تقصد أنهي منطقة؟ اختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها.';
   if(!area)answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString()};
   return {patch:current?(area?{awaiting_id:current.id}:{answers,awaiting_id:current.id}):(area?{}:{answers}),reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
+ }
+
+ if(current&&a.awaiting_id===current.id&&norm(m.body)!=='تخطي'){
+  const parsed=await parseStructuredPendingAnswer({current,message:m,areas,settings,interpret});
+  if(parsed){
+   answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+   const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
+   const comp=completion(questions,answers,areas);
+   const stage=comp.complete?'complete':realAnswerCount(answers)?'incomplete':'new';
+   let match=null;
+   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true){
+    const threshold=Number(settings.ai_confidence_threshold||0.62);
+    const allowStatement=directAnswerHasExtra(m.body,current);
+    if(looksLikeQuestion(m.body)||allowStatement){
+     const candidate=findKnowledgeAnswer(m.body,knowledge,threshold,{allowStatement});
+     if(candidate&&!sameKnowledgeTopic(current.label,candidate.question))match=candidate;
+    }
+   }
+   let reply=next?questionPrompt(next,areas):settings.completion;
+   if(match){
+    const continuation=next?'\n\nنكمل التقديم: '+questionPrompt(next,areas):'\n\n'+settings.completion;
+    reply=String(match.answer||'').trim()+continuation;
+   }
+   const result={patch:{answers,stage,awaiting_id:next?.id||null},reply};
+   if(match){result.knowledge_id=match.id;result.knowledge_confidence=match.confidence;}
+   return result;
+  }
  }
 
  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){

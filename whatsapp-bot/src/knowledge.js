@@ -75,8 +75,17 @@ function scoreEntry(text,row){
  else if(keywordHits===1)score+=.06;
  return Math.min(1,score);
 }
-export function findKnowledgeAnswer(text,rows,threshold=.62){
- if(!looksLikeQuestion(text))return null;
+const TOPIC_GENERIC=new Set(['معاك','معايا','عندك','عندي','عنده','عندها','موجود','موجوده','متاح','مطلوب','لازم','عايز','عاوز','اه','ايوه','ايوا','نعم','لا','لاء']);
+function topicTokens(value){return tokens(value).filter(t=>!TOPIC_GENERIC.has(t));}
+export function sameKnowledgeTopic(left,right){
+ const a=new Set(topicTokens(left)),b=new Set(topicTokens(right));
+ if(!a.size||!b.size)return false;
+ const common=overlap(a,b);
+ if(a.size===1||b.size===1)return a.size===b.size&&common===1;
+ return common/Math.max(a.size,b.size)>=.75;
+}
+export function findKnowledgeAnswer(text,rows,threshold=.62,{allowStatement=false}={}){
+ if(!allowStatement&&!looksLikeQuestion(text))return null;
  const active=(rows||[]).filter(r=>r.active!==false);
  let best=null;
  for(const row of active){

@@ -119,7 +119,7 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  await db.query("insert into masar_staff_whatsapp_access(user_id,whatsapp_account_id) values($1,$2) on conflict do nothing",[reader.id,second.id]);
  const {rows:[areaBefore]}=await db.query("insert into masar_areas(name,details,position) values('Test Area','Office scoped area',1) returning id");
  const {rows:[areaQuestionBefore]}=await db.query("insert into masar_questions(label,field_key,kind,position) values('Area?','work_area','area',2) returning id");
- await db.query("update masar_applicants set awaiting_id=$2,answers=jsonb_build_object($2::text,jsonb_build_object('value',$3::text,'display','Test Area','kind','area')) where id=$1",[samePersonOtherNumber.id,areaQuestionBefore.id,areaBefore.id]);
+ await db.query("update masar_applicants set awaiting_id=$2::uuid,answers=jsonb_build_object(($2::uuid)::text,jsonb_build_object('value',($3::uuid)::text,'display','Test Area','kind','area')) where id=$1::uuid",[samePersonOtherNumber.id,areaQuestionBefore.id,areaBefore.id]);
 
  const officeAdminSql=(await fs.readFile(new URL('../../supabase/012_office_admin_scoped_config.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
  await db.exec(officeAdminSql);await db.exec(officeAdminSql);

@@ -54,5 +54,13 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  await db.query("update masar_settings set ai_run_mode='training',ai_training_started_at=now(),ai_training_until=now()+interval '3 days' where id=true");
  const {rows:[training]}=await db.query("select ai_run_mode,extract(epoch from (ai_training_until-ai_training_started_at))/3600 as hours from masar_settings where id=true");
  assert.equal(training.ai_run_mode,'training');assert.equal(Number(training.hours),72);
+
+ // Add automatic incomplete-applicant follow-ups. Migration is idempotent and defaults to 8 hours.
+ const followupSql=await fs.readFile(new URL('../../supabase/007_applicant_followups.sql',import.meta.url),'utf8');
+ await db.exec(followupSql);await db.exec(followupSql);
+ const {rows:[followup]}=await db.query("select followup_enabled,followup_hours from masar_settings where id=true");
+ assert.equal(followup.followup_enabled,true);assert.equal(followup.followup_hours,8);
+ const {rows:[followApplicant]}=await db.query("select followup_count,followup_last_sent_at from masar_applicants where id=$1",[samePersonOtherNumber.id]);
+ assert.equal(followApplicant.followup_count,0);assert.equal(followApplicant.followup_last_sent_at,null);
  }finally{await db.close();}
 });

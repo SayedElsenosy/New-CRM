@@ -1,26 +1,27 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {
- ActivityIndicator,Alert,FlatList,KeyboardAvoidingView,Linking,Platform,Pressable,
+ ActivityIndicator,Alert,FlatList,Image,KeyboardAvoidingView,Linking,Platform,Pressable,
  RefreshControl,SafeAreaView,ScrollView,StatusBar,StyleSheet,Text,TextInput,View
 } from 'react-native';
 import {api,can,configured,fmtDate,personName,send,STAGES,supabase} from './src/api';
 import {listenForNotificationOpen,registerForPush,unregisterPush} from './src/notifications';
+import {BRAND_IMAGE} from './src/brandAssets';
 
 const COLORS={
- bg:'#f4f7fb',card:'#ffffff',text:'#172033',muted:'#697386',primary:'#155eef',
- primarySoft:'#eaf1ff',danger:'#c4320a',dangerSoft:'#fff0eb',success:'#067647',
- successSoft:'#ecfdf3',warning:'#b54708',warningSoft:'#fff7ed',border:'#e4e7ec',
- dark:'#101828'
+ bg:'#020a17',card:'#07172c',card2:'#0a1d36',text:'#f5fbff',muted:'#8ca4bf',
+ primary:'#16dcff',primary2:'#168bff',primarySoft:'#082b4b',danger:'#ff5d73',
+ dangerSoft:'#34131c',success:'#25e89a',successSoft:'#073629',warning:'#ffc857',
+ warningSoft:'#30240c',border:'#16466f',dark:'#031225'
 };
 const stageTone={
- new:[COLORS.primarySoft,COLORS.primary],
+ new:['#082b4b','#6cc7ff'],
  incomplete:[COLORS.warningSoft,COLORS.warning],
- complete:[COLORS.successSoft,COLORS.success],
- lecture:['#f4f3ff','#6938ef'],
- working:['#ecfdf3','#027a48']
+ complete:['#07333b','#66efff'],
+ lecture:['#211a43','#baa7ff'],
+ working:[COLORS.successSoft,COLORS.success]
 };
 
-function Loading({label='جاري التحميل...'}){return <View style={styles.center}><ActivityIndicator size="large"/><Text style={styles.muted}>{label}</Text></View>;}
+function Loading({label='جاري التحميل...'}){return <View style={styles.center}><ActivityIndicator size="large" color={COLORS.primary}/><Text style={styles.muted}>{label}</Text></View>;}
 function ErrorBox({message}){if(!message)return null;return <View style={styles.errorBox}><Text style={styles.errorText}>{message}</Text></View>;}
 function Empty({title='لا توجد بيانات',subtitle=''}){return <View style={styles.empty}><Text style={styles.emptyTitle}>{title}</Text>{subtitle?<Text style={styles.muted}>{subtitle}</Text>:null}</View>;}
 function Badge({children,tone='primary'}){
@@ -49,16 +50,24 @@ function SectionTitle({title,action}){return <View style={styles.sectionHeader}>
 function Header({title,subtitle,onBack,right}){
  return <View style={styles.header}>
   <View style={styles.headerSide}>{onBack?<Pressable onPress={onBack} hitSlop={10}><Text style={styles.back}>رجوع ←</Text></Pressable>:null}</View>
-  <View style={styles.headerTitleWrap}><Text style={styles.headerTitle}>{title}</Text>{subtitle?<Text style={styles.headerSub}>{subtitle}</Text>:null}</View>
+  <View style={styles.headerTitleWrap}>
+   <View style={styles.headerBrand}><Image source={{uri:BRAND_IMAGE}} style={styles.headerLogo}/><View><Text style={styles.headerTitle}>{title==='Speed CRM'?'SET CRM':title}</Text>{subtitle?<Text style={styles.headerSub}>{subtitle}</Text>:null}</View></View>
+  </View>
   <View style={[styles.headerSide,{alignItems:'flex-end'}]}>{right||null}</View>
  </View>;
 }
 
+function BrandSplash({label='SET Recruitment CRM'}){
+ return <SafeAreaView style={styles.safe}><StatusBar barStyle="light-content"/><View style={styles.splashWrap}>
+  <View style={styles.splashGlow}/><Image source={{uri:BRAND_IMAGE}} style={styles.splashLogo}/>
+  <Text style={styles.splashTitle}>Sayed Elsenosy Tech</Text><Text style={styles.splashSub}>{label}</Text>
+ </View></SafeAreaView>;
+}
 function ConfigMissing(){
- return <SafeAreaView style={styles.safe}><View style={styles.centerPad}>
-  <Text style={styles.logo}>Speed CRM</Text>
+ return <SafeAreaView style={styles.safe}><StatusBar barStyle="light-content"/><View style={styles.centerPad}>
+  <Image source={{uri:BRAND_IMAGE}} style={styles.configLogo}/>
   <Text style={styles.title}>إعدادات التطبيق غير مكتملة</Text>
-  <Text style={styles.paragraph}>انسخ mobile-app/.env.example إلى .env وضع رابط Supabase وAnon Key ورابط الـBackend.</Text>
+  <Text style={styles.paragraph}>راجع رابط Supabase والمفتاح العام ورابط الـBackend في إعدادات EAS.</Text>
  </View></SafeAreaView>;
 }
 
@@ -71,20 +80,25 @@ function Login(){
   if(e)setError(e.message==='Invalid login credentials'?'بيانات الدخول غير صحيحة':e.message);
   setBusy(false);
  }
- return <SafeAreaView style={styles.safe}><KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={styles.loginWrap}>
-  <View style={styles.loginHero}>
-   <Text style={styles.logo}>Speed CRM</Text>
-   <Text style={styles.loginTitle}>إدارة التوظيف من الموبايل</Text>
-   <Text style={styles.loginSub}>نفس حساب الويب ونفس بيانات المتقدمين والمحادثات.</Text>
-  </View>
-  <Card style={styles.loginCard}>
-   <Text style={styles.label}>البريد الإلكتروني</Text>
-   <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="name@company.com"/>
-   <Text style={styles.label}>كلمة المرور</Text>
-   <TextInput secureTextEntry value={password} onChangeText={setPassword} style={styles.input} placeholder="••••••••" onSubmitEditing={submit}/>
-   <ErrorBox message={error}/>
-   <Button title={busy?'جاري الدخول...':'تسجيل الدخول'} onPress={submit} disabled={busy}/>
-  </Card>
+ return <SafeAreaView style={styles.safe}><StatusBar barStyle="light-content"/><KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={styles.loginWrap}>
+  <View style={styles.loginBackdrop}><View style={styles.loginGlowOne}/><View style={styles.loginGlowTwo}/></View>
+  <ScrollView contentContainerStyle={styles.loginScroll} keyboardShouldPersistTaps="handled">
+   <View style={styles.loginHero}>
+    <Image source={{uri:BRAND_IMAGE}} style={styles.loginLogo}/>
+    <Text style={styles.loginKicker}>SET RECRUITMENT CRM</Text>
+    <Text style={styles.loginTitle}>مرحبًا بعودتك</Text>
+    <Text style={styles.loginSub}>إدارة التوظيف والمحادثات والتنبيهات من مكان واحد.</Text>
+   </View>
+   <Card style={styles.loginCard}>
+    <Text style={styles.label}>البريد الإلكتروني</Text>
+    <TextInput autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} style={styles.input} placeholder="name@company.com" placeholderTextColor="#587591"/>
+    <Text style={styles.label}>كلمة المرور</Text>
+    <TextInput secureTextEntry value={password} onChangeText={setPassword} style={styles.input} placeholder="••••••••" placeholderTextColor="#587591" onSubmitEditing={submit}/>
+    <ErrorBox message={error}/>
+    <Button title={busy?'جاري الدخول...':'تسجيل الدخول  ←'} onPress={submit} disabled={busy}/>
+   </Card>
+   <Text style={styles.loginFoot}>نفس الحساب ونفس البيانات على الويب والموبايل</Text>
+  </ScrollView>
  </KeyboardAvoidingView></SafeAreaView>;
 }
 
@@ -105,9 +119,11 @@ function HomeScreen({bootstrap,onOpenApplicant,refreshTick}){
  return <ScrollView style={styles.screen} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={false} onRefresh={load}/>}>
   <ErrorBox message={error}/>
   <View style={styles.heroCard}>
+   <View style={styles.heroBrandRow}><Image source={{uri:BRAND_IMAGE}} style={styles.heroLogo}/><View style={styles.livePill}><Text style={styles.liveDot}>●</Text><Text style={styles.liveText}>LIVE</Text></View></View>
    <Text style={styles.heroKicker}>أهلاً {bootstrap?.profile?.name||''}</Text>
    <Text style={styles.heroTitle}>كل اللي محتاج متابعتك في مكان واحد</Text>
-   <Text style={styles.heroSub}>التطبيق والويب شغالين على نفس البيانات لحظياً.</Text>
+   <Text style={styles.heroSub}>بيانات الويب والموبايل متزامنة لحظياً.</Text>
+   <View style={styles.heroLine}/>
   </View>
   <View style={styles.statsGrid}>
    <Stat label="إجمالي المتقدمين" value={total}/>
@@ -294,9 +310,9 @@ function ProfileScreen({bootstrap,onLogout,pushState}){
 }
 
 function TabBar({tab,setTab,unread}){
- const tabs=[['home','الرئيسية'],['alerts','التنبيهات'],['applicants','المتقدمين'],['profile','حسابي']];
- return <View style={styles.tabBar}>{tabs.map(([key,label])=><Pressable key={key} onPress={()=>setTab(key)} style={styles.tab}>
-  <View style={styles.tabLabelWrap}><Text style={[styles.tabText,tab===key&&styles.tabTextActive]}>{label}</Text>{key==='alerts'&&unread>0?<View style={styles.tabDot}><Text style={styles.tabDotText}>{unread>99?'99+':unread}</Text></View>:null}</View>
+ const tabs=[['home','⌂','الرئيسية'],['alerts','◉','التنبيهات'],['applicants','▦','المتقدمين'],['profile','●','حسابي']];
+ return <View style={styles.tabBar}>{tabs.map(([key,icon,label])=><Pressable key={key} onPress={()=>setTab(key)} style={styles.tab}>
+  <View style={styles.tabLabelWrap}><Text style={[styles.tabIcon,tab===key&&styles.tabIconActive]}>{icon}</Text><Text style={[styles.tabText,tab===key&&styles.tabTextActive]}>{label}</Text>{key==='alerts'&&unread>0?<View style={styles.tabDot}><Text style={styles.tabDotText}>{unread>99?'99+':unread}</Text></View>:null}</View>
  </Pressable>)}</View>;
 }
 
@@ -325,8 +341,8 @@ function MainApp({session}){
  if(tab==='applicants')screen=<ApplicantsScreen onOpenApplicant={setSelectedId} refreshTick={tick}/>;
  if(tab==='profile')screen=<ProfileScreen bootstrap={bootstrap} onLogout={logout} pushState={pushState}/>;
  return <SafeAreaView style={styles.safe}>
-  <StatusBar barStyle="dark-content"/>
-  <Header title="Speed CRM" subtitle={bootstrap.profile?.name||''}/>
+  <StatusBar barStyle="light-content"/>
+  <Header title="SET CRM" subtitle={bootstrap.profile?.name||''}/>
   <View style={{flex:1}}>{screen}</View>
   <TabBar tab={tab} setTab={setTab} unread={unread}/>
  </SafeAreaView>;
@@ -341,7 +357,7 @@ export default function App(){
   return()=>listener.subscription.unsubscribe();
  },[]);
  if(!configured)return <ConfigMissing/>;
- if(session===undefined)return <SafeAreaView style={styles.safe}><Loading/></SafeAreaView>;
+ if(session===undefined)return <BrandSplash label="جاري تجهيز مساحة العمل..."/>;
  return session?<MainApp session={session}/>:<Login/>;
 }
 
@@ -441,5 +457,108 @@ const styles=StyleSheet.create({
  tabText:{fontSize:12,color:COLORS.muted,fontWeight:'700',writingDirection:'rtl'},
  tabTextActive:{color:COLORS.primary,fontWeight:'900'},
  tabDot:{position:'absolute',right:-18,top:-10,minWidth:20,height:20,borderRadius:10,backgroundColor:COLORS.danger,alignItems:'center',justifyContent:'center',paddingHorizontal:4},
- tabDotText:{color:'#fff',fontSize:9,fontWeight:'900'}
+ tabDotText:{color:'#fff',fontSize:9,fontWeight:'900'},
+ // SET neon overrides
+ splashWrap:{flex:1,alignItems:'center',justifyContent:'center',backgroundColor:COLORS.bg,overflow:'hidden'},
+ splashGlow:{position:'absolute',width:310,height:310,borderRadius:155,backgroundColor:'#0b6dff24'},
+ splashLogo:{width:210,height:160,resizeMode:'contain'},
+ splashTitle:{color:COLORS.text,fontSize:24,fontWeight:'900',marginTop:4},
+ splashSub:{color:COLORS.primary,fontSize:12,fontWeight:'700',letterSpacing:1,marginTop:6},
+ configLogo:{width:180,height:125,resizeMode:'contain',alignSelf:'center',marginBottom:20},
+ safe:{flex:1,backgroundColor:COLORS.bg,paddingTop:Platform.OS==='android'?StatusBar.currentHeight||0:0},
+ screen:{flex:1,backgroundColor:COLORS.bg},
+ content:{padding:14,paddingBottom:28,gap:12},
+ detailContent:{padding:14,paddingBottom:24,gap:12},
+ center:{flex:1,alignItems:'center',justifyContent:'center',gap:12,padding:24,backgroundColor:COLORS.bg},
+ centerPad:{flex:1,justifyContent:'center',padding:24,gap:14,backgroundColor:COLORS.bg},
+ muted:{color:COLORS.muted,textAlign:'right',writingDirection:'rtl'},
+ paragraph:{color:COLORS.muted,fontSize:14,lineHeight:22,textAlign:'right',writingDirection:'rtl',marginVertical:8},
+ title:{fontSize:22,fontWeight:'800',color:COLORS.text,textAlign:'right',writingDirection:'rtl'},
+ header:{minHeight:70,backgroundColor:'#031020',borderBottomWidth:1,borderBottomColor:COLORS.border,flexDirection:'row-reverse',alignItems:'center',paddingHorizontal:12,paddingVertical:8},
+ headerSide:{width:78},
+ headerTitleWrap:{flex:1,alignItems:'center'},
+ headerBrand:{flexDirection:'row-reverse',alignItems:'center',gap:8},
+ headerLogo:{width:48,height:38,resizeMode:'contain'},
+ headerTitle:{fontSize:15,fontWeight:'900',color:COLORS.text,textAlign:'right',writingDirection:'rtl'},
+ headerSub:{fontSize:10,color:COLORS.primary,marginTop:1,textAlign:'right'},
+ back:{color:COLORS.primary,fontWeight:'800',textAlign:'right'},
+ loginWrap:{flex:1,backgroundColor:COLORS.bg},
+ loginBackdrop:{...StyleSheet.absoluteFillObject,overflow:'hidden'},
+ loginGlowOne:{position:'absolute',width:320,height:320,borderRadius:160,backgroundColor:'#074ba055',top:-120,right:-120},
+ loginGlowTwo:{position:'absolute',width:260,height:260,borderRadius:130,backgroundColor:'#00dcff20',bottom:-80,left:-90},
+ loginScroll:{flexGrow:1,justifyContent:'center',padding:20,paddingVertical:34},
+ loginHero:{alignItems:'center',gap:7,marginBottom:18},
+ loginLogo:{width:210,height:145,resizeMode:'contain'},
+ loginKicker:{color:COLORS.primary,fontSize:10,fontWeight:'800',letterSpacing:1.8},
+ loginTitle:{fontSize:28,fontWeight:'900',color:COLORS.text,textAlign:'center',writingDirection:'rtl'},
+ loginSub:{fontSize:13,color:COLORS.muted,textAlign:'center',writingDirection:'rtl',lineHeight:21,maxWidth:320},
+ loginCard:{gap:8,backgroundColor:'#06162acc',borderColor:'#15507d',shadowColor:'#00bfff',shadowOpacity:.18,shadowRadius:20,elevation:7},
+ loginFoot:{color:'#587591',fontSize:10,textAlign:'center',marginTop:16,writingDirection:'rtl'},
+ card:{backgroundColor:COLORS.card,borderRadius:16,padding:15,borderWidth:1,borderColor:COLORS.border},
+ label:{fontSize:12,fontWeight:'800',color:'#c9dced',textAlign:'right',writingDirection:'rtl',marginTop:5},
+ input:{minHeight:50,borderWidth:1,borderColor:'#17466f',borderRadius:12,backgroundColor:'#041326',paddingHorizontal:13,fontSize:15,color:COLORS.text,marginBottom:7,textAlign:'right'},
+ errorBox:{backgroundColor:COLORS.dangerSoft,borderRadius:12,padding:12,borderWidth:1,borderColor:'#743343'},
+ errorText:{color:'#ff8fa0',textAlign:'right',writingDirection:'rtl',lineHeight:20},
+ button:{minHeight:48,borderRadius:12,backgroundColor:COLORS.primary2,alignItems:'center',justifyContent:'center',paddingHorizontal:15,paddingVertical:10,borderWidth:1,borderColor:COLORS.primary,shadowColor:COLORS.primary,shadowOpacity:.25,shadowRadius:12,elevation:4},
+ buttonSecondary:{backgroundColor:'#082744',borderWidth:1,borderColor:'#17608f'},
+ buttonDanger:{backgroundColor:'#8c2638',borderColor:'#d84a60'},
+ buttonGhost:{backgroundColor:'#061326',borderWidth:1,borderColor:COLORS.border},
+ buttonText:{color:'#001526',fontWeight:'900',fontSize:14,textAlign:'center',writingDirection:'rtl'},
+ buttonTextSecondary:{color:'#92ddff'},
+ heroCard:{backgroundColor:'#031a36',borderRadius:20,padding:18,marginBottom:4,borderWidth:1,borderColor:'#1266a2',overflow:'hidden',shadowColor:'#008cff',shadowOpacity:.16,shadowRadius:18,elevation:5},
+ heroBrandRow:{flexDirection:'row-reverse',justifyContent:'space-between',alignItems:'center',marginBottom:8},
+ heroLogo:{width:92,height:58,resizeMode:'contain'},
+ livePill:{flexDirection:'row',alignItems:'center',gap:5,backgroundColor:'#062a37',borderWidth:1,borderColor:'#14604f',paddingHorizontal:9,paddingVertical:5,borderRadius:999},
+ liveDot:{color:COLORS.success,fontSize:9},
+ liveText:{color:COLORS.success,fontSize:9,fontWeight:'900',letterSpacing:1},
+ heroKicker:{color:'#6ddfff',fontWeight:'800',textAlign:'right',writingDirection:'rtl'},
+ heroTitle:{color:'#fff',fontSize:23,fontWeight:'900',textAlign:'right',writingDirection:'rtl',marginTop:5,lineHeight:32},
+ heroSub:{color:'#91aac5',textAlign:'right',writingDirection:'rtl',marginTop:6,lineHeight:20},
+ heroLine:{height:2,width:82,backgroundColor:COLORS.primary,marginTop:13,borderRadius:2,alignSelf:'flex-end'},
+ statsGrid:{flexDirection:'row-reverse',flexWrap:'wrap',gap:10},
+ stat:{width:'48%',minHeight:112,justifyContent:'center',backgroundColor:'#07182d',borderColor:'#174b75'},
+ statValue:{fontSize:29,fontWeight:'900',textAlign:'right'},
+ statLabel:{fontSize:12,color:COLORS.muted,textAlign:'right',writingDirection:'rtl',marginTop:4},
+ sectionTitle:{fontSize:17,fontWeight:'900',color:COLORS.text,textAlign:'right',writingDirection:'rtl'},
+ cardTitle:{fontSize:16,fontWeight:'800',color:COLORS.text,textAlign:'right',writingDirection:'rtl'},
+ rowCard:{marginBottom:10,backgroundColor:'#07172c',borderColor:'#16466f'},
+ unread:{borderColor:'#8a6320',borderWidth:1.5,backgroundColor:'#221b0b'},
+ rowTitle:{fontSize:17,fontWeight:'900',color:COLORS.text,textAlign:'right',writingDirection:'rtl',marginTop:10},
+ rowBody:{fontSize:14,color:'#c9d9e8',textAlign:'right',writingDirection:'rtl',lineHeight:22,marginTop:8},
+ meta:{fontSize:12,color:COLORS.muted,textAlign:'right',writingDirection:'rtl',marginTop:4},
+ time:{fontSize:10,color:'#6986a3'},
+ emptyTitle:{fontSize:17,fontWeight:'800',color:COLORS.text,textAlign:'center',writingDirection:'rtl'},
+ screenTitle:{fontSize:24,fontWeight:'900',color:COLORS.text,textAlign:'right',writingDirection:'rtl'},
+ filterBox:{padding:12,backgroundColor:'#041326',borderBottomWidth:1,borderColor:COLORS.border},
+ pill:{paddingHorizontal:13,paddingVertical:8,borderRadius:999,backgroundColor:'#07172c',borderWidth:1,borderColor:COLORS.border},
+ pillActive:{backgroundColor:'#0b68b9',borderColor:COLORS.primary},
+ pillText:{color:'#acc1d5',fontSize:12,fontWeight:'700'},
+ pillTextActive:{color:'#fff'},
+ countText:{color:COLORS.muted,textAlign:'right',writingDirection:'rtl',marginBottom:10},
+ progressLine:{height:7,borderRadius:999,backgroundColor:'#0a2944',overflow:'hidden',marginTop:10},
+ progressFill:{height:'100%',backgroundColor:COLORS.primary,borderRadius:999},
+ answerRow:{paddingVertical:10,borderBottomWidth:1,borderBottomColor:'#123553'},
+ answerLabel:{fontSize:12,color:COLORS.muted,textAlign:'right',writingDirection:'rtl',marginTop:8},
+ answerValue:{fontSize:15,fontWeight:'700',color:COLORS.text,textAlign:'right',writingDirection:'rtl',marginTop:3},
+ bigPercent:{fontSize:34,fontWeight:'900',color:COLORS.success,textAlign:'right'},
+ messageBubble:{maxWidth:'86%',borderRadius:16,padding:11},
+ bubbleIncoming:{backgroundColor:'#06162a',borderWidth:1,borderColor:COLORS.border,borderBottomLeftRadius:4},
+ bubbleOutgoing:{backgroundColor:'#07365a',borderBottomRightRadius:4,borderWidth:1,borderColor:'#146798'},
+ messageWho:{fontSize:10,fontWeight:'800',color:COLORS.primary,textAlign:'right'},
+ messageText:{fontSize:14,color:COLORS.text,textAlign:'right',writingDirection:'rtl',lineHeight:21,marginTop:3},
+ messageTime:{fontSize:9,color:COLORS.muted,textAlign:'left',marginTop:5},
+ composer:{backgroundColor:'#031020',borderTopWidth:1,borderTopColor:COLORS.border,padding:10,flexDirection:'row-reverse',alignItems:'flex-end',gap:8},
+ composerInput:{flex:1,minHeight:42,maxHeight:110,borderWidth:1,borderColor:'#17466f',borderRadius:14,paddingHorizontal:12,paddingVertical:9,color:COLORS.text,backgroundColor:'#06162a'},
+ divider:{height:1,backgroundColor:COLORS.border,marginVertical:13},
+ profileName:{fontSize:22,fontWeight:'900',color:COLORS.text,textAlign:'right',writingDirection:'rtl'},
+ tabBar:{minHeight:72,backgroundColor:'#031020',borderTopWidth:1,borderTopColor:COLORS.border,flexDirection:'row-reverse',alignItems:'stretch'},
+ tab:{flex:1,alignItems:'center',justifyContent:'center',paddingVertical:7},
+ tabLabelWrap:{position:'relative',alignItems:'center',gap:2},
+ tabIcon:{fontSize:19,color:'#5d7895',fontWeight:'800'},
+ tabIconActive:{color:COLORS.primary,textShadowColor:'#16dcff',textShadowRadius:8},
+ tabText:{fontSize:10,color:COLORS.muted,fontWeight:'700',writingDirection:'rtl'},
+ tabTextActive:{color:COLORS.primary,fontWeight:'900'},
+ tabDot:{position:'absolute',right:-17,top:-7,minWidth:19,height:19,borderRadius:10,backgroundColor:COLORS.danger,alignItems:'center',justifyContent:'center',paddingHorizontal:4,borderWidth:2,borderColor:'#031020'},
+ tabDotText:{color:'#fff',fontSize:8,fontWeight:'900'}
+
 });

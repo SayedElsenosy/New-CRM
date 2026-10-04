@@ -44,7 +44,7 @@ export function validateAnswer(q,input,areas,media) {
 }
 export function questionPrompt(q,areas) {
  let text=q.label;
- if(q.kind==='area') text+='\nاختار أي منطقة علشان تشوف تفاصيلها. تقدر تقارن بين أكتر من منطقة، ومش هنسجل اختيارك النهائي غير لما تأكده.\n'+areas.filter(a=>a.active).map(a=>`• ${a.name}`).join('\n');
+ if(q.kind==='area') text+='\nاختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها. تقدر تقارن بين أكتر من منطقة، ومش هنسجل اختيارك النهائي غير لما تأكده.';
  if(q.kind==='image') text+='\nابعت صورة واضحة أو PDF بعد إخفاء الأرقام التعريفية الحساسة.';
  if(!q.required)text+='\n(اختياري؛ اكتب «تخطي» لو مش حابب تجاوب)';
  return text;

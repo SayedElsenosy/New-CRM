@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry} from '../src/domain.js';
+import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
 import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
@@ -12,7 +12,7 @@ test('initial greeting asks first question without saving greeting',async()=>{co
 test('answers are saved to their question with field key and progress',async()=>{const r=await run({...applicant,awaiting_id:'name'},'سيد محمد');assert.equal(r.patch.answers.name.value,'سيد محمد');assert.equal(r.patch.answers.name.key,'name');assert.equal(r.patch.stage,'incomplete');assert.equal(r.patch.awaiting_id,'area');});
 test('area inquiry does not consume the pending answer',async()=>{const r=await run({...applicant,awaiting_id:'name'},'تفاصيل الشغل في اكتوبر؟');assert.match(r.reply,/الشفت 9 ساعات/);assert.equal(r.patch.answers,undefined);assert.equal(r.patch.awaiting_id,'name');});
 test('first area inquiry remembers question to accept the next answer',async()=>{const r=await run(applicant,'تفاصيل اكتوبر');assert.equal(r.patch.awaiting_id,'name');});
-test('unknown details never become free text answer',async()=>{const r=await run({...applicant,awaiting_id:'name'},'القبض كام؟');assert.match(r.reply,/تقصد أنهي منطقة/);assert.equal(r.patch.answers,undefined);});
+test('unknown details never become free text answer',async()=>{const r=await run({...applicant,awaiting_id:'name'},'القبض كام؟');assert.match(r.reply,/تقصد أنهي منطقة/);assert.ok(Object.keys(r.patch.answers||{}).every(k=>k.startsWith('__')));});
 test('disabled areas cannot be selected',()=>assert.equal(validateAnswer({kind:'area'},'الشيخ زايد',areas).ok,false));
 test('AI can interpret indirect negative but cannot mark attendance',async()=>{const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد'},area:{value:'oct'}}};const r=await run(a,'لسه مجبتش موتوسيكل',{interpret:async()=>({intent:'answer',answer:'no',confidence:0.96})});assert.equal(r.patch.answers.bike.value,false);assert.equal(r.patch.stage,'complete');assert.equal(r.patch.awaiting_id,null);});
 test('AI failure asks clarification without advancing',async()=>{const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد'},area:{value:'oct'}}};const r=await run(a,'رد مش مفهوم');assert.equal(r.patch.answers,undefined);assert.match(r.reply,/محتاج أوضح/);});
@@ -158,9 +158,9 @@ test('generic available-areas question is answered directly instead of handed of
   settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},
   interpret,knowledge:[]
  });
- assert.match(r.reply,/المناطق المتاحة حاليًا للشغل/);
- assert.match(r.reply,/أكتوبر/);
- assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
+ assert.doesNotMatch(r.reply,/• أكتوبر/);
+ assert.doesNotMatch(r.reply,/• الشيخ زايد/);
  assert.match(r.reply,/اسمك بالكامل/);
  assert.equal(r.handoff,undefined);
 });
@@ -173,7 +173,7 @@ test('short "المناطق" message after completion returns area list, not com
   bike:{value:true,display:'نعم',kind:'yes_no'}
  }};
  const r=await planTurn({applicant:completeApplicant,message:{body:'المناطق'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
- assert.match(r.reply,/المناطق المتاحة حاليًا للشغل/);
+ assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
  assert.doesNotMatch(r.reply,/تم الاستلام/);
 });
 
@@ -186,4 +186,37 @@ test('unrecognized message after completion does not repeat the completion recei
  const r=await run(completeApplicant,'تمام يا باشا');
  assert.match(r.reply,/بياناتك متسجلة عندنا بالفعل/);
  assert.doesNotMatch(r.reply,/تم الاستلام/);
+});
+
+
+test('area question text never lists area names because choices are buttons only',()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const text=questionPrompt(questions[1],liveAreas);
+ assert.match(text,/اختار المنطقة من الأزرار/);
+ assert.doesNotMatch(text,/• أكتوبر/);
+ assert.doesNotMatch(text,/• الشيخ زايد/);
+});
+
+test('completed applicant can browse area details from area buttons without changing application data',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const completeApplicant={...applicant,stage:'complete',awaiting_id:null,answers:{
+  name:{value:'سيد محمد',display:'سيد محمد',kind:'name'},
+  area:{value:'oct',display:'أكتوبر',kind:'area'},
+  bike:{value:true,display:'نعم',kind:'yes_no'}
+ }};
+ const r=await planTurn({applicant:completeApplicant,message:{body:'area_preview:zayed'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
+ assert.match(r.reply,/تفاصيل الشيخ زايد/);
+ assert.match(r.reply,/اختار منطقة تانية من الأزرار/);
+ assert.equal(r.patch.answers,undefined);
+});
+
+
+test('area button pagination changes page without listing names in message text',async()=>{
+ const manyAreas=Array.from({length:15},(_,i)=>({id:'a'+i,name:'منطقة '+(i+1),active:true,details:'تفاصيل '+(i+1)}));
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'area_page:1'},questions,areas:manyAreas,settings,interpret,knowledge:[]});
+ assert.equal(r.patch.answers.__area_page.value,1);
+ assert.match(r.reply,/صفحة 2 من 3/);
+ assert.match(r.reply,/اختار المنطقة من الأزرار/);
+ assert.doesNotMatch(r.reply,/منطقة 8/);
 });

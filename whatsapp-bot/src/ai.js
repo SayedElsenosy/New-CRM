@@ -21,8 +21,20 @@ function areaHits(text,areas){
  });
 }
 
+function directLeadingYesNo(text){
+ const first=clean(text).split(' ')[0]||'';
+ if(['نعم','ايوه','ايوا','اه','yes','yep','yeah'].map(clean).includes(first))return 'yes';
+ if(['لا','لاء','لأ','no'].map(clean).includes(first))return 'no';
+ return null;
+}
+
 function indirectYesNo(text){
  const n=clean(text);
+ // A direct leading answer belongs to the question the bot just asked.
+ // This prevents a side clause such as "اه بس مش معايا رخصة" from flipping
+ // the current motorcycle answer to "no" just because it contains a later negation.
+ const direct=directLeadingYesNo(n);
+ if(direct)return direct;
  // Negation wins before positive words because phrases like "مش معايا" contain "معايا".
  if(hasAny(n,NEGATIVE))return 'no';
  if(hasAny(n,POSITIVE))return 'yes';

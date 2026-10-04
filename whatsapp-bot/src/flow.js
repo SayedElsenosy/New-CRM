@@ -207,12 +207,17 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     }
    }
    let reply=next?questionPrompt(next,areas):settings.completion;
+   let followup_reply=null;
    if(match){
-    const continuation=next?'\n\nنكمل التقديم: '+questionPrompt(next,areas):'\n\n'+settings.completion;
-    reply=String(match.answer||'').trim()+continuation;
+    reply=String(match.answer||'').trim();
+    followup_reply=next?questionPrompt(next,areas):settings.completion;
    }
    const result={patch:{answers,stage,awaiting_id:next?.id||null},reply};
-   if(match){result.knowledge_id=match.id;result.knowledge_confidence=match.confidence;}
+   if(match){
+    result.knowledge_id=match.id;
+    result.knowledge_confidence=match.confidence;
+    result.followup_reply=followup_reply;
+   }
    return result;
   }
  }
@@ -221,8 +226,13 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const threshold=Number(settings.ai_confidence_threshold||0.62);
   const match=findKnowledgeAnswer(m.body,knowledge,threshold);
   if(match){
-   const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
-   return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:match.answer+continueFlow,knowledge_id:match.id,knowledge_confidence:match.confidence};
+   return {
+    patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},
+    reply:String(match.answer||'').trim(),
+    followup_reply:current?questionPrompt(current,areas):null,
+    knowledge_id:match.id,
+    knowledge_confidence:match.confidence
+   };
   }
   const answersWithHandoff={...answers,__ai_handoff:{question:String(m.body||'').slice(0,1000),at:new Date().toISOString(),reason:'low_confidence'}};
   const fallback=String(settings.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.').trim();

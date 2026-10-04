@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Speed CRM",
-    "slug": "speed-crm-mobile",
+    "slug": "sayed",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "masar",
@@ -20,6 +20,12 @@
           "defaultChannel": "intervention"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "62f1cfa9-024f-4ef1-bbab-df241dab064d"
+      }
+    },
+    "owner": "sayedelsenosys-team"
   }
 }

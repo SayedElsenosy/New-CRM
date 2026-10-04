@@ -49,7 +49,7 @@ create table if not exists public.masar_office_settings (
 
 create or replace function public.masar_clone_office_config(p_source uuid,p_target uuid,p_remap_existing boolean default false)
 returns void language plpgsql security definer set search_path=public as $$
-declare q record; z record; a record; nid uuid; mapped_key text; mapped_value jsonb; pair record;
+declare q record; z record; app_row record; nid uuid; mapped_key text; mapped_value jsonb; pair record;
 begin
  if p_source is null or p_target is null or p_source=p_target then return; end if;
 
@@ -91,14 +91,14 @@ begin
  end if;
 
  if p_remap_existing then
-  update public.masar_applicants a
+  update public.masar_applicants applicant
   set awaiting_id=m.new_id
   from masar_q_map m
-  where a.office_id=p_target and a.awaiting_id=m.old_id;
+  where applicant.office_id=p_target and applicant.awaiting_id=m.old_id;
 
-  for a in select id,answers from public.masar_applicants where office_id=p_target loop
+  for app_row in select id,answers from public.masar_applicants where office_id=p_target loop
    mapped_value='{}'::jsonb;
-   for pair in select * from jsonb_each(coalesce(a.answers,'{}'::jsonb)) loop
+   for pair in select * from jsonb_each(coalesce(app_row.answers,'{}'::jsonb)) loop
     mapped_key=pair.key;
     if mapped_key ~* '^[0-9a-f]{8}-[0-9a-f-]{27}$' then
      select new_id::text into mapped_key from masar_q_map where old_id::text=pair.key;
@@ -113,7 +113,7 @@ begin
     end if;
     update public.masar_applicants
     set answers=coalesce(answers,'{}'::jsonb) - pair.key || jsonb_build_object(mapped_key,mapped_value)
-    where id=a.id;
+    where id=app_row.id;
    end loop;
   end loop;
  end if;

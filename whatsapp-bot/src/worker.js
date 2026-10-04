@@ -6,6 +6,7 @@ import {planTurn} from './flow.js';
 import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
+import {sendHumanInterventionPush} from './push.js';
 
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
@@ -263,6 +264,9 @@ export class Worker {
        };
        const result=await this.db.from('masar_alerts').upsert(row,{onConflict:'source_message_id',ignoreDuplicates:true});
        if(result.error)throw result.error;
+       const alert=must(await this.db.from('masar_alerts').select('id').eq('source_message_id',m.id).single());
+       sendHumanInterventionPush(this.db,{applicant:a,question,alertId:alert.id})
+        .catch(e=>console.warn('Mobile push failed:',e.code||e.name||'Error'));
       }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
      }
     }catch(e){

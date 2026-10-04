@@ -6,6 +6,7 @@ import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,createLearningSuggestion} from './knowledge.js';
 import {legacyImport} from './legacy.js';
+import {validExpoPushToken} from './push.js';
 import fs from 'node:fs';
 import path from 'node:path';
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(v);
@@ -130,6 +131,29 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;
   if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;
   res.json(payload);
+ });
+ route('post','/mobile/push-token',async(req,res)=>{
+  const token=String(req.body.token||'').trim();
+  const platform=['ios','android'].includes(String(req.body.platform))?String(req.body.platform):'unknown';
+  const deviceName=String(req.body.device_name||'').trim().slice(0,120);
+  if(!validExpoPushToken(token))throw bad('Push token غير صحيح');
+  const now=new Date().toISOString();
+  try{
+   const result=await db.from('masar_push_tokens').upsert({
+    user_id:req.user.id,token,platform,device_name:deviceName,active:true,updated_at:now,last_seen_at:now
+   },{onConflict:'token'});
+   if(result.error)throw result.error;
+  }catch(e){if(schemaMissing(e)||e.code==='PGRST204')throw bad('فعّل إشعارات الموبايل أولاً بتشغيل ملف supabase/010_mobile_push.sql في Supabase SQL Editor.',503);throw e;}
+  res.json({ok:true});
+ });
+ route('delete','/mobile/push-token',async(req,res)=>{
+  const token=String(req.body.token||'').trim();
+  if(!validExpoPushToken(token))throw bad('Push token غير صحيح');
+  try{
+   const result=await db.from('masar_push_tokens').update({active:false,updated_at:new Date().toISOString()}).eq('user_id',req.user.id).eq('token',token);
+   if(result.error)throw result.error;
+  }catch(e){if(schemaMissing(e)||e.code==='PGRST204')return res.json({ok:true});throw e;}
+  res.json({ok:true});
  });
  permissionRoute('whatsapp','get','/whatsapp',async(req,res)=>{
   const rows=await accountRows(req),first=rows[0]||null;

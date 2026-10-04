@@ -9,11 +9,16 @@ import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(v);
 function bad(message,status=400){return Object.assign(new Error(message),{status});}
 const PERMISSIONS=new Set(['applicants','areas','reports','campaigns','questions','whatsapp','settings']);
 const DEFAULT_RECRUITER_PERMISSIONS=['applicants','areas','reports'];
+const RECRUITMENT_STAGES=['new','review','interview','accepted','hired','rejected'];
+const RECRUITMENT_STAGE_SET=new Set(RECRUITMENT_STAGES);
+const INTERVIEW_STATUSES=new Set(['scheduled','completed','cancelled','no_show']);
 const cleanPermissions=value=>Array.isArray(value)?[...new Set(value.filter(v=>PERMISSIONS.has(v)))]:[...DEFAULT_RECRUITER_PERMISSIONS];
+const recruitmentStageOf=a=>RECRUITMENT_STAGE_SET.has(a?.recruitment_stage)?a.recruitment_stage:a?.stage==='working'?'hired':a?.stage==='lecture'?'interview':a?.stage==='complete'?'review':'new';
 export function makeApi({db,connection,connections,worker,speech=null,serial,origins,dashboardDist=null}){
  const whatsapp=connections||{
   configured:false,
@@ -87,6 +92,56 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(allowed!==null&&!allowed.includes(id))throw bad('رقم واتساب ده مش ضمن صلاحيات حسابك',403);
   if(!whatsapp.snapshot(id))throw bad('حساب واتساب غير موجود',404);
  }
+ async function officeState(req){
+  try{
+   let offices=must(await db.from('masar_offices').select('*').order('created_at',{ascending:true}));
+   const dbAccounts=must(await db.from('masar_whatsapp_accounts').select('id,name,phone,active,office_id,created_at').order('created_at',{ascending:true}));
+   const snapshots=new Map((await whatsapp.snapshots()).map(x=>[x.id,x]));
+   const allowed=await accessibleAccountIds(req);
+   const visibleAccounts=allowed===null?dbAccounts:dbAccounts.filter(x=>allowed.includes(x.id));
+   const visibleOfficeIds=new Set(visibleAccounts.map(x=>x.office_id).filter(Boolean));
+   if(allowed!==null)offices=offices.filter(x=>visibleOfficeIds.has(x.id));
+   const applicantRows=must(await db.from('masar_applicants').select('office_id,recruitment_stage'));
+   const visibleApplicants=allowed===null?applicantRows:applicantRows.filter(x=>visibleOfficeIds.has(x.office_id));
+   let interviews=[];
+   try{interviews=must(await db.from('masar_interviews').select('office_id,status'));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
+   let access=[];
+   if(req.role==='admin'){
+    try{access=must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id'));}catch(e){if(!schemaMissing(e))throw e;}
+   }
+   const accountOffice=new Map(dbAccounts.map(x=>[x.id,x.office_id]));
+   return {configured:true,items:offices.map(o=>{
+    const accounts=visibleAccounts.filter(x=>x.office_id===o.id).map(x=>{const live=snapshots.get(x.id)||{};return {id:x.id,name:x.name,phone:live.phone||x.phone||null,status:live.status||'disconnected',active:x.active};});
+    const applicantSubset=visibleApplicants.filter(x=>x.office_id===o.id);
+    const staffIds=new Set(access.filter(x=>accountOffice.get(x.whatsapp_account_id)===o.id).map(x=>x.user_id));
+    return {...o,whatsapp_accounts:accounts,applicant_count:applicantSubset.length,hired_count:applicantSubset.filter(x=>recruitmentStageOf(x)==='hired').length,interview_count:interviews.filter(x=>x.office_id===o.id&&x.status==='scheduled').length,staff_count:req.role==='admin'?staffIds.size:null};
+   })};
+  }catch(e){
+   if(schemaMissing(e)||e.code==='PGRST204'||e.code==='42703')return {configured:false,items:[]};
+   throw e;
+  }
+ }
+ async function ensureOfficeAccess(req,id){
+  if(!uuid(id))throw bad('معرف المكتب غير صحيح');
+  const state=await officeState(req);
+  if(!state.configured)throw bad('فعّل نظام المكاتب أولاً بتشغيل ملف supabase/011_multi_office_recruitment.sql في Supabase SQL Editor.',503);
+  const office=state.items.find(x=>x.id===id);
+  if(!office)throw bad('المكتب غير موجود أو غير مصرح لحسابك',403);
+  return office;
+ }
+ async function saveOfficeAccounts(officeId,value){
+  if(value===undefined)return;
+  if(!Array.isArray(value))throw bad('اختر أرقام واتساب الخاصة بالمكتب');
+  const ids=[...new Set(value.map(String))];
+  if(ids.some(id=>!uuid(id)))throw bad('أحد أرقام واتساب المختارة غير صحيح');
+  const available=must(await db.from('masar_whatsapp_accounts').select('id'));
+  const set=new Set(available.map(x=>x.id));
+  if(ids.some(id=>!set.has(id)))throw bad('أحد أرقام واتساب المختارة لم يعد موجودًا');
+  for(const id of ids)must(await db.from('masar_whatsapp_accounts').update({office_id:officeId,updated_at:new Date().toISOString()}).eq('id',id));
+ }
+ function monthKey(value){const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'}).slice(0,7):null;}
+ function applicantPublic(a,officeMap=new Map()){return {...a,recruitment_stage:recruitmentStageOf(a),office:officeMap.get(a.office_id)||null};}
+
  permissionRoute('applicants','get','/alerts',async(req,res)=>{
   try{
    let rows=must(await db.from('masar_alerts').select('*').eq('status','open').order('created_at',{ascending:false}).limit(100));
@@ -126,12 +181,34 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  route('get','/bootstrap',async(req,res)=>{
   const cfg=await config(db),profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};
   const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
-  const payload={role:req.role,permissions:req.permissions,profile,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured,ai_configured:true,ai_provider:'local'};
+  const officeData=await officeState(req);
+  const payload={role:req.role,permissions:req.permissions,profile,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured,offices_configured:officeData.configured,offices:officeData.items,ai_configured:true,ai_provider:'local'};
   if(req.role==='admin'||req.permissions.includes('areas'))payload.areas=cfg.areas;
   if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;
   if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;
   res.json(payload);
  });
+ route('get','/offices',async(req,res)=>res.json(await officeState(req)));
+ adminRoute('post','/offices',async(req,res)=>{await serial(async()=>{
+  const name=String(req.body.name||'').trim(),code=String(req.body.code||'').trim().toUpperCase(),address=String(req.body.address||'').trim(),phone=String(req.body.phone||'').trim()||null,manager=String(req.body.manager_name||'').trim();
+  if(name.length<2||name.length>120)throw bad('اكتب اسم واضح للمكتب');
+  if(!/^[A-Z0-9_-]{2,30}$/.test(code))throw bad('كود المكتب يكون حروف إنجليزية أو أرقام فقط');
+  if(address.length>300||manager.length>120)throw bad('راجع بيانات المكتب');
+  const row=must(await db.from('masar_offices').insert({name,code,address,phone,manager_name:manager,active:req.body.active!==false}).select().single());
+  await saveOfficeAccounts(row.id,req.body.whatsapp_account_ids||[]);
+  res.status(201).json(row);
+ });});
+ adminRoute('put','/offices/:id',async(req,res)=>{await serial(async()=>{
+  await ensureOfficeAccess(req,req.params.id);
+  const name=String(req.body.name||'').trim(),code=String(req.body.code||'').trim().toUpperCase(),address=String(req.body.address||'').trim(),phone=String(req.body.phone||'').trim()||null,manager=String(req.body.manager_name||'').trim();
+  if(name.length<2||name.length>120)throw bad('اكتب اسم واضح للمكتب');
+  if(!/^[A-Z0-9_-]{2,30}$/.test(code))throw bad('كود المكتب يكون حروف إنجليزية أو أرقام فقط');
+  if(address.length>300||manager.length>120)throw bad('راجع بيانات المكتب');
+  const row=must(await db.from('masar_offices').update({name,code,address,phone,manager_name:manager,active:req.body.active!==false,updated_at:new Date().toISOString()}).eq('id',req.params.id).select().single());
+  await saveOfficeAccounts(row.id,req.body.whatsapp_account_ids);
+  res.json(row);
+ });});
+
  route('post','/mobile/push-token',async(req,res)=>{
   const token=String(req.body.token||'').trim();
   const platform=['ios','android'].includes(String(req.body.platform))?String(req.body.platform):'unknown';
@@ -173,13 +250,16 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  adminRoute('post','/whatsapp/accounts',async(req,res)=>{await serial(async()=>{
   if(!whatsapp.configured)throw bad('فعّل تعدد أرقام واتساب أولاً بتشغيل ملف supabase/003_multi_whatsapp.sql في Supabase SQL Editor.',503);
   const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
-  const row=must(await db.from('masar_whatsapp_accounts').insert({name,legacy_session:false,active:true}).select().single());
+  const officeId=req.body.office_id?String(req.body.office_id):null;if(officeId)await ensureOfficeAccess(req,officeId);
+  const insertRow={name,legacy_session:false,active:true};if(officeId)insertRow.office_id=officeId;
+  const row=must(await db.from('masar_whatsapp_accounts').insert(insertRow).select().single());
   await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));
  });});
  adminRoute('put','/whatsapp/accounts/:id',async(req,res)=>{await serial(async()=>{
   if(!whatsapp.configured||!uuid(req.params.id))throw bad('معرف رقم واتساب غير صحيح');
   const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
-  const row=must(await db.from('masar_whatsapp_accounts').update({name,updated_at:new Date().toISOString()}).eq('id',req.params.id).select().single());
+  const patch={name,updated_at:new Date().toISOString()};if(req.body.office_id){const officeId=String(req.body.office_id);await ensureOfficeAccess(req,officeId);patch.office_id=officeId;}
+  const row=must(await db.from('masar_whatsapp_accounts').update(patch).eq('id',req.params.id).select().single());
   const item=whatsapp.item?.(req.params.id);if(item)item.account={...item.account,...row};
   res.json(whatsapp.snapshot(req.params.id)||row);
  });});
@@ -414,8 +494,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const campaignIds=new Set(scopedAds.map(x=>x.campaign_id).filter(Boolean));
    const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>campaignIds.has(x.id));
    const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
-   res.json({campaigns:scopedCampaigns,ads:scopedAds,accounts,configured:true,multi_whatsapp_configured:whatsapp.configured});
-  }catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],accounts:[],configured:false,multi_whatsapp_configured:whatsapp.configured});throw e;}
+   const officeData=await officeState(req);
+   res.json({campaigns:scopedCampaigns,ads:scopedAds,accounts,offices:officeData.items,offices_configured:officeData.configured,configured:true,multi_whatsapp_configured:whatsapp.configured});
+  }catch(e){if(e.status===503)return res.json({campaigns:[],ads:[],accounts:[],offices:[],offices_configured:false,configured:false,multi_whatsapp_configured:whatsapp.configured});throw e;}
  });
 
  async function ensureApplicantAccess(req,a){
@@ -429,7 +510,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   await ensureApplicantAccess(req,a);return a;
  }
  async function applicantList(req){
-  const cfg=await config(db),alertIds=await openAlertApplicantIds(req);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)}));
+  const cfg=await config(db),alertIds=await openAlertApplicantIds(req);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)}));
   if(whatsapp.configured){
    const allowed=await accessibleAccountIds(req);
    if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
@@ -440,8 +521,13 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     rows=rows.filter(a=>a.whatsapp_account_id===accountId);
    }
   }
+  if(req.query.office_id){
+   const officeId=String(req.query.office_id);await ensureOfficeAccess(req,officeId);
+   rows=rows.filter(a=>a.office_id===officeId);
+  }
   if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||(a.display_name||'').toLowerCase().includes(s)||Object.values(a.answers||{}).some(v=>v?.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
   if(req.query.stage)rows=rows.filter(a=>a.stage===req.query.stage);
+  if(req.query.recruitment_stage){const rs=String(req.query.recruitment_stage);if(!RECRUITMENT_STAGE_SET.has(rs))throw bad('مرحلة التوظيف غير صحيحة');rows=rows.filter(a=>recruitmentStageOf(a)===rs);}
   if(['1','true','yes'].includes(String(req.query.needs_intervention||'').toLowerCase()))rows=rows.filter(a=>a.needs_intervention);
   if(req.query.ad_id)rows=rows.filter(a=>String(attributionOf(a)?.source_id||'')===String(req.query.ad_id));
   if(req.query.campaign_id){
@@ -454,6 +540,20 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   return {rows:rows.sort((a,b)=>b.created_at.localeCompare(a.created_at)),...cfg};
  }
  permissionRoute('applicants','get','/applicants',async(req,res)=>{const {rows}=await applicantList(req);const page=Math.max(1,parseInt(req.query.page)||1);res.json({items:rows.slice((page-1)*30,page*30),total:rows.length,page});});
+ permissionRoute('applicants','post','/applicants',async(req,res)=>{await serial(async()=>{
+  const officeId=String(req.body.office_id||'');const office=await ensureOfficeAccess(req,officeId);
+  const name=String(req.body.name||'').trim(),phone=String(req.body.phone||'').trim()||null;
+  if(name.length<2||name.length>120)throw bad('اكتب اسم المرشح');
+  if(phone&&!/^\+[1-9][0-9]{7,14}$/.test(phone))throw bad('رقم الهاتف لازم يبدأ بكود الدولة، مثال +2010...');
+  if(phone){const existing=must(await db.from('masar_applicants').select('id').eq('phone',phone).maybeSingle());if(existing)throw bad('رقم الهاتف موجود بالفعل');}
+  const officeAccounts=office.whatsapp_accounts||[];if(!officeAccounts.length)throw bad('اربط رقم واتساب بالمكتب قبل إضافة مرشح يدويًا');
+  const primary=officeAccounts[0];
+  const row={contact_id:'manual:'+crypto.randomUUID(),phone,display_name:name,whatsapp_account_id:primary.id,office_id:office.id,recruitment_stage:'new',bot_enabled:false,last_message_at:new Date().toISOString()};
+  const applicant=must(await db.from('masar_applicants').insert(row).select().single());
+  must(await db.from('masar_contacts').insert({whatsapp_account_id:primary.id,contact_id:row.contact_id,applicant_id:applicant.id}));
+  must(await db.from('masar_events').insert({applicant_id:applicant.id,kind:'manual_applicant_created',staff_id:req.user.id,detail:{office_id:office.id}}));
+  res.status(201).json(applicant);
+ });});
  permissionRoute('applicants','get','/applicants/:id',async(req,res)=>{
   const a=await applicantById(req,req.params.id),cfg=await config(db);
   const before=req.query.before;let query=db.from('masar_messages').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(101);
@@ -462,13 +562,18 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   for(const m of messages){if(m.media_path){const signed=await db.storage.from('masar-documents').createSignedUrl(m.media_path,600);m.media_url=signed.data?.signedUrl||null;}}
   const events=must(await db.from('masar_events').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).limit(50));
   const account=whatsapp.configured?whatsapp.snapshot(a.whatsapp_account_id):null;
-  res.json({applicant:{...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
+  let office=null;try{if(a.office_id)office=must(await db.from('masar_offices').select('id,name,code,address,phone,manager_name').eq('id',a.office_id).maybeSingle());}catch(e){if(!schemaMissing(e)&&e.code!=='42703')throw e;}
+  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
  });
  permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{
   let resumedMessageId=null;
   await serial(async()=>{
    const a=await applicantById(req,req.params.id),b=req.body,patch={updated_at:new Date().toISOString()};
    if(b.notes!==undefined){if(typeof b.notes!=='string'||b.notes.length>4000)throw bad('الملاحظات لا تتجاوز 4000 حرف');patch.notes=b.notes;}
+   if(b.recruitment_stage!==undefined){
+    const rs=String(b.recruitment_stage);if(!RECRUITMENT_STAGE_SET.has(rs))throw bad('مرحلة التوظيف غير صحيحة');
+    patch.recruitment_stage=rs;
+   }
    if(b.bot_enabled!==undefined){
     if(typeof b.bot_enabled!=='boolean')throw bad('قيمة غير صحيحة');
     patch.bot_enabled=b.bot_enabled;
@@ -498,7 +603,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     must(await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي بسبب تدخل مسؤول التوظيف.'}).eq('applicant_id',a.id).eq('direction','out').eq('sender','bot').eq('status','queued'));
    }
    must(await db.from('masar_applicants').update(patch).eq('id',a.id));
-   must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined,resumed_message_id:resumedMessageId}}));
+   must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,recruitment_stage:patch.recruitment_stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined,resumed_message_id:resumedMessageId}}));
    if(b.bot_enabled===true||['lecture','working'].includes(b.stage))await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:b.bot_enabled===true?'bot_resumed':'stage_handled'});
   });
   if(resumedMessageId)worker.tick();
@@ -565,6 +670,56 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   }
   res.json({ok:true,media_cleanup_ok,clean_reset:true});
  });
+ permissionRoute('reports','get','/dashboard',async(req,res)=>{
+  const officeData=await officeState(req);
+  if(!officeData.configured)return res.json({configured:false,offices:[],selected_office:null,metrics:{total:0,interviews:0,offices:0,hired:0},recruitment_stages:Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,0])),growth:[],recent:[],upcoming_interviews:[]});
+  if(req.query.office_id)await ensureOfficeAccess(req,String(req.query.office_id));
+  const {rows}=await applicantList(req),officeMap=new Map(officeData.items.map(x=>[x.id,{id:x.id,name:x.name,code:x.code}]));
+  const stageCounts=Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,rows.filter(a=>recruitmentStageOf(a)===x).length]));
+  let interviews=must(await db.from('masar_interviews').select('*').order('scheduled_at',{ascending:true}).limit(1000));
+  const visibleOfficeIds=new Set(officeData.items.map(x=>x.id));interviews=interviews.filter(x=>visibleOfficeIds.has(x.office_id));
+  if(req.query.office_id)interviews=interviews.filter(x=>x.office_id===String(req.query.office_id));
+  const months=[];const now=new Date();for(let i=5;i>=0;i--){const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-i,1));months.push({key:d.toISOString().slice(0,7),label:d.toLocaleDateString('ar-EG',{month:'short',timeZone:'Africa/Cairo'}),count:0});}
+  const monthMap=new Map(months.map(x=>[x.key,x]));for(const a of rows){const key=monthKey(a.created_at);if(monthMap.has(key))monthMap.get(key).count++;}
+  const applicantById=new Map(rows.map(x=>[x.id,x]));
+  const upcoming=interviews.filter(x=>x.status==='scheduled'&&Date.parse(x.scheduled_at)>=Date.now()-86400000).slice(0,5).map(x=>{const a=applicantById.get(x.applicant_id);return {...x,applicant_name:a?Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name||'مرشح':'مرشح',applicant_phone:a?.phone||null,office:officeMap.get(x.office_id)||null};});
+  res.json({
+   configured:true,offices:officeData.items,selected_office:req.query.office_id?officeMap.get(String(req.query.office_id))||null:null,
+   metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:req.query.office_id?1:officeData.items.filter(x=>x.active).length,hired:stageCounts.hired},
+   recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,6).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming
+  });
+ });
+ permissionRoute('applicants','get','/interviews',async(req,res)=>{
+  const offices=await officeState(req);if(!offices.configured)return res.json({configured:false,items:[]});
+  let rows=must(await db.from('masar_interviews').select('*').order('scheduled_at',{ascending:true}).limit(1000));
+  const officeIds=new Set(offices.items.map(x=>x.id));rows=rows.filter(x=>officeIds.has(x.office_id));
+  if(req.query.office_id){await ensureOfficeAccess(req,String(req.query.office_id));rows=rows.filter(x=>x.office_id===String(req.query.office_id));}
+  if(req.query.status){const status=String(req.query.status);if(!INTERVIEW_STATUSES.has(status))throw bad('حالة المقابلة غير صحيحة');rows=rows.filter(x=>x.status===status);}
+  const applicantIds=[...new Set(rows.map(x=>x.applicant_id))],applicants=applicantIds.length?must(await db.from('masar_applicants').select('id,display_name,phone,answers,recruitment_stage,office_id').in('id',applicantIds)):[];
+  const amap=new Map(applicants.map(x=>[x.id,x])),omap=new Map(offices.items.map(x=>[x.id,{id:x.id,name:x.name,code:x.code}]));
+  res.json({configured:true,items:rows.map(x=>{const a=amap.get(x.applicant_id);return {...x,applicant:a?applicantPublic(a,omap):null,office:omap.get(x.office_id)||null};})});
+ });
+ permissionRoute('applicants','post','/interviews',async(req,res)=>{await serial(async()=>{
+  const applicant=await applicantById(req,String(req.body.applicant_id||''));if(!applicant.office_id)throw bad('فعّل نظام المكاتب للمرشح أولاً',503);
+  await ensureOfficeAccess(req,applicant.office_id);
+  const scheduledAt=String(req.body.scheduled_at||''),time=Date.parse(scheduledAt),notes=String(req.body.notes||'').trim();
+  if(!Number.isFinite(time))throw bad('حدد موعد مقابلة صحيح');if(notes.length>2000)throw bad('ملاحظات المقابلة طويلة');
+  const row=must(await db.from('masar_interviews').insert({applicant_id:applicant.id,office_id:applicant.office_id,scheduled_at:new Date(time).toISOString(),notes,interviewer_id:req.user.id,created_by:req.user.id}).select().single());
+  must(await db.from('masar_applicants').update({recruitment_stage:'interview',updated_at:new Date().toISOString()}).eq('id',applicant.id));
+  must(await db.from('masar_events').insert({applicant_id:applicant.id,kind:'interview_scheduled',staff_id:req.user.id,detail:{interview_id:row.id,scheduled_at:row.scheduled_at,office_id:row.office_id}}));
+  res.status(201).json(row);
+ });});
+ permissionRoute('applicants','put','/interviews/:id',async(req,res)=>{await serial(async()=>{
+  if(!uuid(req.params.id))throw bad('معرف المقابلة غير صحيح');
+  const current=must(await db.from('masar_interviews').select('*').eq('id',req.params.id).single());await ensureOfficeAccess(req,current.office_id);
+  const patch={updated_at:new Date().toISOString()};
+  if(req.body.status!==undefined){const status=String(req.body.status);if(!INTERVIEW_STATUSES.has(status))throw bad('حالة المقابلة غير صحيحة');patch.status=status;}
+  if(req.body.scheduled_at!==undefined){const t=Date.parse(String(req.body.scheduled_at));if(!Number.isFinite(t))throw bad('موعد المقابلة غير صحيح');patch.scheduled_at=new Date(t).toISOString();}
+  if(req.body.notes!==undefined){const notes=String(req.body.notes||'').trim();if(notes.length>2000)throw bad('ملاحظات المقابلة طويلة');patch.notes=notes;}
+  const row=must(await db.from('masar_interviews').update(patch).eq('id',current.id).select().single());
+  must(await db.from('masar_events').insert({applicant_id:current.applicant_id,kind:'interview_updated',staff_id:req.user.id,detail:{interview_id:current.id,status:row.status,scheduled_at:row.scheduled_at}}));
+  res.json(row);
+ });});
  permissionRoute('reports','get','/reports',async(req,res)=>{
   const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);
   const base=summaryFor(rows),stages=base.stages;
@@ -586,7 +741,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    relevantAds.reduce((n,x)=>n+Number(x.spend||0),0);
   const div=n=>n?Math.round(selectedSpend/n*100)/100:null;
   res.json({
-   total:base.total,stages,areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:base.completed,
+   total:base.total,stages,recruitment_stages:Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,rows.filter(a=>recruitmentStageOf(a)===x).length])),areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:base.completed,
    attributed:rows.filter(a=>Boolean(attributionOf(a)?.source_id)).length,unattributed:rows.filter(a=>!attributionOf(a)?.source_id).length,
    spend:selectedSpend,costs:{per_lead:div(base.total),per_complete:div(base.completed),per_lecture:div(stages.lecture),per_working:div(stages.working)},
    ad_breakdown,campaign_breakdown

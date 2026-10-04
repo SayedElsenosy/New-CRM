@@ -57,6 +57,8 @@ export async function api(route,options={}){
 }
 export const send=(route,body={},method='POST')=>api(route,{method,body:JSON.stringify(body)});
 export const STAGES={new:'جديد',incomplete:'لم يكمل البيانات',complete:'أرسل البيانات بالكامل',lecture:'حضر المحاضرة',working:'بدأ شغل'};
+export const RECRUITMENT_STAGES={new:'جديد',review:'قيد المراجعة',interview:'في المقابلة',accepted:'تم القبول',hired:'تم التعيين',rejected:'مرفوض'};
+export const INTERVIEW_STATUSES={scheduled:'مجدولة',completed:'تمت',cancelled:'ملغاة',no_show:'لم يحضر'};
 export const KINDS={name:'الاسم الكامل',number:'العمر (1–100)',area:'منطقة العمل',yes_no:'نعم / لا',text:'نص حر',image:'صورة أو مستند PDF'};
 export const personName=a=>Object.values(a.answers||{}).find(v=>v.kind==='name')?.display||a.display_name||'متقدم جديد';
 export const date=v=>v?new Date(v).toLocaleString('ar-EG',{timeZone:'Africa/Cairo',dateStyle:'medium',timeStyle:'short'}):'—';

@@ -90,5 +90,24 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[push]}=await db.query("select platform,active from masar_push_tokens where user_id=$1",[reader.id]);
  assert.equal(push.platform,'android');assert.equal(push.active,true);
  assert.equal((await db.query("select has_table_privilege('anon','masar_push_tokens','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Multi-office recruitment keeps existing records, maps WhatsApp accounts to offices,
+ // backfills the recruitment pipeline, and supports interviews.
+ const officeSql=(await fs.readFile(new URL('../../supabase/011_multi_office_recruitment.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(officeSql);await db.exec(officeSql);
+ const {rows:officeCount}=await db.query("select count(*)::int as n from masar_offices");
+ assert.equal(officeCount[0].n,2);
+ const {rows:[firstOffice]}=await db.query("select office_id from masar_applicants where id=$1",[a.id]);
+ const {rows:[firstStage]}=await db.query("select recruitment_stage from masar_applicants where id=$1",[a.id]);
+ assert.ok(firstOffice.office_id);assert.equal(firstStage.recruitment_stage,'interview');
+ const {rows:[secondOffice]}=await db.query("select office_id,recruitment_stage from masar_applicants where id=$1",[samePersonOtherNumber.id]);
+ assert.equal(String(secondOffice.office_id),String(second.id));assert.equal(secondOffice.recruitment_stage,'new');
+ const {rows:[interview]}=await db.query("insert into masar_interviews(applicant_id,office_id,scheduled_at,interviewer_id,created_by) values($1,$2,now()+interval '1 day',$3,$3) returning id,status",[samePersonOtherNumber.id,second.id,reader.id]);
+ assert.ok(interview.id);assert.equal(interview.status,'scheduled');
+ await db.query("update masar_whatsapp_accounts set office_id=$1 where id=$2",[defaultAccount.id,second.id]);
+ const {rows:[moved]}=await db.query("select office_id from masar_applicants where id=$1",[samePersonOtherNumber.id]);
+ assert.equal(String(moved.office_id),String(defaultAccount.id));
+ assert.equal((await db.query("select has_table_privilege('anon','masar_offices','SELECT') as allowed")).rows[0].allowed,false);
+ assert.equal((await db.query("select has_table_privilege('anon','masar_interviews','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

@@ -1523,3 +1523,107 @@ tbody tr:hover{background:#f7fbfa}
  .growth-panel,.donut-panel{min-height:254px}
  .growth-chart{height:205px}
 }
+
+
+/* Office isolation + self-service profile */
+.top-profile{
+ appearance:none;
+ color:inherit;
+ text-align:inherit;
+ cursor:pointer;
+}
+.top-profile:hover{
+ border-color:#b9dcd7;
+ background:#f9fdfc;
+}
+.top-profile-avatar,.profile-large-avatar,.profile-avatar-button{
+ overflow:hidden;
+}
+.top-profile-avatar img,.profile-large-avatar img,.profile-avatar-button img{
+ width:100%;
+ height:100%;
+ object-fit:cover;
+ display:block;
+}
+.profile-avatar-button{
+ border:0;
+ padding:0;
+ cursor:pointer;
+ color:#fff;
+}
+.profile-grid{
+ display:grid;
+ grid-template-columns:minmax(230px,.7fr) minmax(0,1.8fr);
+ gap:14px;
+ align-items:start;
+}
+.profile-photo-card{
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ text-align:center;
+ gap:9px;
+ position:sticky;
+ top:88px;
+}
+.profile-large-avatar{
+ width:112px;
+ height:112px;
+ border-radius:50%;
+ display:grid;
+ place-items:center;
+ background:linear-gradient(135deg,#0aa995,#f0b23c);
+ color:#fff;
+ font-size:38px;
+ font-weight:900;
+ border:5px solid #fff;
+ box-shadow:0 8px 30px rgba(19,75,70,.15);
+}
+.profile-photo-card h2{margin:4px 0 0}
+.profile-photo-card>small{color:#71858b}
+.upload-profile-button{
+ margin-top:7px;
+ padding:9px 13px;
+ border-radius:10px;
+ background:#e8f8f5;
+ color:#087a70;
+ font-weight:800;
+ font-size:10px;
+ cursor:pointer;
+}
+.upload-profile-button input{display:none}
+.office-scope-required{
+ max-width:620px;
+ margin:30px auto;
+ display:flex;
+ flex-direction:column;
+ align-items:center;
+ text-align:center;
+ gap:8px;
+ padding:34px;
+}
+.office-scope-required>svg{color:#0a9587}
+.office-scope-required select{max-width:330px;margin-top:8px}
+.support-whatsapp{
+ display:inline-flex;
+ align-items:center;
+ gap:7px;
+ margin-top:8px;
+ padding:9px 12px;
+ border-radius:10px;
+ background:#e9f9f2;
+ color:#087b58;
+ font-weight:900;
+ text-decoration:none;
+ direction:ltr;
+}
+.support-whatsapp:hover{background:#dff5eb}
+.badge.office-manager{
+ background:#e7f8f5;
+ color:#087b70;
+ border:1px solid #bee7df;
+}
+@media(max-width:760px){
+ .profile-grid{grid-template-columns:1fr}
+ .profile-photo-card{position:static}
+}

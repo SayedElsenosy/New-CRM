@@ -260,9 +260,11 @@ export class Worker {
     let buttons=[];
     if(m.sender==='bot'&&a.bot_enabled&&sendConfig){
      const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);
-     if(q?.kind==='area'){
+     const body=String(m.body||'');
+     const browseAreas=body.includes('اختار المنطقة من الأزرار')||body.includes('اختار منطقة تانية من الأزرار')||body.includes('المناطق المتاحة موجودة في الأزرار');
+     if(q?.kind==='area'||browseAreas){
       const activeAreas=sendConfig.areas.filter(area=>area.active);
-      const previewId=a.answers?.__area_preview?.value;
+      const previewId=q?.kind==='area'?a.answers?.__area_preview?.value:null;
       const preview=activeAreas.find(area=>area.id===previewId);
       if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ تأكيد '+preview.name});
       buttons.push(...activeAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));

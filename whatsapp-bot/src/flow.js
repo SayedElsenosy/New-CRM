@@ -40,6 +40,56 @@ function postCompletionReply(){
  return 'بياناتك متسجلة عندنا بالفعل ✅\nلو عندك سؤال عن الشغل، المرتب، المواعيد أو المناطق ابعته وأنا أساعدك.';
 }
 
+const RESTAURANT_WORDS=['مطاعم','مطعم','ريستورانت','restaurant','restaurants'];
+const MARKET_WORDS=['ماركت','سوبرماركت','سوبر ماركت','متجر','market'];
+function hasWord(text,words){
+ const n=norm(text);
+ return words.some(w=>n.includes(norm(w)));
+}
+function baseAreaName(name){
+ let n=norm(name);
+ for(const word of [...RESTAURANT_WORDS,...MARKET_WORDS])n=n.replaceAll(norm(word),' ');
+ return n.replace(/\s+/g,' ').trim();
+}
+function areaCategory(area){
+ const source=norm((area?.name||'')+' '+(area?.details||''));
+ if(RESTAURANT_WORDS.some(w=>source.includes(norm(w))))return 'restaurant';
+ if(MARKET_WORDS.some(w=>source.includes(norm(w))))return 'market';
+ return 'base';
+}
+function explicitAreaHits(text,areas){
+ const n=norm(text);
+ return areas.filter(a=>a.active&&norm(a.name)&&n.includes(norm(a.name)));
+}
+function areaComparison(text,areas,answers){
+ const n=norm(text);
+ const compareIntent=/(?:الفرق|فرق|مقارنه|مقارنة|قارن|الاختلاف|احسن|افضل|أفضل)/.test(n);
+ if(!compareIntent)return null;
+ const active=areas.filter(a=>a.active),found=[];
+ const add=area=>{if(area&&!found.some(x=>x.id===area.id))found.push(area);};
+ explicitAreaHits(text,active).forEach(add);
+
+ const previewId=answers?.__area_preview?.value;
+ const saved=Object.values(answers||{}).find(v=>v?.kind==='area');
+ const context=active.find(a=>a.id===previewId)||active.find(a=>a.id===saved?.value)||found[0]||null;
+ const base=context?baseAreaName(context.name):'';
+ const siblings=base?active.filter(a=>baseAreaName(a.name)===base):active;
+
+ if(hasWord(text,RESTAURANT_WORDS)){
+  add(siblings.find(a=>areaCategory(a)==='restaurant')||active.find(a=>areaCategory(a)==='restaurant'&&(!base||baseAreaName(a.name)===base)));
+ }
+ if(hasWord(text,MARKET_WORDS)){
+  add(siblings.find(a=>areaCategory(a)==='market')||siblings.find(a=>areaCategory(a)==='base')||active.find(a=>areaCategory(a)==='market'&&(!base||baseAreaName(a.name)===base)));
+ }
+ if(found.length===1&&context&&context.id!==found[0].id)add(context);
+ if(found.length<2)return null;
+ return found.slice(0,3);
+}
+function areaComparisonReply(items){
+ const blocks=items.map(area=>areaDetails(area));
+ return 'دي مقارنة من التفاصيل المسجلة عندنا فقط 👇\n\n'+blocks.join('\n\n────────\n\n')+'\n\nلو عايز تقارن نقطة محددة زي المرتب أو الشيفت أو مكان الاستلام قولّي.';
+}
+
 export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[]}) {
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
@@ -79,6 +129,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'\n\nاختار منطقة تانية من الأزرار لو حابب تقارن.';
    return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(area)+continueFlow};
   }
+ }
+
+ const comparedAreas=areaComparison(m.body,areas,answers);
+ if(comparedAreas){
+  const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+  return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaComparisonReply(comparedAreas)+continueFlow};
  }
 
  const inquiry=areaInquiry(m.body,areas);

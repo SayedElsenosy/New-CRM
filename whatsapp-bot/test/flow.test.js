@@ -220,3 +220,69 @@ test('area button pagination changes page without listing names in message text'
  assert.match(r.reply,/اختار المنطقة من الأزرار/);
  assert.doesNotMatch(r.reply,/منطقة 8/);
 });
+
+
+test('truly unknown side question while previewing an area produces a handoff reply and preserves the area preview',async()=>{
+ const liveAreas=[
+  {id:'zayed-market',name:'الشيخ زايد',active:true,details:'تفاصيل ماركت'},
+  {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,details:'تفاصيل مطاعم'}
+ ];
+ const a={...applicant,awaiting_id:'area',answers:{
+  name:{value:'سيد محمد',kind:'name'},
+  __area_preview:{value:'zayed-rest',display:'الشيخ زايد مطاعم',kind:'area_preview'}
+ }};
+ const r=await planTurn({
+  applicant:a,
+  message:{body:'هل في سكن للموظفين؟'},
+  questions,areas:liveAreas,
+  settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.62,ai_fallback:'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق.'},
+  interpret,knowledge:[]
+ });
+ assert.equal(r.handoff,true);
+ assert.equal(r.patch.bot_enabled,false);
+ assert.equal(r.patch.answers.__area_preview.value,'zayed-rest');
+ assert.equal(r.patch.answers.__ai_handoff.question,'هل في سكن للموظفين؟');
+ assert.match(r.reply,/هحوّل المحادثة للفريق/);
+});
+
+
+test('bot compares restaurant and market variants from stored area details using current preview context',async()=>{
+ const liveAreas=[
+  {id:'zayed-market',name:'الشيخ زايد',active:true,details:'ماركت: الشفت 9 ساعات. متوسط الدخل 6000 جنيه.'},
+  {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,details:'مطاعم: الشفت 10 ساعات. متوسط الدخل 7500 جنيه.'}
+ ];
+ const a={...applicant,awaiting_id:'area',answers:{
+  name:{value:'سيد محمد',kind:'name'},
+  __area_preview:{value:'zayed-rest',display:'الشيخ زايد مطاعم',kind:'area_preview'}
+ }};
+ const r=await planTurn({
+  applicant:a,message:{body:'طيب ايه الفرق بين المطاعم والماركت'},
+  questions,areas:liveAreas,
+  settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.62,ai_fallback:'هحوّلك للفريق'},
+  interpret,knowledge:[]
+ });
+ assert.equal(r.handoff,undefined);
+ assert.match(r.reply,/مقارنة من التفاصيل المسجلة/);
+ assert.match(r.reply,/الشفت 9 ساعات/);
+ assert.match(r.reply,/الشفت 10 ساعات/);
+ assert.match(r.reply,/6000 جنيه/);
+ assert.match(r.reply,/7500 جنيه/);
+ assert.equal(r.patch.awaiting_id,'area');
+});
+
+test('bot compares two explicitly named areas without inventing missing details',async()=>{
+ const liveAreas=[
+  {id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات.'},
+  {id:'zayed',name:'الشيخ زايد',active:true,details:''}
+ ];
+ const r=await planTurn({
+  applicant:{...applicant,awaiting_id:'name'},
+  message:{body:'ايه الفرق بين أكتوبر والشيخ زايد؟'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.match(r.reply,/أكتوبر/);
+ assert.match(r.reply,/الشفت 9 ساعات/);
+ assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/تفاصيل المنطقة لسه مش مضافة/);
+ assert.match(r.reply,/اسمك بالكامل/);
+});

@@ -147,3 +147,43 @@ test('disabled applicant bot stays silent until explicitly re-enabled',async()=>
  const r=await run({...applicant,bot_enabled:false,awaiting_id:'name'},'سيد محمد');
  assert.equal(r.reply,'');assert.deepEqual(r.patch,{});
 });
+
+
+test('generic available-areas question is answered directly instead of handed off',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const r=await planTurn({
+  applicant:{...applicant,awaiting_id:'name'},
+  message:{body:'ممكن تقولي المناطق المتاحة للشغل'},
+  questions,areas:liveAreas,
+  settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},
+  interpret,knowledge:[]
+ });
+ assert.match(r.reply,/المناطق المتاحة حاليًا للشغل/);
+ assert.match(r.reply,/أكتوبر/);
+ assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/اسمك بالكامل/);
+ assert.equal(r.handoff,undefined);
+});
+
+test('short "المناطق" message after completion returns area list, not completion receipt',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const completeApplicant={...applicant,stage:'complete',awaiting_id:null,answers:{
+  name:{value:'سيد محمد',display:'سيد محمد',kind:'name'},
+  area:{value:'oct',display:'أكتوبر',kind:'area'},
+  bike:{value:true,display:'نعم',kind:'yes_no'}
+ }};
+ const r=await planTurn({applicant:completeApplicant,message:{body:'المناطق'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
+ assert.match(r.reply,/المناطق المتاحة حاليًا للشغل/);
+ assert.doesNotMatch(r.reply,/تم الاستلام/);
+});
+
+test('unrecognized message after completion does not repeat the completion receipt',async()=>{
+ const completeApplicant={...applicant,stage:'complete',awaiting_id:null,answers:{
+  name:{value:'سيد محمد',display:'سيد محمد',kind:'name'},
+  area:{value:'oct',display:'أكتوبر',kind:'area'},
+  bike:{value:true,display:'نعم',kind:'yes_no'}
+ }};
+ const r=await run(completeApplicant,'تمام يا باشا');
+ assert.match(r.reply,/بياناتك متسجلة عندنا بالفعل/);
+ assert.doesNotMatch(r.reply,/تم الاستلام/);
+});

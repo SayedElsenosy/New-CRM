@@ -264,10 +264,16 @@ export class Worker {
      const browseAreas=body.includes('اختار المنطقة من الأزرار')||body.includes('اختار منطقة تانية من الأزرار')||body.includes('المناطق المتاحة موجودة في الأزرار');
      if(q?.kind==='area'||browseAreas){
       const activeAreas=sendConfig.areas.filter(area=>area.active);
+      const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
+      const rawPage=Number(a.answers?.__area_page?.value||0);
+      const page=Math.max(0,Math.min(pages-1,Number.isInteger(rawPage)?rawPage:0));
+      const pageAreas=activeAreas.slice(page*pageSize,(page+1)*pageSize);
       const previewId=q?.kind==='area'?a.answers?.__area_preview?.value:null;
       const preview=activeAreas.find(area=>area.id===previewId);
       if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ تأكيد '+preview.name});
-      buttons.push(...activeAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
+      buttons.push(...pageAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
+      if(page>0)buttons.push({id:'area_page:'+(page-1),text:'⬅️ السابق'});
+      if(page<pages-1)buttons.push({id:'area_page:'+(page+1),text:'التالي ➡️'});
      }
     }
     must(await this.db.from('masar_messages').update({status:'sending'}).eq('id',m.id));

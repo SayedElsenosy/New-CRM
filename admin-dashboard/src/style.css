@@ -596,3 +596,26 @@ tr.needs-intervention td:first-child{box-shadow:inset -3px 0 #ffc857}
  .login-card{padding:28px 24px}
  .alert-panel{background:#061326}
 }
+
+
+/* SET polish after first production review */
+.app>aside{
+ scrollbar-color:#16dcff55 transparent;
+}
+.app>aside::-webkit-scrollbar-thumb{background:#16dcff44}
+.app>aside::-webkit-scrollbar-thumb:hover{background:#16dcff77}
+.card h2,.card h3,.section-heading h2,.quick-card h2,.neon-card h2,.recent-card h2{
+ color:var(--set-text);
+}
+.quick-card h2{opacity:1}
+.metric strong{
+ font-family:Arial,'Cairo',sans-serif;
+ direction:ltr;
+ unicode-bidi:isolate;
+ color:#f6fbff;
+}
+.login-brand-art{width:240px;height:150px}
+.dashboard-hero-copy img{width:132px;height:86px}
+@media(max-width:760px){
+ .login-brand-art{width:210px;height:135px}
+}

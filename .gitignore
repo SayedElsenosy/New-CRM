@@ -8,3 +8,4 @@ dist/
 sessions/
 *.log
 .DS_Store
+\n.expo/\n

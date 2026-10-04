@@ -175,12 +175,11 @@ export class Worker {
   const now=Date.now();
   if(now-this.lastFollowupSweep<60000)return;
   this.lastFollowupSweep=now;
-  let c;
-  try{c=await config(this.db);}catch(e){throw e;}
-  let runMode=c.settings?.ai_run_mode||'live';
-  if(runMode==='training'&&c.settings?.ai_training_until&&Date.parse(c.settings.ai_training_until)<=now)runMode='paused';
-  if(runMode!=='live'||c.settings?.followup_enabled!==true)return;
-  const hours=Math.max(1,Math.min(72,Number(c.settings.followup_hours)||8));
+  let globalSettings;
+  try{globalSettings=must(await this.db.from('masar_settings').select('*').eq('id',true).single());}catch(e){throw e;}
+  let runMode=globalSettings?.ai_run_mode||'live';
+  if(runMode==='training'&&globalSettings?.ai_training_until&&Date.parse(globalSettings.ai_training_until)<=now)runMode='paused';
+  if(runMode!=='live')return;
   let candidates;
   try{
    candidates=must(await this.db.from('masar_applicants').select('*').in('stage',['new','incomplete']).eq('bot_enabled',true).order('updated_at',{ascending:true}).limit(1000));
@@ -191,7 +190,11 @@ export class Worker {
   if(!candidates.length)return;
   const open=must(await this.db.from('masar_messages').select('applicant_id').in('status',['pending','queued','sending','uncertain','failed']).limit(5000));
   const blocked=new Set(open.map(x=>x.applicant_id));
+  const configCache=new Map();
   for(const a of candidates){
+   const key=a.office_id||'__global__';if(!configCache.has(key))configCache.set(key,await config(this.db,a.office_id||null));
+   const c=configCache.get(key);if(c.settings?.followup_enabled!==true)continue;
+   const hours=Math.max(1,Math.min(72,Number(c.settings?.followup_hours)||8));
    if(blocked.has(a.id)||!followupDue(a,{now,hours}))continue;
    const body=buildFollowupMessage(a,c.questions,c.areas);
    if(!body)continue;
@@ -218,7 +221,7 @@ export class Worker {
     const prior=must(await this.db.from('masar_messages').select('id').eq('applicant_id',m.applicant_id).eq('direction','in').eq('status','failed').lte('sequence',m.sequence).limit(1));
     if(prior.length){blocked.add(m.applicant_id);continue;}
     try{
-     const c=await config(this.db);
+     const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db,a.office_id||null);
      let runMode=c.settings?.ai_run_mode||'live';
      if(runMode==='training'&&c.settings?.ai_training_until&&Date.parse(c.settings.ai_training_until)<=Date.now()){
       try{must(await this.db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204'&&e.code!=='42703')throw e;}
@@ -228,7 +231,7 @@ export class Worker {
       must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
       continue;
      }
-     const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),knowledge=await loadKnowledge(this.db);
+     const knowledge=await loadKnowledge(this.db);
      const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge});
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.followup_reply){
@@ -279,12 +282,13 @@ export class Worker {
    await this.queueFollowups();
 
    const outgoing=must(await this.db.from('masar_messages').select('*').eq('status','queued').order('sequence').limit(30));
-   const sendConfig=outgoing.length?await config(this.db):null;
+   const sendConfigCache=new Map();
    for(const m of outgoing){
     const accountId=this.multi()?m.whatsapp_account_id:this.connections?.defaultAccountId?.()||null;
     const snapshot=this.connections?this.connections.snapshot(accountId):this.connection?.snapshot();
     if(snapshot?.status!=='connected')continue;
-    const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled,answers').eq('id',m.applicant_id).single());
+    const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled,answers,office_id').eq('id',m.applicant_id).single());
+    const cfgKey=a.office_id||'__global__';if(!sendConfigCache.has(cfgKey))sendConfigCache.set(cfgKey,await config(this.db,a.office_id||null));const sendConfig=sendConfigCache.get(cfgKey);
     let outgoingRunMode=sendConfig?.settings?.ai_run_mode||'live';
     if(outgoingRunMode==='training'&&sendConfig?.settings?.ai_training_until&&Date.parse(sendConfig.settings.ai_training_until)<=Date.now())outgoingRunMode='paused';
     if(m.sender==='bot'&&outgoingRunMode!=='live'){

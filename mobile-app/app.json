@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Speed CRM",
+    "name": "SET CRM",
     "slug": "sayed",
     "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "masar",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.speeddelivery.crm",
@@ -14,7 +14,8 @@
       }
     },
     "android": {
-      "package": "com.speeddelivery.crm"
+      "package": "com.speeddelivery.crm",
+      "backgroundColor": "#020a17"
     },
     "plugins": [
       [
@@ -29,6 +30,7 @@
         "projectId": "62f1cfa9-024f-4ef1-bbab-df241dab064d"
       }
     },
-    "owner": "sayedelsenosys-team"
+    "owner": "sayedelsenosys-team",
+    "backgroundColor": "#020a17"
   }
 }

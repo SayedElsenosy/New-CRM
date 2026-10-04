@@ -152,6 +152,18 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(ids.some(id=>!set.has(id)))throw bad('أحد أرقام واتساب المختارة لم يعد موجودًا');
   for(const id of ids)must(await db.from('masar_whatsapp_accounts').update({office_id:officeId,updated_at:new Date().toISOString()}).eq('id',id));
  }
+ async function scopedOfficeId(req,{required=true,body=true}={}){
+  let id=req.role==='admin'?String(req.query.office_id||(body?req.body?.office_id:'')||'').trim():String(req.officeId||'').trim();
+  if(!id){if(required)throw bad('اختر مكتب التوظيف أولاً',400);return null;}
+  await ensureOfficeAccess(req,id);return id;
+ }
+ async function profilePayload(req){
+  const staff=req.staff||{};let avatar_url=null;
+  if(staff.avatar_path){
+   try{const signed=await db.storage.from('masar-documents').createSignedUrl(staff.avatar_path,3600);avatar_url=signed.data?.signedUrl||null;}catch{}
+  }
+  return {id:req.user.id,name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role,office_id:req.officeId||null,phone:staff.phone||'',job_title:staff.job_title||'',bio:staff.bio||'',avatar_path:staff.avatar_path||null,avatar_url};
+ }
  function monthKey(value){const d=new Date(value);return Number.isFinite(d.getTime())?d.toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'}).slice(0,7):null;}
  function applicantPublic(a,officeMap=new Map()){return {...a,recruitment_stage:recruitmentStageOf(a),office:officeMap.get(a.office_id)||null};}
 
@@ -192,13 +204,15 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   res.json({ok:true});
  });
  route('get','/bootstrap',async(req,res)=>{
-  const cfg=await config(db),profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};
-  const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
-  const officeData=await officeState(req);
-  const payload={role:req.role,permissions:req.permissions,profile,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured,offices_configured:officeData.configured,offices:officeData.items,ai_configured:true,ai_provider:'local'};
-  if(req.role==='admin'||req.permissions.includes('areas'))payload.areas=cfg.areas;
-  if(req.role==='admin'||req.permissions.includes('questions'))payload.questions=cfg.questions;
-  if(req.role==='admin'||req.permissions.includes('settings'))payload.settings=cfg.settings;
+  const officeData=await officeState(req),selectedOfficeId=req.role==='admin'?await scopedOfficeId(req,{required:false,body:false}):req.officeId;
+  let cfg={questions:[],areas:[],settings:null};
+  if(selectedOfficeId||!officeData.configured)cfg=await config(db,selectedOfficeId||null);
+  const profile=await profilePayload(req);
+  const accounts=(await accountRows(req)).map(({id,name,phone,status,office_id})=>({id,name,phone,status,office_id:office_id||null}));
+  const payload={role:req.role,permissions:req.permissions,profile,office_id:req.officeId||null,config_office_id:selectedOfficeId||null,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured,offices_configured:officeData.configured,offices:officeData.items,ai_configured:true,ai_provider:'local'};
+  if(['admin','office_admin'].includes(req.role)||req.permissions.includes('areas'))payload.areas=cfg.areas;
+  if(['admin','office_admin'].includes(req.role)||req.permissions.includes('questions'))payload.questions=cfg.questions;
+  if(['admin','office_admin'].includes(req.role)||req.permissions.includes('settings'))payload.settings=cfg.settings;
   res.json(payload);
  });
  route('get','/offices',async(req,res)=>res.json(await officeState(req)));

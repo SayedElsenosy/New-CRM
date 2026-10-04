@@ -30,6 +30,7 @@ create table if not exists public.masar_applicants (
  answers jsonb not null default '{}', awaiting_id uuid references public.masar_questions(id),
  bot_enabled boolean not null default true, notes text not null default '',
  lecture_at timestamptz, working_at timestamptz,
+ followup_last_sent_at timestamptz, followup_count integer not null default 0 check(followup_count >= 0),
  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
  last_message_at timestamptz, legacy_id text unique
 );
@@ -51,6 +52,7 @@ grant usage, select on sequence public.masar_messages_sequence_seq to service_ro
 create index if not exists masar_messages_applicant_time on public.masar_messages(applicant_id,created_at);
 create index if not exists masar_messages_queue on public.masar_messages(status,created_at);
 create index if not exists masar_applicants_time on public.masar_applicants(created_at);
+create index if not exists masar_applicants_followup_due on public.masar_applicants(stage,bot_enabled,last_message_at,followup_last_sent_at);
 create table if not exists public.masar_events (
  id uuid primary key default gen_random_uuid(), applicant_id uuid references public.masar_applicants(id),
  kind text not null, detail jsonb not null default '{}', staff_id uuid references auth.users(id),
@@ -59,7 +61,9 @@ create table if not exists public.masar_events (
 create table if not exists public.masar_settings (
  id boolean primary key default true check(id), ai_enabled boolean not null default true,
  welcome text not null default 'أهلاً بيك في مسار للتقديم لوظيفة دليفري 👋',
- completion text not null default 'تم استلام البيانات المطلوبة ✅ مسؤول التوظيف هيراجعها ويتواصل معاك. استلام البيانات لا يعني قبول التعيين.'
+ completion text not null default 'تم استلام البيانات المطلوبة ✅ مسؤول التوظيف هيراجعها ويتواصل معاك. استلام البيانات لا يعني قبول التعيين.',
+ followup_enabled boolean not null default true,
+ followup_hours integer not null default 8 check(followup_hours between 1 and 72)
 );
 create table if not exists public.masar_campaigns (
  id uuid primary key default gen_random_uuid(),

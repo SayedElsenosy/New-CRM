@@ -12,7 +12,7 @@ const logoSvg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 230" rol
  <path d="M36 160 C128 132 185 164 293 118" fill="none" stroke="url(#gold)" stroke-width="9" stroke-linecap="round"/>
  <path d="M89 45 C164 32 240 55 329 26" fill="none" stroke="#10ddc5" stroke-opacity=".55" stroke-width="5" stroke-linecap="round"/>
 </g>
-<text x="36" y="206" font-family="Arial,Helvetica,sans-serif" font-size="31" font-weight="800" fill="#f3f7f6">Sayed Elsenosy</text>
-<text x="267" y="206" font-family="Arial,Helvetica,sans-serif" font-size="31" font-weight="900" fill="#11d8c0" filter="url(#glow)">Tech</text>
+<text x="36" y="206" font-family="Arial,Helvetica,sans-serif" font-size="27" font-weight="800" fill="#f3f7f6">Sayed Elsenosy</text>
+<text x="268" y="206" font-family="Arial,Helvetica,sans-serif" font-size="27" font-weight="900" fill="#11d8c0" filter="url(#glow)">Tech</text>
 </svg>`;
 export const BRAND_IMAGE='data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(logoSvg);

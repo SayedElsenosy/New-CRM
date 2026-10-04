@@ -1120,3 +1120,278 @@ tbody tr:hover{background:#f7fbfa}
 .office-access.active{background:#e9faf7;border-color:#65cdbf;color:#086d64}
 .office-access.active>svg:last-child{color:#0aae98}
 @media(max-width:760px){.office-access-grid{grid-template-columns:1fr}}
+
+
+/* =========================================================
+   Reference polish round 2: cleaner sidebar + centered header
+   ========================================================= */
+.app>aside{
+ overflow:hidden;
+}
+.brand{
+ padding:18px 20px 8px;
+ min-height:142px;
+ justify-content:center;
+}
+.brand-image{
+ width:188px;
+ height:112px;
+ max-width:100%;
+ object-fit:contain;
+}
+.brand>small{margin-top:-3px}
+.nav-label{margin:13px 22px 8px}
+.primary-nav{gap:4px}
+.primary-nav button,.utility-nav button{
+ min-height:48px;
+ padding:11px 15px;
+ font-size:13px;
+}
+.sidebar-divider{
+ margin-top:auto;
+ height:1px;
+ background:#1d3839;
+ margin-left:14px;
+ margin-right:14px;
+}
+.utility-nav{
+ padding-top:10px;
+ padding-bottom:10px;
+ gap:3px;
+}
+.sidebar-bottom{
+ margin-top:0;
+ min-height:67px;
+ padding:12px 14px;
+}
+.sidebar-bottom>div:nth-child(2){min-width:0}
+.sidebar-bottom strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.sidebar-bottom small{max-width:135px}
+
+/* Header follows the reference: profile left, search center, workspace right. */
+.topbar{
+ height:76px;
+ padding:0 24px;
+ display:flex;
+ justify-content:flex-start;
+ direction:ltr;
+ gap:10px;
+ background:#fff;
+ position:relative;
+ z-index:24;
+}
+.top-profile{
+ min-width:180px;
+ max-width:230px;
+ height:48px;
+ display:flex;
+ align-items:center;
+ gap:10px;
+ padding:6px 9px;
+ border:1px solid #dce6e8;
+ border-radius:14px;
+ background:#fff;
+ box-shadow:0 5px 16px rgba(31,55,60,.045);
+ direction:rtl;
+}
+.top-profile-avatar{
+ width:35px;
+ height:35px;
+ border-radius:50%;
+ display:grid;
+ place-items:center;
+ flex:0 0 auto;
+ font-weight:900;
+ color:#fff;
+ background:linear-gradient(135deg,#0aa995,#f0b23c);
+ box-shadow:0 3px 10px rgba(7,135,122,.16);
+}
+.top-profile>div:last-child{min-width:0;display:flex;flex-direction:column;align-items:flex-start}
+.top-profile strong{font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top-profile small{font-size:8px;color:#71868c;line-height:1.4}
+.topbar-actions{
+ display:flex;
+ align-items:center;
+ gap:5px;
+ margin-left:0;
+ direction:ltr;
+}
+.topbar-actions .icon{
+ width:42px;
+ height:42px;
+ border-radius:12px;
+ border:1px solid #e1e9ea;
+ background:#fff;
+ color:#435e65;
+}
+.topbar-actions .icon:hover,.topbar-actions .icon.active{
+ background:#eef9f7;
+ color:#078b7f;
+ border-color:#bcded9;
+}
+.global-search{
+ width:min(540px,41vw);
+ height:46px;
+ margin-left:auto;
+ margin-right:auto;
+ border-radius:14px;
+ direction:rtl;
+}
+.global-search span{font-size:11px}
+.global-search kbd{margin-right:auto;margin-left:0}
+.topbar-workspace{
+ min-width:330px;
+ display:flex;
+ flex-direction:row;
+ align-items:center;
+ justify-content:flex-end;
+ gap:10px;
+ direction:ltr;
+}
+.office-switch{
+ min-width:160px;
+ max-width:190px;
+ direction:rtl;
+}
+.topbar-path{
+ white-space:nowrap;
+ direction:rtl;
+ font-size:9px;
+}
+.slash{margin:0 9px}
+
+/* Tool launcher keeps legacy CRM modules without overcrowding the reference sidebar. */
+.tool-launcher{position:relative}
+.tool-menu{
+ position:absolute;
+ top:49px;
+ left:0;
+ width:310px;
+ padding:10px;
+ border-radius:15px;
+ background:#fff;
+ border:1px solid #dce6e8;
+ box-shadow:0 20px 55px rgba(22,48,52,.18);
+ direction:rtl;
+ z-index:80;
+}
+.tool-menu-head{
+ padding:8px 9px 10px;
+ border-bottom:1px solid #edf2f3;
+ margin-bottom:5px;
+ display:flex;
+ flex-direction:column;
+ align-items:flex-start;
+}
+.tool-menu-head strong{font-size:12px}
+.tool-menu-head small{font-size:9px}
+.tool-menu>button{
+ width:100%;
+ min-height:58px;
+ padding:7px 8px;
+ display:grid;
+ grid-template-columns:39px 1fr;
+ gap:9px;
+ align-items:center;
+ border:0;
+ background:transparent;
+ text-align:right;
+ border-radius:10px;
+ justify-content:stretch;
+}
+.tool-menu>button:hover,.tool-menu>button.active{background:#eff9f7}
+.tool-menu>button>span{
+ width:39px;height:39px;border-radius:10px;
+ display:grid;place-items:center;
+ color:#078f82;background:#e7f8f5;
+}
+.tool-menu>button>div{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.tool-menu>button strong{font-size:10px}
+.tool-menu>button small{font-size:8px;color:#7e9298}
+
+/* Slightly tighter content proportions to match the supplied desktop reference. */
+.page{
+ padding:24px 24px 44px;
+ max-width:1600px;
+}
+.smart-hero{
+ min-height:246px;
+ padding:31px 38px;
+ border-radius:13px;
+}
+.smart-hero h1{font-size:39px}
+.smart-hero-copy{max-width:710px}
+.hero-promise{
+ min-width:225px;
+ max-width:225px;
+ padding:20px 18px;
+}
+.smart-metrics{
+ gap:13px;
+ margin:15px 0;
+}
+.smart-metrics>div{
+ min-height:116px;
+ border-radius:13px;
+ padding:17px 18px;
+}
+.analytics-grid{grid-template-columns:1.72fr .78fr}
+.light-card{border-radius:13px}
+.growth-panel,.donut-panel{min-height:300px}
+.growth-chart{height:246px}
+.recruitment-donut-wrap{min-height:245px}
+.pipeline-panel{padding:15px 17px}
+.recruitment-pipeline{border:1px solid #edf2f3}
+.candidate-table thead th{background:#f5f8f9}
+.candidate-table tbody tr:last-child td{border-bottom:0}
+
+/* Support page */
+.support-grid{
+ display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:14px;
+}
+.support-card{
+ display:flex;
+ gap:14px;
+ align-items:flex-start;
+ min-height:190px;
+}
+.support-card h2{font-size:17px;margin-bottom:7px}
+.support-card p{font-size:11px}
+.support-icon{
+ width:48px;height:48px;flex:0 0 auto;
+ border-radius:13px;display:grid;place-items:center;
+ color:#078f82;background:#e7f9f5;
+}
+.support-icon.gold{color:#c5850d;background:#fff4dc}
+.support-icon.blue{color:#237bc8;background:#eaf4ff}
+
+/* Keep visual rhythm on shorter laptop screens. */
+@media(max-height:850px) and (min-width:761px){
+ .brand{min-height:122px;padding-top:11px;padding-bottom:3px}
+ .brand-image{height:92px;width:168px}
+ .brand>small,.brand>span{display:none}
+ .nav-label{margin-top:8px}
+ .primary-nav button,.utility-nav button{min-height:43px;padding-top:8px;padding-bottom:8px}
+ .sidebar-bottom{min-height:58px;padding-top:8px;padding-bottom:8px}
+}
+
+@media(max-width:1180px){
+ .top-profile{min-width:145px}
+ .top-profile strong{max-width:105px}
+ .topbar-workspace{min-width:250px}
+ .topbar-path{display:none}
+ .global-search{width:min(470px,38vw)}
+ .support-grid{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+ .brand{min-height:auto}
+ .topbar{height:64px;padding:0 9px}
+ .top-profile{display:none}
+ .topbar-workspace{display:none}
+ .global-search{width:auto;flex:1;margin:0}
+ .topbar-actions{margin-left:0}
+ .tool-menu{position:fixed;top:66px;left:10px;right:10px;width:auto}
+ .support-grid{grid-template-columns:1fr}
+}

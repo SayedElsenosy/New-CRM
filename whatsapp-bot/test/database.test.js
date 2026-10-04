@@ -70,5 +70,17 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[reset]}=await db.query("select phone,reset_at from masar_applicant_resets where whatsapp_account_id=$1 and contact_id='201012345678@c.us'",[second.id]);
  assert.equal(reset.phone,'+201012345678');assert.ok(reset.reset_at);
  assert.equal((await db.query("select has_table_privilege('anon','masar_applicant_resets','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Durable human-intervention alerts support per-user unread state and resolution.
+ const alertsSql=await fs.readFile(new URL('../../supabase/009_human_intervention_alerts.sql',import.meta.url),'utf8');
+ await db.exec(alertsSql);await db.exec(alertsSql);
+ const {rows:[alert]}=await db.query("insert into masar_alerts(applicant_id,whatsapp_account_id,source_message_id,body,phone) values($1,$2,$3,'سؤال يحتاج تدخل','+201012345678') returning id,status",[samePersonOtherNumber.id,second.id,handoffMessage.id]);
+ assert.equal(alert.status,'open');assert.ok(alert.id);
+ const {rows:[reader]}=await db.query("insert into auth.users(id) values(gen_random_uuid()) returning id");
+ await db.query("insert into masar_alert_reads(alert_id,user_id) values($1,$2)",[alert.id,reader.id]);
+ assert.equal((await db.query("select count(*)::int as n from masar_alert_reads where alert_id=$1",[alert.id])).rows[0].n,1);
+ await db.query("update masar_alerts set status='resolved',resolved_at=now(),resolution='test' where id=$1",[alert.id]);
+ assert.equal((await db.query("select status from masar_alerts where id=$1",[alert.id])).rows[0].status,'resolved');
+ assert.equal((await db.query("select has_table_privilege('anon','masar_alerts','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

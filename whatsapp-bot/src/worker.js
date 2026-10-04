@@ -144,6 +144,10 @@ export class Worker {
     });
    }
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
+   try{
+    const result=await this.db.from('masar_alerts').update({status:'resolved',resolved_at:new Date().toISOString(),resolution:'linked_whatsapp_reply',updated_at:new Date().toISOString()}).eq('applicant_id',a.id).eq('status','open');
+    if(result.error)throw result.error;
+   }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
    return;
   }
 
@@ -233,7 +237,23 @@ export class Worker {
       }catch(e){if(!schemaMissing(e))throw e;}
      }
      if(turn.handoff){
-      must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question:String(m.body||'').slice(0,1000),reason:'low_confidence'}}));
+      const question=String(m.body||'').slice(0,1000);
+      must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question,reason:'low_confidence'}}));
+      try{
+       const row={
+        applicant_id:a.id,
+        whatsapp_account_id:a.whatsapp_account_id,
+        source_message_id:m.id,
+        kind:'ai_handoff',
+        title:'متقدم يحتاج تدخل',
+        body:question,
+        phone:a.phone||null,
+        status:'open',
+        updated_at:new Date().toISOString()
+       };
+       const result=await this.db.from('masar_alerts').upsert(row,{onConflict:'source_message_id',ignoreDuplicates:true});
+       if(result.error)throw result.error;
+      }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
      }
     }catch(e){
      blocked.add(m.applicant_id);const attempts=m.attempts+1;

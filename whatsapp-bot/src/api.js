@@ -48,6 +48,33 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const rows=must(await db.from('masar_staff_whatsapp_access').select('whatsapp_account_id').eq('user_id',req.user.id));
   return rows.map(x=>x.whatsapp_account_id);
  }
+ async function openAlertApplicantIds(req){
+  try{
+   let rows=must(await db.from('masar_alerts').select('applicant_id,whatsapp_account_id').eq('status','open').limit(10000));
+   const allowed=await accessibleAccountIds(req);
+   if(allowed!==null)rows=rows.filter(x=>allowed.includes(x.whatsapp_account_id));
+   return new Set(rows.map(x=>x.applicant_id));
+  }catch(e){if(schemaMissing(e)||e.code==='PGRST204')return new Set();throw e;}
+ }
+ async function resolveApplicantAlerts(applicantId,{userId=null,resolution='handled'}={}){
+  try{
+   const patch={status:'resolved',resolved_at:new Date().toISOString(),resolution,updated_at:new Date().toISOString()};
+   if(userId)patch.resolved_by=userId;
+   const result=await db.from('masar_alerts').update(patch).eq('applicant_id',applicantId).eq('status','open');
+   if(result.error)throw result.error;
+  }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
+ }
+ async function alertById(req,id){
+  if(!uuid(id))throw bad('معرف التنبيه غير صحيح');
+  let row;
+  try{row=must(await db.from('masar_alerts').select('*').eq('id',id).single());}
+  catch(e){if(schemaMissing(e)||e.code==='PGRST204')throw bad('فعّل مركز التنبيهات أولاً بتشغيل ملف supabase/009_human_intervention_alerts.sql في Supabase SQL Editor.',503);throw e;}
+  if(whatsapp.configured){
+   const allowed=await accessibleAccountIds(req);
+   if(allowed!==null&&!allowed.includes(row.whatsapp_account_id))throw bad('التنبيه تابع لرقم واتساب غير مصرح لك به',403);
+  }
+  return row;
+ }
  async function accountRows(req){
   const rows=await whatsapp.snapshots(),allowed=await accessibleAccountIds(req);
   return allowed===null?rows:rows.filter(x=>allowed.includes(x.id));
@@ -59,6 +86,42 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(allowed!==null&&!allowed.includes(id))throw bad('رقم واتساب ده مش ضمن صلاحيات حسابك',403);
   if(!whatsapp.snapshot(id))throw bad('حساب واتساب غير موجود',404);
  }
+ permissionRoute('applicants','get','/alerts',async(req,res)=>{
+  try{
+   let rows=must(await db.from('masar_alerts').select('*').eq('status','open').order('created_at',{ascending:false}).limit(100));
+   const allowed=await accessibleAccountIds(req);
+   if(allowed!==null)rows=rows.filter(x=>allowed.includes(x.whatsapp_account_id));
+   const ids=rows.map(x=>x.id),reads=ids.length?must(await db.from('masar_alert_reads').select('alert_id').eq('user_id',req.user.id).in('alert_id',ids)):[];
+   const readSet=new Set(reads.map(x=>x.alert_id));
+   const applicantIds=[...new Set(rows.map(x=>x.applicant_id))];
+   const applicants=applicantIds.length?must(await db.from('masar_applicants').select('id,display_name,phone,answers').in('id',applicantIds)):[];
+   const applicantMap=new Map(applicants.map(a=>[a.id,a]));
+   const accountMap=new Map((await accountRows(req)).map(x=>[x.id,x]));
+   const items=rows.map(row=>{
+    const a=applicantMap.get(row.applicant_id),answerName=Object.values(a?.answers||{}).find(v=>v?.kind==='name');
+    const account=accountMap.get(row.whatsapp_account_id);
+    return {...row,read:readSet.has(row.id),applicant_name:answerName?.display||answerName?.value||a?.display_name||'متقدم',phone:row.phone||a?.phone||null,whatsapp_name:account?.name||'واتساب',whatsapp_phone:account?.phone||null};
+   });
+   res.json({configured:true,items,unread:items.filter(x=>!x.read).length,open_count:items.length});
+  }catch(e){if(schemaMissing(e)||e.code==='PGRST204')return res.json({configured:false,items:[],unread:0,open_count:0});throw e;}
+ });
+ permissionRoute('applicants','post','/alerts/read-all',async(req,res)=>{
+  let rows=must(await db.from('masar_alerts').select('id,whatsapp_account_id').eq('status','open').limit(1000));
+  const allowed=await accessibleAccountIds(req);if(allowed!==null)rows=rows.filter(x=>allowed.includes(x.whatsapp_account_id));
+  if(rows.length)must(await db.from('masar_alert_reads').upsert(rows.map(x=>({alert_id:x.id,user_id:req.user.id,read_at:new Date().toISOString()})),{onConflict:'alert_id,user_id'}));
+  res.json({ok:true});
+ });
+ permissionRoute('applicants','post','/alerts/:id/read',async(req,res)=>{
+  const alert=await alertById(req,req.params.id);
+  must(await db.from('masar_alert_reads').upsert({alert_id:alert.id,user_id:req.user.id,read_at:new Date().toISOString()},{onConflict:'alert_id,user_id'}));
+  res.json({ok:true});
+ });
+ permissionRoute('applicants','post','/alerts/:id/resolve',async(req,res)=>{
+  const alert=await alertById(req,req.params.id);
+  must(await db.from('masar_alerts').update({status:'resolved',resolved_by:req.user.id,resolved_at:new Date().toISOString(),resolution:'manual',updated_at:new Date().toISOString()}).eq('id',alert.id));
+  must(await db.from('masar_alert_reads').upsert({alert_id:alert.id,user_id:req.user.id,read_at:new Date().toISOString()},{onConflict:'alert_id,user_id'}));
+  res.json({ok:true});
+ });
  route('get','/bootstrap',async(req,res)=>{
   const cfg=await config(db),profile={name:String(req.user.user_metadata?.full_name||''),email:req.user.email||'',role:req.role};
   const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
@@ -342,7 +405,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   await ensureApplicantAccess(req,a);return a;
  }
  async function applicantList(req){
-  const cfg=await config(db);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas)}));
+  const cfg=await config(db),alertIds=await openAlertApplicantIds(req);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)}));
   if(whatsapp.configured){
    const allowed=await accessibleAccountIds(req);
    if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
@@ -355,6 +418,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   }
   if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||(a.display_name||'').toLowerCase().includes(s)||Object.values(a.answers||{}).some(v=>v?.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
   if(req.query.stage)rows=rows.filter(a=>a.stage===req.query.stage);
+  if(['1','true','yes'].includes(String(req.query.needs_intervention||'').toLowerCase()))rows=rows.filter(a=>a.needs_intervention);
   if(req.query.ad_id)rows=rows.filter(a=>String(attributionOf(a)?.source_id||'')===String(req.query.ad_id));
   if(req.query.campaign_id){
    if(!uuid(String(req.query.campaign_id)))throw bad('معرف الحملة غير صحيح');
@@ -411,6 +475,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    }
    must(await db.from('masar_applicants').update(patch).eq('id',a.id));
    must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined,resumed_message_id:resumedMessageId}}));
+   if(b.bot_enabled===true||['lecture','working'].includes(b.stage))await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:b.bot_enabled===true?'bot_resumed':'stage_handled'});
   });
   if(resumedMessageId)worker.tick();
   res.json({ok:true,resumed_message_id:resumedMessageId});
@@ -436,6 +501,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
      if(source)await createLearningSuggestion(db,{applicantId:a.id,sourceMessage:source,staffMessageId:staffMessage.id,answer:body,staffId:req.user.id,force:runMode==='training'});
     }catch(e){if(!schemaMissing(e))throw e;}
    }
+   await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:'crm_reply'});
   });res.json({ok:true});
  });
  permissionRoute('applicants','post','/messages/:id/retry',async(req,res)=>{await serial(async()=>{

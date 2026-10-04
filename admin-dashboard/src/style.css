@@ -1395,3 +1395,131 @@ tbody tr:hover{background:#f7fbfa}
  .tool-menu{position:fixed;top:66px;left:10px;right:10px;width:auto}
  .support-grid{grid-template-columns:1fr}
 }
+
+
+/* =========================================================
+   Reference polish round 3 — denser dashboard proportions
+   ========================================================= */
+.topbar{
+ height:68px;
+ padding:0 22px;
+}
+.top-profile{
+ height:44px;
+ min-width:170px;
+ border-radius:13px;
+}
+.top-profile-avatar{
+ width:33px;
+ height:33px;
+}
+.topbar-actions .icon{
+ width:40px;
+ height:40px;
+}
+.global-search{
+ height:44px;
+ width:min(520px,40vw);
+}
+.topbar-workspace{
+ min-width:350px;
+}
+.tool-launcher .launcher-button{
+ width:40px;
+ height:40px;
+}
+.smart-hero{
+ min-height:228px;
+ padding:24px 32px;
+ margin-bottom:12px;
+}
+.smart-hero h1{
+ font-size:37px;
+ line-height:1.28;
+ margin-bottom:7px;
+}
+.smart-hero p{
+ font-size:13px;
+ line-height:1.7;
+}
+.hero-welcome{
+ margin-bottom:5px;
+}
+.hero-actions{
+ margin-top:16px;
+}
+.gold-button,.hero-outline{
+ min-height:43px;
+}
+.hero-promise{
+ min-width:205px;
+ max-width:205px;
+ padding:17px;
+}
+.hero-promise strong{
+ font-size:16px;
+}
+.smart-metrics{
+ margin:12px 0;
+ gap:12px;
+}
+.smart-metrics>div{
+ min-height:102px;
+ padding:14px 16px;
+}
+.smart-metric-icon{
+ width:49px;
+ height:49px;
+}
+.smart-metrics strong{
+ font-size:27px;
+}
+.analytics-grid{
+ gap:12px;
+}
+.growth-panel,.donut-panel{
+ min-height:270px;
+}
+.growth-chart{
+ height:220px;
+}
+.recruitment-donut-wrap{
+ min-height:215px;
+}
+.recruitment-donut{
+ width:146px;
+ height:146px;
+}
+.recruitment-donut:after{
+ width:86px;
+ height:86px;
+}
+.pipeline-step{
+ min-height:78px;
+}
+.dashboard-bottom-grid{
+ gap:12px;
+}
+.page{
+ padding-top:20px;
+}
+.brand{
+ min-height:128px;
+}
+.brand-image{
+ width:180px;
+ height:102px;
+}
+.nav-label{
+ margin-top:8px;
+}
+.primary-nav button,.utility-nav button{
+ min-height:45px;
+}
+@media(max-height:850px) and (min-width:761px){
+ .smart-hero{min-height:214px;padding-top:21px;padding-bottom:21px}
+ .smart-hero h1{font-size:35px}
+ .smart-metrics>div{min-height:96px}
+ .growth-panel,.donut-panel{min-height:254px}
+ .growth-chart{height:205px}
+}

@@ -4,7 +4,9 @@ import {createClient} from '@supabase/supabase-js';
 
 const supabaseUrl=process.env.EXPO_PUBLIC_SUPABASE_URL||'';
 const supabaseKey=process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY||'';
-const apiBase=(process.env.EXPO_PUBLIC_BOT_API_URL||'').replace(/\/$/,'');
+const rawApiBase=(process.env.EXPO_PUBLIC_BOT_API_URL||'').replace(/\/+$/,'');
+const apiBase=rawApiBase.endsWith('/api')?rawApiBase.slice(0,-4):rawApiBase;
+const apiPointsToSupabase=/\.supabase\.co(?:$|\/)/i.test(apiBase);
 
 export const configured=Boolean(supabaseUrl&&supabaseKey&&apiBase);
 export const supabase=configured?createClient(supabaseUrl,supabaseKey,{
@@ -20,6 +22,7 @@ async function timeoutFetch(url,options,ms=25000){
 
 export async function api(route,options={}){
  if(!configured)throw new Error('إعدادات التطبيق غير مكتملة');
+ if(apiPointsToSupabase)throw new Error('رابط الـBackend مضبوط على Supabase بالخطأ. استخدم رابط الـCRM العام نفسه بدون /api في آخره.');
  const {data}=await supabase.auth.getSession();
  const token=data.session?.access_token;
  if(!token)throw new Error('سجل الدخول أولاً');

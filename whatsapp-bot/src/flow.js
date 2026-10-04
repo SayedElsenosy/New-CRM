@@ -24,6 +24,21 @@ function rejectedAreaReply(area,current,areas){
  return intro+'\n\nنكمل التقديم: '+questionPrompt(current,areas);
 }
 
+function areaListInquiry(text){
+ const n=norm(text);
+ return /(?:^|\s)(?:المناطق|مناطق|الاماكن|اماكن)(?:\s|$)/.test(n)
+  && /(?:متاح|متاحه|الشغل|العمل|التعيين|اشتغل|اقدم|التقديم|فين|ايه|اي|كل)/.test(n)
+  || ['المناطق','مناطق الشغل','اماكن الشغل','الاماكن المتاحه'].includes(n);
+}
+function areaListReply(areas){
+ const live=areas.filter(z=>z.active);
+ if(!live.length)return 'مفيش مناطق عمل متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
+ return 'المناطق المتاحة حاليًا للشغل:\n'+live.map(z=>`• ${z.name}`).join('\n')+'\n\nلو عايز تفاصيل منطقة معينة ابعت اسمها.';
+}
+function postCompletionReply(){
+ return 'بياناتك متسجلة عندنا بالفعل ✅\nلو عندك سؤال عن الشغل، المرتب، المواعيد أو المناطق ابعته وأنا أساعدك.';
+}
+
 export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[]}) {
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
@@ -59,6 +74,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(inquiry)+(current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'')};
  }
 
+ if(areaListInquiry(m.body)){
+  const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+  return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas)+continueFlow};
+ }
+
  const areaQuestion=/(تفاصيل|مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(norm(m.body));
  if(areaQuestion){
   let area=null,intent=null;
@@ -91,7 +111,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:{answers:answersWithHandoff,awaiting_id:current?.id||null,bot_enabled:false,stage:computedStage({...a,answers:answersWithHandoff},questions,areas)},reply:fallback,handoff:true};
  }
 
- if(!current)return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaQuestion?'اكتب اسم المنطقة علشان أقولك تفاصيلها:\n'+areas.filter(z=>z.active).map(z=>z.name).join('، '):settings.completion};
+ if(!current)return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaQuestion?'اكتب اسم المنطقة علشان أقولك تفاصيلها:\n'+areas.filter(z=>z.active).map(z=>z.name).join('، '):postCompletionReply()};
  if(!a.awaiting_id || a.awaiting_id!==current.id) return {patch:{awaiting_id:current.id},reply:(realAnswerCount(answers)?'نكمل بياناتك: ':settings.welcome+'\n')+questionPrompt(current,areas)};
 
  if(!current.required&&norm(m.body)==='تخطي')answers[current.id]={skipped:true,label:current.label,key:current.field_key,kind:current.kind};

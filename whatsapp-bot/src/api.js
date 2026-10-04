@@ -777,14 +777,20 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const access=whatsapp.configured?must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id')):[];
   const accessByUser=new Map();
   for(const row of access){if(!accessByUser.has(row.user_id))accessByUser.set(row.user_id,[]);accessByUser.get(row.user_id).push(row.whatsapp_account_id);}
-  const accounts=(await whatsapp.snapshots()).map(({id,name,phone,status})=>({id,name,phone,status}));
+  let accounts=(await whatsapp.snapshots()).map(({id,name,phone,status})=>({id,name,phone,status,office_id:null})),offices=[];
+  try{
+   const links=must(await db.from('masar_whatsapp_accounts').select('id,office_id'));
+   const byAccount=new Map(links.map(x=>[x.id,x.office_id||null]));
+   accounts=accounts.map(x=>({...x,office_id:byAccount.get(x.id)||null}));
+   offices=must(await db.from('masar_offices').select('id,name,code,active').order('created_at',{ascending:true}));
+  }catch(e){if(!schemaMissing(e)&&e.code!=='42703'&&e.code!=='PGRST204')throw e;}
   const items=rows.map(r=>{const u=byId.get(r.user_id),role=u?.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';return {
    id:r.user_id,name:String(u?.user_metadata?.full_name||''),email:u?.email||'',role,
    permissions:role==='admin'?[...PERMISSIONS]:cleanPermissions(u?.app_metadata?.masar_permissions),
    whatsapp_account_ids:role==='admin'?accounts.map(x=>x.id):accessByUser.get(r.user_id)||[],
    created_at:r.created_at,last_sign_in_at:u?.last_sign_in_at||null
   };});
-  return {items,whatsapp_accounts:accounts,multi_whatsapp_configured:whatsapp.configured};
+  return {items,whatsapp_accounts:accounts,offices,offices_configured:offices.length>0,multi_whatsapp_configured:whatsapp.configured};
  }
  async function recruiterTarget(id){
   if(!uuid(id))throw bad('معرف الحساب غير صحيح');

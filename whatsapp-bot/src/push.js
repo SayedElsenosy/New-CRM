@@ -21,14 +21,21 @@ async function staffRecipients(db,accountId){
   if(result.error)throw result.error;tokens=result.data||[];
  }catch(e){if(MISSING.has(e?.code))return [];throw e;}
  if(!tokens.length)return [];
- const staffResult=await db.from('masar_staff').select('user_id');
+ let staffResult=await db.from('masar_staff').select('user_id,office_id');
+ if(staffResult.error&&MISSING.has(staffResult.error.code))staffResult=await db.from('masar_staff').select('user_id');
  if(staffResult.error)throw staffResult.error;
- const staff=new Set((staffResult.data||[]).map(x=>x.user_id));
+ const staff=new Map((staffResult.data||[]).map(x=>[x.user_id,x]));
  const usersResult=await db.auth.admin.listUsers({page:1,perPage:1000});
  if(usersResult.error)throw usersResult.error;
  const users=new Map((usersResult.data.users||[]).map(u=>[u.id,u]));
- let access=null;
+ let access=null,accountOffice=null;
  if(accountId){
+  try{
+   const wa=await db.from('masar_whatsapp_accounts').select('office_id').eq('id',accountId).maybeSingle();
+   if(!wa.error)accountOffice=wa.data?.office_id||null;
+   else if(!MISSING.has(wa.error.code))throw wa.error;
+  }catch(e){if(!MISSING.has(e?.code))throw e;}
+
   try{
    const result=await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id');
    if(result.error)throw result.error;
@@ -40,9 +47,11 @@ async function staffRecipients(db,accountId){
   }catch(e){if(!MISSING.has(e?.code))throw e;}
  }
  return [...new Set(tokens.filter(row=>{
-  if(!staff.has(row.user_id))return false;
+  const staffRow=staff.get(row.user_id);if(!staffRow)return false;
   const user=users.get(row.user_id);if(!user||!hasApplicantPermission(user))return false;
-  if(user.app_metadata?.masar_role==='recruiter'&&access&&accountId&&!access.get(row.user_id)?.has(accountId))return false;
+  const role=user.app_metadata?.masar_role;
+  if(role==='office_admin'&&accountOffice&&staffRow.office_id&&staffRow.office_id!==accountOffice)return false;
+  if(role==='recruiter'&&access&&accountId&&!access.get(row.user_id)?.has(accountId))return false;
   return validExpoPushToken(row.token);
  }).map(row=>row.token))];
 }

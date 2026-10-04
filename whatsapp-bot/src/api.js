@@ -435,6 +435,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    try{must(await db.from('masar_learning_suggestions').delete().eq('applicant_id',a.id));}catch(e){if(!schemaMissing(e))throw e;}
    must(await db.from('masar_events').delete().eq('applicant_id',a.id));
    must(await db.from('masar_contacts').delete().eq('applicant_id',a.id));
+   must(await db.from('masar_messages').update({reply_to:null}).eq('applicant_id',a.id));
    must(await db.from('masar_messages').delete().eq('applicant_id',a.id));
    must(await db.from('masar_applicants').delete().eq('id',a.id));
   });

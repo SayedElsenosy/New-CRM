@@ -305,16 +305,13 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/connect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.connect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/disconnect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.disconnect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('settings','put','/settings',async(req,res)=>{
-  const b=req.body;
+  const b=req.body,officeId=await scopedOfficeId(req);
   if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');
-  const patch={ai_enabled:b.ai_enabled,welcome:b.welcome,completion:b.completion};
-  if(b.followup_enabled!==undefined||b.followup_hours!==undefined){
-   const hours=Number(b.followup_hours);
-   if(typeof b.followup_enabled!=='boolean'||!Number.isInteger(hours)||hours<1||hours>72)throw bad('متابعة البيانات الناقصة لازم تكون من 1 إلى 72 ساعة');
-   patch.followup_enabled=b.followup_enabled;patch.followup_hours=hours;
-  }
-  try{must(await db.from('masar_settings').update(patch).eq('id',true));}
-  catch(e){if(['42703','PGRST204'].includes(e?.code))throw bad('فعّل المتابعة التلقائية أولاً بتشغيل ملف supabase/007_applicant_followups.sql في Supabase SQL Editor.',503);throw e;}
+  const hours=Number(b.followup_hours);
+  if(typeof b.followup_enabled!=='boolean'||!Number.isInteger(hours)||hours<1||hours>72)throw bad('متابعة البيانات الناقصة لازم تكون من 1 إلى 72 ساعة');
+  const patch={office_id:officeId,ai_enabled:b.ai_enabled,welcome:String(b.welcome).trim(),completion:String(b.completion).trim(),followup_enabled:b.followup_enabled,followup_hours:hours,updated_at:new Date().toISOString()};
+  try{must(await db.from('masar_office_settings').upsert(patch,{onConflict:'office_id'}));}
+  catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code))throw bad('فعّل إعدادات المكاتب أولاً بتشغيل ملف supabase/012_office_admin_scoped_config.sql في Supabase SQL Editor.',503);throw e;}
   res.json({ok:true});
  });
  const cleanKeywords=value=>Array.isArray(value)?[...new Set(value.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20).map(x=>x.slice(0,80)))]:[];
@@ -434,21 +431,25 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  });
  for(const type of ['areas','questions']){
   permissionRoute(type,'post','/'+type,async(req,res)=>{await serial(async()=>{
-   const b=req.body;let row;
+   const b=req.body,officeId=await scopedOfficeId(req);let row;
    if(type==='areas'){
     if(typeof b.name!=='string'||!b.name.trim()||b.name.length>100||typeof b.details!=='string'||b.details.length>4000)throw bad('راجع اسم المنطقة وتفاصيلها');
-    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0};
+    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
    }else{
     if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع السؤال ونوعه ومفتاح حفظ البيانات');
-    row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0};
+    row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
    }
    if(b.id&&!uuid(b.id))throw bad('معرف غير صحيح');
+   if(b.id){
+    const current=must(await db.from('masar_'+type).select('id,office_id').eq('id',b.id).single());
+    if(current.office_id!==officeId)throw bad('العنصر تابع لمكتب آخر',403);
+   }
    const query=b.id?db.from('masar_'+type).update(row).eq('id',b.id):db.from('masar_'+type).insert(row);
    res.json(must(await query.select().single()));
   });});
  }
  permissionRoute('questions','post','/questions/reorder',async(req,res)=>{await serial(async()=>{
-  const qs=must(await db.from('masar_questions').select('id'));
+  const officeId=await scopedOfficeId(req),qs=must(await db.from('masar_questions').select('id').eq('office_id',officeId));
   const ids=req.body.ids;if(!Array.isArray(ids)||ids.length!==qs.length||new Set(ids).size!==ids.length||ids.some(id=>!qs.some(q=>q.id===id)))throw bad('تم تغيير قائمة الأسئلة؛ حدّث الصفحة');
   must(await db.rpc('masar_reorder_questions',{p_ids:ids}));res.json({ok:true});
  });});
@@ -879,8 +880,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   }
   res.status(202).json(importJob);
  });
- permissionRoute('questions','post','/questions/defaults',async(_req,res)=>{await serial(async()=>{
-  const existing=must(await db.from('masar_questions').select('id').limit(1));if(existing.length)throw bad('الأسئلة موجودة بالفعل؛ استخدم صفحة الأسئلة لتعديلها');
+ permissionRoute('questions','post','/questions/defaults',async(req,res)=>{await serial(async()=>{
+  const officeId=await scopedOfficeId(req),existing=must(await db.from('masar_questions').select('id').eq('office_id',officeId).limit(1));if(existing.length)throw bad('الأسئلة موجودة بالفعل؛ استخدم صفحة الأسئلة لتعديلها');
   must(await db.from('masar_questions').insert([
    {field_key:'full_name',label:'اسمك بالكامل إيه؟',kind:'name'},
    {field_key:'age',label:'عندك كام سنة؟',kind:'number'},
@@ -888,7 +889,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    {field_key:'motorcycle',label:'معاك موتوسيكل؟',kind:'yes_no'},
    {field_key:'license',label:'معاك رخصة موتوسيكل سارية؟',kind:'yes_no'},
    {field_key:'document',label:'ابعت المستند المطلوب للتقديم بعد مراجعة مسؤول التوظيف لنوعه.',kind:'image',required:false,active:false}
-  ].map((q,i)=>({...q,required:q.required!==false,active:q.active!==false,position:i+1}))));
+  ].map((q,i)=>({...q,required:q.required!==false,active:q.active!==false,position:i+1,office_id:officeId}))));
  });res.json({ok:true});});
  if(dashboardDist&&fs.existsSync(dashboardDist)){
   app.use(express.static(dashboardDist,{index:false}));

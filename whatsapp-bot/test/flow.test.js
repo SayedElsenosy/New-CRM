@@ -131,3 +131,19 @@ test('training mode can collect useful staff answers even when the applicant phr
  assert.equal(isLearnableExchange('معايا رخصة بس منتهية','ينفع تكمل التقديم ومسؤول التوظيف هيراجع حالة الرخصة.',{force:true}),true);
  assert.equal(isLearnableExchange('معايا رخصة بس منتهية','تمام',{force:true}),false);
 });
+
+
+test('explicitly re-enabled bot can reply even after lecture or working stage',async()=>{
+ const a={...applicant,stage:'working',bot_enabled:true,awaiting_id:null,answers:{
+  name:{value:'سيد محمد',display:'سيد محمد',kind:'name'},
+  area:{value:'oct',display:'أكتوبر',kind:'area'},
+  bike:{value:true,display:'نعم',kind:'yes_no'}
+ }};
+ const r=await run(a,'السلام عليكم');
+ assert.match(r.reply,/تم الاستلام/);
+});
+
+test('disabled applicant bot stays silent until explicitly re-enabled',async()=>{
+ const r=await run({...applicant,bot_enabled:false,awaiting_id:'name'},'سيد محمد');
+ assert.equal(r.reply,'');assert.deepEqual(r.patch,{});
+});

@@ -406,6 +406,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     patch.working_at=b.stage==='working'?new Date().toISOString():null;
     if(['lecture','working'].includes(b.stage)&&b.bot_enabled===undefined)patch.bot_enabled=false;
    }
+   if(patch.bot_enabled===false){
+    must(await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي بسبب تدخل مسؤول التوظيف.'}).eq('applicant_id',a.id).eq('direction','out').eq('sender','bot').eq('status','queued'));
+   }
    must(await db.from('masar_applicants').update(patch).eq('id',a.id));
    must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined,resumed_message_id:resumedMessageId}}));
   });
@@ -420,7 +423,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    let settings=null;try{settings=must(await db.from('masar_settings').select('*').eq('id',true).single());}catch(e){if(!schemaMissing(e))throw e;}
    const runMode=effectiveRunMode(settings),answers={...(a.answers||{})};delete answers.__ai_handoff;
    const applicantPatch={answers,updated_at:new Date().toISOString()};
-   if(runMode==='live')applicantPatch.bot_enabled=false;
+   if(runMode==='live'){
+    applicantPatch.bot_enabled=false;
+    must(await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي بسبب رد بشري.'}).eq('applicant_id',a.id).eq('direction','out').eq('sender','bot').eq('status','queued'));
+   }
    must(await db.from('masar_applicants').update(applicantPatch).eq('id',a.id));
    const row={applicant_id:a.id,direction:'out',sender:'staff',body,status:'queued'};if(whatsapp.configured)row.whatsapp_account_id=a.whatsapp_account_id;
    const staffMessage=must(await db.from('masar_messages').insert(row).select('id').single());

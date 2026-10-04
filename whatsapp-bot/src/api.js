@@ -550,7 +550,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   await ensureApplicantAccess(req,a);return a;
  }
  async function applicantList(req){
-  const cfg=await config(db),alertIds=await openAlertApplicantIds(req);let rows=(await allRows(db,'masar_applicants')).map(a=>({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)}));
+  const alertIds=await openAlertApplicantIds(req),rawRows=await allRows(db,'masar_applicants'),cfgCache=new Map();
+  const cfgFor=async officeId=>{const key=officeId||'__global__';if(!cfgCache.has(key))cfgCache.set(key,await config(db,officeId||null));return cfgCache.get(key);};
+  let rows=[];
+  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)});}
   if(whatsapp.configured){
    const allowed=await accessibleAccountIds(req);
    if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
@@ -577,7 +580,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   }
   if(req.query.from)rows=rows.filter(a=>a.created_at>=req.query.from);
   if(req.query.to)rows=rows.filter(a=>a.created_at<req.query.to);
-  return {rows:rows.sort((a,b)=>b.created_at.localeCompare(a.created_at)),...cfg};
+  const configs=[...cfgCache.values()],areas=[...new Map(configs.flatMap(x=>x.areas||[]).map(x=>[x.id,x])).values()],questions=[...new Map(configs.flatMap(x=>x.questions||[]).map(x=>[x.id,x])).values()];
+  return {rows:rows.sort((a,b)=>b.created_at.localeCompare(a.created_at)),areas,questions};
  }
  permissionRoute('applicants','get','/applicants',async(req,res)=>{const {rows}=await applicantList(req);const page=Math.max(1,parseInt(req.query.page)||1);res.json({items:rows.slice((page-1)*30,page*30),total:rows.length,page});});
  permissionRoute('applicants','post','/applicants',async(req,res)=>{await serial(async()=>{
@@ -595,7 +599,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   res.status(201).json(applicant);
  });});
  permissionRoute('applicants','get','/applicants/:id',async(req,res)=>{
-  const a=await applicantById(req,req.params.id),cfg=await config(db);
+  const a=await applicantById(req,req.params.id),cfg=await config(db,a.office_id||null);
   const before=req.query.before;let query=db.from('masar_messages').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(101);
   if(before){const [time,id]=String(before).split('|');if(!uuid(id)||!Number.isFinite(Date.parse(time)))throw bad('مؤشر غير صحيح');query=query.or(`created_at.lt.${time},and(created_at.eq.${time},id.lt.${id})`);}
   const all=must(await query),has_more=all.length>100,messages=all.slice(0,100),last=messages.at(-1);
@@ -633,7 +637,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    }
    if(b.stage!==undefined){
     if(!['lecture','working','auto'].includes(b.stage))throw bad('حالة غير صحيحة');
-    const cfg=await config(db);if(b.stage!=='auto'&&!completion(cfg.questions,a.answers,cfg.areas).complete)throw bad('أكمل البيانات المطلوبة قبل تأكيد الحضور أو بدء العمل');
+    const cfg=await config(db,a.office_id||null);if(b.stage!=='auto'&&!completion(cfg.questions,a.answers,cfg.areas).complete)throw bad('أكمل البيانات المطلوبة قبل تأكيد الحضور أو بدء العمل');
     patch.stage=b.stage==='auto'?computedStage({...a,stage:'new'},cfg.questions,cfg.areas):b.stage;
     patch.lecture_at=b.stage==='auto'?null:(a.lecture_at||new Date().toISOString());
     patch.working_at=b.stage==='working'?new Date().toISOString():null;

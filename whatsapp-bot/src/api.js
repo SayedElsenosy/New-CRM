@@ -513,30 +513,37 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   return {total:rows.length,completed,stages};
  };
  permissionRoute('campaigns','get','/campaigns',async(req,res)=>{
-  const {campaigns,ads}=await discoverAds(),applicants=(await applicantList(req)).rows;
-  const visibleIds=new Set(applicants.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
-  const scopedAds=req.role==='admin'?ads:ads.filter(ad=>visibleIds.has(ad.ad_id));
+  const {campaigns,ads}=await discoverAds(),applicants=(await applicantList(req)).rows,officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||'');
+  const visibleIds=new Set(applicants.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean)),scopeActive=req.role!=='admin'||Boolean(officeId);
+  const scopedAds=scopeActive?ads.filter(ad=>visibleIds.has(ad.ad_id)):ads;
   const scopedCampaignIds=new Set(scopedAds.map(ad=>ad.campaign_id).filter(Boolean));
-  const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>scopedCampaignIds.has(x.id));
+  const scopedCampaigns=campaigns.filter(x=>(!scopeActive||x.office_id===officeId||scopedCampaignIds.has(x.id)));
   const stats=Object.fromEntries(scopedAds.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
   res.json({campaigns:scopedCampaigns,ads:scopedAds.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
  });
  permissionRoute('campaigns','post','/campaigns',async(req,res)=>{await serial(async()=>{
-  const b=req.body,name=String(b.name||'').trim(),meta=String(b.meta_campaign_id||'').trim()||null;
+  const b=req.body,name=String(b.name||'').trim(),meta=String(b.meta_campaign_id||'').trim()||null,officeId=await scopedOfficeId(req);
   if(name.length<2||name.length>150)throw bad('اكتب اسم الحملة');
-  const row={name,meta_campaign_id:meta,active:b.active!==false,updated_at:new Date().toISOString()};
+  const row={name,meta_campaign_id:meta,active:b.active!==false,updated_at:new Date().toISOString(),office_id:officeId};
   if(b.id&&!uuid(b.id))throw bad('معرف الحملة غير صحيح');
+  if(b.id){const current=must(await db.from('masar_campaigns').select('office_id').eq('id',b.id).single());if(current.office_id!==officeId)throw bad('الحملة تابعة لمكتب آخر',403);}
   const q=b.id?db.from('masar_campaigns').update(row).eq('id',b.id):db.from('masar_campaigns').insert(row);
   res.json(must(await q.select().single()));
  });});
  permissionRoute('campaigns','delete','/campaigns/:id',async(req,res)=>{await serial(async()=>{
   if(!uuid(req.params.id))throw bad('معرف الحملة غير صحيح');
+  const current=must(await db.from('masar_campaigns').select('office_id').eq('id',req.params.id).single()),officeId=req.role==='admin'?current.office_id:req.officeId;
+  if(req.role!=='admin'&&current.office_id!==officeId)throw bad('الحملة تابعة لمكتب آخر',403);
+  if(req.role==='admin'&&req.query.office_id&&current.office_id!==String(req.query.office_id))throw bad('الحملة تابعة لمكتب آخر',403);
   must(await db.from('masar_ads').update({campaign_id:null,updated_at:new Date().toISOString()}).eq('campaign_id',req.params.id));
   must(await db.from('masar_campaigns').delete().eq('id',req.params.id));res.json({ok:true});
  });});
  permissionRoute('campaigns','put','/ads/:id',async(req,res)=>{await serial(async()=>{
   const adId=String(req.params.id||'').trim(),b=req.body;if(!/^\d{5,40}$/.test(adId))throw bad('Ad ID غير صحيح');
   const campaignId=b.campaign_id||null;if(campaignId&&!uuid(campaignId))throw bad('معرف الحملة غير صحيح');
+  const applicants=(await applicantList(req)).rows,visibleIds=new Set(applicants.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+  if(req.role!=='admin'&&!visibleIds.has(adId))throw bad('الإعلان تابع لمكتب آخر',403);
+  if(campaignId){const campaign=must(await db.from('masar_campaigns').select('office_id').eq('id',campaignId).single()),officeId=req.role==='admin'?(String(req.query.office_id||b.office_id||campaign.office_id)):req.officeId;if(campaign.office_id!==officeId)throw bad('الحملة تابعة لمكتب آخر',403);}
   const spend=Number(b.spend);if(!Number.isFinite(spend)||spend<0||spend>1000000000)throw bad('راجع تكلفة الإعلان');
   const name=String(b.name||'').trim();if(name.length>200)throw bad('اسم الإعلان طويل');
   const patch={campaign_id:campaignId,name,spend:Math.round(spend*100)/100,updated_at:new Date().toISOString()};
@@ -546,9 +553,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   try{
    const {campaigns,ads}=await discoverAds(),rows=(await applicantList(req)).rows;
    const ids=new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
-   const scopedAds=req.role==='admin'?ads:ads.filter(x=>ids.has(x.ad_id));
+   const officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||''),scopeActive=req.role!=='admin'||Boolean(officeId);
+   const scopedAds=scopeActive?ads.filter(x=>ids.has(x.ad_id)):ads;
    const campaignIds=new Set(scopedAds.map(x=>x.campaign_id).filter(Boolean));
-   const scopedCampaigns=req.role==='admin'?campaigns:campaigns.filter(x=>campaignIds.has(x.id));
+   const scopedCampaigns=campaigns.filter(x=>!scopeActive||x.office_id===officeId||campaignIds.has(x.id));
    const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
    const officeData=await officeState(req);
    res.json({campaigns:scopedCampaigns,ads:scopedAds,accounts,offices:officeData.items,offices_configured:officeData.configured,configured:true,multi_whatsapp_configured:whatsapp.configured});

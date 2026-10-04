@@ -11,6 +11,7 @@ function areaAction(body){
  const s=String(body||'');
  if(s.startsWith('area_preview:'))return {type:'preview',id:s.slice('area_preview:'.length)};
  if(s.startsWith('confirm_area:'))return {type:'confirm',id:s.slice('confirm_area:'.length)};
+ if(s.startsWith('area_page:'))return {type:'page',page:Number(s.slice('area_page:'.length))};
  return null;
 }
 function rejectedAreaReply(area,current,areas){
@@ -47,6 +48,14 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const current=pending.find(q=>q.id===a.awaiting_id)||pending[0];
 
  const action=areaAction(m.body);
+ if(action?.type==='page'){
+  const activeAreas=areas.filter(z=>z.active),pages=Math.max(1,Math.ceil(activeAreas.length/7));
+  const page=Math.max(0,Math.min(pages-1,Number.isInteger(action.page)?action.page:0));
+  answers.__area_page={value:page,kind:'area_page',at:new Date().toISOString()};
+  const pageNote=pages>1?'\nصفحة '+(page+1)+' من '+pages:'';
+  const continueFlow=current&&current.kind!=='area'?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+  return {patch:{answers,...(current?{awaiting_id:current.id}:{})},reply:(current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas))+pageNote+continueFlow};
+ }
  if(action){
   const area=areas.find(z=>z.active&&z.id===action.id);
   if(!area)return {patch:current?{awaiting_id:current.id}:{},reply:current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas)};
@@ -58,6 +67,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    if(action.type==='confirm'){
     if(answers.__area_preview?.value!==area.id)return {patch:{awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها أكد اختيارك النهائي.\n\n'+questionPrompt(current,areas)};
     delete answers.__area_preview;
+    delete answers.__area_page;
     answers[current.id]={value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
     const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
     const comp=completion(questions,answers,areas);
@@ -81,8 +91,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  if(areaListInquiry(m.body)){
+  answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString()};
   const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
-  return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas)+continueFlow};
+  return {patch:current?{answers,awaiting_id:current.id}:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas)+continueFlow};
  }
 
  const areaQuestion=/(تفاصيل|مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(norm(m.body));
@@ -102,7 +113,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
   if(!area){const saved=Object.values(answers).find(v=>v.kind==='area');area=areas.find(z=>z.active&&z.id===saved?.value);}
   const info=area?areaDetails(area):'تقصد أنهي منطقة؟ اختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها.';
-  return {patch:current?{awaiting_id:current.id}:{},reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
+  if(!area)answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString()};
+  return {patch:current?(area?{awaiting_id:current.id}:{answers,awaiting_id:current.id}):(area?{}:{answers}),reply:info+(current?'\n\n'+questionPrompt(current,areas):'')};
  }
 
  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
@@ -117,7 +129,13 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:{answers:answersWithHandoff,awaiting_id:current?.id||null,bot_enabled:false,stage:computedStage({...a,answers:answersWithHandoff},questions,areas)},reply:fallback,handoff:true};
  }
 
- if(!current)return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaQuestion?'اختار المنطقة من الأزرار تحت علشان أقولك تفاصيلها.':postCompletionReply()};
+ if(!current){
+  if(areaQuestion){
+   answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString()};
+   return {patch:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:'اختار المنطقة من الأزرار تحت علشان أقولك تفاصيلها.'};
+  }
+  return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:postCompletionReply()};
+ }
  if(!a.awaiting_id || a.awaiting_id!==current.id) return {patch:{awaiting_id:current.id},reply:(realAnswerCount(answers)?'نكمل بياناتك: ':settings.welcome+'\n')+questionPrompt(current,areas)};
 
  if(!current.required&&norm(m.body)==='تخطي')answers[current.id]={skipped:true,label:current.label,key:current.field_key,kind:current.kind};

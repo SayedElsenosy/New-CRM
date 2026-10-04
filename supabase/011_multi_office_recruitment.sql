@@ -46,17 +46,11 @@ alter table public.masar_applicants
 alter table public.masar_applicants
  add column if not exists recruitment_stage text;
 
-do $ begin
- if not exists(
-  select 1 from pg_constraint
-  where conname='masar_applicants_recruitment_stage_check'
-    and conrelid='public.masar_applicants'::regclass
- ) then
-  alter table public.masar_applicants
-   add constraint masar_applicants_recruitment_stage_check
-   check(recruitment_stage in ('new','review','interview','accepted','hired','rejected'));
- end if;
-end $$;
+alter table public.masar_applicants
+ drop constraint if exists masar_applicants_recruitment_stage_check;
+alter table public.masar_applicants
+ add constraint masar_applicants_recruitment_stage_check
+ check(recruitment_stage in ('new','review','interview','accepted','hired','rejected'));
 
 update public.masar_applicants a
 set office_id=w.office_id
@@ -132,7 +126,7 @@ end $$;
 
 drop trigger if exists masar_applicant_office_stage_sync on public.masar_applicants;
 create trigger masar_applicant_office_stage_sync
-before insert or update of whatsapp_account_id,stage,recruitment_stage
+before insert or update
 on public.masar_applicants
 for each row execute function public.masar_sync_applicant_office_stage();
 
@@ -154,12 +148,11 @@ create trigger masar_whatsapp_office_sync
 after update of office_id on public.masar_whatsapp_accounts
 for each row execute function public.masar_sync_whatsapp_office();
 
-do $$ declare t text; begin
- foreach t in array array['masar_offices','masar_interviews'] loop
-  execute format('alter table public.%I enable row level security',t);
-  execute format('revoke all on public.%I from anon, authenticated',t);
-  execute format('grant all on public.%I to service_role',t);
- end loop;
-end $$;
+alter table public.masar_offices enable row level security;
+alter table public.masar_interviews enable row level security;
+revoke all on public.masar_offices from anon, authenticated;
+revoke all on public.masar_interviews from anon, authenticated;
+grant all on public.masar_offices to service_role;
+grant all on public.masar_interviews to service_role;
 
 commit;

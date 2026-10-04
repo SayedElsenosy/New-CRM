@@ -20,15 +20,37 @@ async function timeoutFetch(url,options,ms=25000){
  finally{clearTimeout(timer);}
 }
 
-export async function api(route,options={}){
- if(!configured)throw new Error('إعدادات التطبيق غير مكتملة');
- if(apiPointsToSupabase)throw new Error('رابط الـBackend مضبوط على Supabase بالخطأ. استخدم رابط الـCRM العام نفسه بدون /api في آخره.');
- const {data}=await supabase.auth.getSession();
- const token=data.session?.access_token;
- if(!token)throw new Error('سجل الدخول أولاً');
- let response;
+let refreshPromise=null;
+
+async function clearExpiredSession(){
+ try{await supabase.auth.signOut({scope:'local'});}catch{try{await supabase.auth.signOut();}catch{}}
+}
+
+async function refreshAccessToken(){
+ if(!refreshPromise){
+  refreshPromise=supabase.auth.refreshSession().finally(()=>{refreshPromise=null;});
+ }
+ const {data,error}=await refreshPromise;
+ const token=data?.session?.access_token;
+ if(error||!token){
+  await clearExpiredSession();
+  throw new Error('انتهت الجلسة؛ سجل الدخول مجدداً');
+ }
+ return token;
+}
+
+async function accessToken(){
+ const {data,error}=await supabase.auth.getSession();
+ const session=data?.session;
+ if(error||!session?.access_token)throw new Error('سجل الدخول أولاً');
+ const expiresAt=Number(session.expires_at||0)*1000;
+ if(expiresAt&&expiresAt<=Date.now()+60000)return refreshAccessToken();
+ return session.access_token;
+}
+
+async function performRequest(route,options,token){
  try{
-  response=await timeoutFetch(apiBase+'/api'+route,{
+  return await timeoutFetch(apiBase+'/api'+route,{
    ...options,
    headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...(options.headers||{})}
   });
@@ -36,9 +58,20 @@ export async function api(route,options={}){
   if(e?.name==='AbortError')throw new Error('الخدمة استغرقت وقتاً طويلاً في الرد');
   throw new Error('تعذر الوصول إلى السيرفر');
  }
+}
+
+export async function api(route,options={}){
+ if(!configured)throw new Error('إعدادات التطبيق غير مكتملة');
+ if(apiPointsToSupabase)throw new Error('رابط الـBackend مضبوط على Supabase بالخطأ. استخدم رابط الـCRM العام نفسه بدون /api في آخره.');
+ let token=await accessToken();
+ let response=await performRequest(route,options,token);
+ if(response.status===401){
+  token=await refreshAccessToken();
+  response=await performRequest(route,options,token);
+ }
  if(!response.ok){
   const body=await response.json().catch(()=>({}));
-  if(response.status===401)await supabase.auth.signOut().catch(()=>{});
+  if(response.status===401)await clearExpiredSession();
   throw new Error(body.error||'تعذر إتمام العملية');
  }
  if(options.raw)return response;

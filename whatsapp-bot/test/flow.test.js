@@ -214,6 +214,12 @@ test('unrecognized message after completion does not repeat the completion recei
 });
 
 
+test('image question text is exactly the configured label with no automatic hint',()=>{
+ const q={id:'docs',field_key:'docs',kind:'image',label:'ابعت صورة البطاقة وصورة رخصة الموتوسيكل',required:true,active:true,position:1};
+ assert.equal(questionPrompt(q,areas),'ابعت صورة البطاقة وصورة رخصة الموتوسيكل');
+ assert.doesNotMatch(questionPrompt(q,areas),/PDF|إخفاء الأرقام التعريفية/);
+});
+
 test('area question text never lists area names because choices are buttons only',()=>{
  const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
  const text=questionPrompt(questions[1],liveAreas);

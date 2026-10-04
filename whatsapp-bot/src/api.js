@@ -696,5 +696,5 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   app.use(express.static(dashboardDist,{index:false}));
   app.use((req,res,next)=>{if(req.method==='GET'&&!req.path.startsWith('/api')&&req.path!=='/health')return res.sendFile(path.join(dashboardDist,'index.html'));next();});
  }
- app.use((error,_req,res,_next)=>{console.error('API:',{code:error.code||error.name,message:error.message,details:error.details,hint:error.hint});res.status(error.status||500).json({error:error.status?error.message:error.code==='23505'?'الاسم أو مفتاح البيانات مستخدم بالفعل':'تعذر إتمام العملية. راجع إعداد قاعدة البيانات واتصال الخدمة.'});});return app;
+ app.use((error,_req,res,_next)=>{const status=error.status||500;if(status>=500)console.error('API:',{code:error.code||error.name,message:error.message,details:error.details,hint:error.hint});res.status(status).json({error:error.status?error.message:error.code==='23505'?'الاسم أو مفتاح البيانات مستخدم بالفعل':'تعذر إتمام العملية. راجع إعداد قاعدة البيانات واتصال الخدمة.'});});return app;
 }

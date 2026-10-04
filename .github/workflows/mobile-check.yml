@@ -23,3 +23,4 @@ jobs:
           cache-dependency-path: mobile-app/package.json
       - run: npm install --no-audit --no-fund
       - run: npm run check
+      - run: npx expo export --platform android --output-dir dist-check

@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import {PGlite} from '@electric-sql/pglite';
 test('migration, atomic turn, idempotency, protected stages and reorder',async()=>{
  const db=new PGlite();try{
- await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key);create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);`);
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;create table auth.users(id uuid primary key);create or replace function auth.uid() returns uuid language sql stable as 'select null::uuid';create schema storage;create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);create table storage.objects(id uuid primary key default gen_random_uuid(),bucket_id text,name text);alter table storage.objects enable row level security;create or replace function storage.foldername(text) returns text[] language sql immutable as 'select string_to_array($1,''/'')';`);
  // gen_random_uuid is built into PostgreSQL; PGlite doesn't package pgcrypto.
  const sql=(await fs.readFile(new URL('../../supabase/001_masar.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
  await db.exec(sql);await db.exec(sql);
@@ -109,5 +109,36 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(String(moved.office_id),String(defaultAccount.id));
  assert.equal((await db.query("select has_table_privilege('anon','masar_offices','SELECT') as allowed")).rows[0].allowed,false);
  assert.equal((await db.query("select has_table_privilege('anon','masar_interviews','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Office-manager isolation: staff profiles, office-specific questions/areas/settings,
+ // and safe cloning for existing offices.
+ await db.exec(`create table if not exists masar_campaigns(id uuid primary key default gen_random_uuid(),name text not null,meta_campaign_id text,active boolean not null default true,created_at timestamptz not null default now(),updated_at timestamptz not null default now());`);
+ // Put the second WhatsApp account in the non-primary office so cloning/remapping is deterministic.
+ const {rows:[primaryOfficeForConfig]}=await db.query("select id from masar_offices order by created_at,id limit 1");
+ const {rows:[targetOfficeForConfig]}=await db.query("select id from masar_offices where id<>$1 order by created_at,id limit 1",[primaryOfficeForConfig.id]);
+ await db.query("update masar_whatsapp_accounts set office_id=$1 where id=$2",[targetOfficeForConfig.id,second.id]);
+ await db.query("insert into masar_staff(user_id) values($1) on conflict(user_id) do nothing",[reader.id]);
+ await db.query("insert into masar_staff_whatsapp_access(user_id,whatsapp_account_id) values($1,$2) on conflict do nothing",[reader.id,second.id]);
+ const {rows:[areaBefore]}=await db.query("insert into masar_areas(name,details,position) values('Test Area','Office scoped area',1) returning id");
+ const {rows:[areaQuestionBefore]}=await db.query("insert into masar_questions(label,field_key,kind,position) values('Area?','work_area','area',2) returning id");
+ await db.query("update masar_applicants set awaiting_id=$2::uuid,answers=jsonb_build_object(($2::uuid)::text,jsonb_build_object('value',($3::uuid)::text,'display','Test Area','kind','area')) where id=$1::uuid",[samePersonOtherNumber.id,areaQuestionBefore.id,areaBefore.id]);
+
+ const officeAdminSql=(await fs.readFile(new URL('../../supabase/012_office_admin_scoped_config.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(officeAdminSql);await db.exec(officeAdminSql);
+ const {rows:[staffOffice]}=await db.query("select office_id,job_title,bio,avatar_path from masar_staff where user_id=$1",[reader.id]);
+ assert.equal(String(staffOffice.office_id),String(targetOfficeForConfig.id));assert.equal(staffOffice.job_title,'');assert.equal(staffOffice.bio,'');assert.equal(staffOffice.avatar_path,null);
+ const {rows:officeSettings}=await db.query("select office_id,welcome,followup_hours from masar_office_settings order by office_id");
+ assert.equal(officeSettings.length,2);assert.ok(officeSettings.every(x=>x.followup_hours===8));
+ const {rows:qByOffice}=await db.query("select office_id,count(*)::int as n from masar_questions group by office_id order by office_id");
+ assert.equal(qByOffice.length,2);assert.equal(qByOffice[0].n,qByOffice[1].n);
+ const {rows:aByOffice}=await db.query("select office_id,count(*)::int as n from masar_areas group by office_id order by office_id");
+ assert.equal(aByOffice.length,2);assert.equal(aByOffice[0].n,aByOffice[1].n);
+ const {rows:[remapped]}=await db.query("select awaiting_id,answers from masar_applicants where id=$1",[samePersonOtherNumber.id]);
+ assert.notEqual(String(remapped.awaiting_id),String(areaQuestionBefore.id));
+ const remappedAnswer=remapped.answers[String(remapped.awaiting_id)];
+ assert.ok(remappedAnswer);assert.equal(remappedAnswer.kind,'area');assert.notEqual(String(remappedAnswer.value),String(areaBefore.id));
+ const {rows:[targetArea]}=await db.query("select id from masar_areas where office_id=$1 and name='Test Area'",[targetOfficeForConfig.id]);
+ assert.equal(String(remappedAnswer.value),String(targetArea.id));
+ assert.equal((await db.query("select has_table_privilege('anon','masar_office_settings','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

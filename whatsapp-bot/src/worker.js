@@ -63,8 +63,21 @@ export class Worker {
   }
   return {body:body.slice(0,10000),media_path,media_type:media?.type||null,media_error,transcribed,transcription_trusted,transcription_confidence,is_audio:media?.kind==='audio'};
  }
+ async resetCutoff(record,accountId){
+  if(!this.multi()||!accountId)return null;
+  try{
+   let row=must(await this.db.from('masar_applicant_resets').select('reset_at').eq('whatsapp_account_id',accountId).eq('contact_id',record.contact_id).order('reset_at',{ascending:false}).limit(1).maybeSingle());
+   if(!row&&record.phone)row=must(await this.db.from('masar_applicant_resets').select('reset_at').eq('whatsapp_account_id',accountId).eq('phone',record.phone).order('reset_at',{ascending:false}).limit(1).maybeSingle());
+   return row?.reset_at||null;
+  }catch(e){if(schemaMissing(e))return null;throw e;}
+ }
  async ingest(record){
   const accountId=record.whatsapp_account_id||null,multi=this.multi();
+  const cutoff=await this.resetCutoff(record,accountId);
+  if(cutoff){
+   const received=Date.parse(record.received_at||record.created_at||0),reset=Date.parse(cutoff);
+   if(Number.isFinite(received)&&Number.isFinite(reset)&&received<=reset)return;
+  }
   let existingQuery=this.db.from('masar_messages').select('id').eq('wa_id',record.id);
   if(multi)existingQuery=existingQuery.eq('whatsapp_account_id',accountId);
   const existing=must(await existingQuery.maybeSingle());if(existing)return;

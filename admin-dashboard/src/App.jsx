@@ -42,7 +42,10 @@ export default function App(){
  useEffect(()=>{if(!supabase){setReady(true);return;}supabase.auth.getSession().then(({data})=>{setSession(data.session);setReady(true);});const {data}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s));return()=>data.subscription.unsubscribe();},[]);
  const load=useCallback(async()=>{try{const query=officeId?'?office_id='+encodeURIComponent(officeId):'';setBootstrap(await api('/bootstrap'+query));setError('');}catch(e){setError(e.message);}},[officeId]);
  useEffect(()=>{if(session)load();else setBootstrap(null);},[session,load]);
- useEffect(()=>{if(!officeId&&bootstrap?.office_id)setOfficeId(bootstrap.office_id);else if(officeId&&bootstrap?.offices&&!bootstrap.offices.some(x=>x.id===officeId))setOfficeId('');},[bootstrap,officeId]);
+ useEffect(()=>{
+  if(!officeId&&bootstrap?.role!=='admin'&&bootstrap?.office_id)setOfficeId(bootstrap.office_id);
+  else if(officeId&&bootstrap?.offices&&!bootstrap.offices.some(x=>x.id===officeId))setOfficeId(bootstrap?.role==='admin'?'':(bootstrap?.office_id||''));
+ },[bootstrap,officeId]);
  const alertsAllowed=Boolean(bootstrap&&(['admin','office_admin'].includes(bootstrap.role)||(bootstrap.permissions||[]).includes('applicants')));
  const loadAlerts=useCallback(async()=>{
   if(!session||!alertsAllowed)return;
@@ -82,13 +85,15 @@ export default function App(){
  {activeTab==='interviews'&&can('applicants')&&<Interviews version={version} officeId={officeId} onSelect={setSelected} action={action}/>}
  {activeTab==='offices'&&can('applicants')&&<Offices version={version} role={role} onUseOffice={id=>{setOfficeId(id);setTab('applicants');setVersion(v=>v+1);}} action={action}/>}
  {activeTab==='hiring'&&can('applicants')&&<Applicants version={version} officeId={officeId} offices={bootstrap.offices||[]} officesConfigured={bootstrap.offices_configured} onSelect={setSelected} accounts={bootstrap.whatsapp_accounts||[]} fixedRecruitmentStage="hired" title="التعيينات" subtitle="كل المرشحين اللي وصلوا لمرحلة التعيين، مع المكتب وبيانات التواصل." action={action}/>}
- {activeTab==='questions'&&can('questions')&&<Questions {...shared}/>}
- {activeTab==='areas'&&can('areas')&&<Areas {...shared}/>}
+ {activeTab==='profile'&&<ProfilePage data={bootstrap} refresh={refresh} action={action}/>}
+ {activeTab==='questions'&&can('questions')&&(scopedReady?<Questions {...shared} officeId={bootstrap.config_office_id||officeId}/>:<OfficeScopeRequired offices={bootstrap.offices||[]} onOffice={setOfficeId} title="أسئلة البوت"/>)}
+ {activeTab==='areas'&&can('areas')&&(scopedReady?<Areas {...shared} officeId={bootstrap.config_office_id||officeId}/>:<OfficeScopeRequired offices={bootstrap.offices||[]} onOffice={setOfficeId} title="مناطق العمل"/>)}
  {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action} role={role} offices={bootstrap.offices||[]} officesConfigured={bootstrap.offices_configured}/>} 
- {activeTab==='campaigns'&&can('campaigns')&&<Campaigns action={action}/>}
+ {activeTab==='campaigns'&&can('campaigns')&&(scopedReady?<Campaigns action={action} officeId={bootstrap.config_office_id||officeId}/>:<OfficeScopeRequired offices={bootstrap.offices||[]} onOffice={setOfficeId} title="الحملات الإعلانية"/>)} 
  {activeTab==='reports'&&can('reports')&&<Reports version={version} officeId={officeId}/>} 
- {activeTab==='intelligence'&&role==='admin'&&<BotIntelligence action={action}/>}\n {activeTab==='staff'&&role==='admin'&&<StaffPage action={action}/>} 
- {activeTab==='settings'&&can('settings')&&<SettingsPage {...shared}/>}
+ {activeTab==='intelligence'&&role==='admin'&&<BotIntelligence action={action}/>}
+ {activeTab==='staff'&&['admin','office_admin'].includes(role)&&<StaffPage action={action} currentRole={role} currentOfficeId={bootstrap.office_id||officeId}/>} 
+ {activeTab==='settings'&&can('settings')&&(scopedReady?<SettingsPage {...shared} officeId={bootstrap.config_office_id||officeId} role={role}/>:<OfficeScopeRequired offices={bootstrap.offices||[]} onOffice={setOfficeId} title="إعدادات المكتب"/>)}
  {activeTab==='support'&&<SupportPage/>}
  </>}</div></main>{toast&&<div role="status" className={'toast '+(toast.startsWith('تعذّر')?'error':'')}><CheckCircle2 size={18}/>{toast}</div>}{selected&&<Applicant id={selected} role={role} recruitmentEnabled={Boolean(bootstrap?.offices_configured)} onClose={()=>setSelected(null)} onChanged={()=>setVersion(v=>v+1)} action={action}/>} </div>;
 }

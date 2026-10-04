@@ -41,10 +41,12 @@ create index if not exists masar_whatsapp_accounts_office
 
 alter table public.masar_applicants
  add column if not exists office_id uuid references public.masar_offices(id) on delete restrict;
+-- Add nullable first so existing rows can be backfilled from the old workflow without
+-- overwriting recruiter-selected stages when this migration is rerun.
 alter table public.masar_applicants
- add column if not exists recruitment_stage text not null default 'new';
+ add column if not exists recruitment_stage text;
 
-do $$ begin
+do $ begin
  if not exists(
   select 1 from pg_constraint
   where conname='masar_applicants_recruitment_stage_check'
@@ -72,6 +74,8 @@ end
 where recruitment_stage is null
    or recruitment_stage not in ('new','review','interview','accepted','hired','rejected');
 
+alter table public.masar_applicants alter column recruitment_stage set default 'new';
+alter table public.masar_applicants alter column recruitment_stage set not null;
 alter table public.masar_applicants alter column office_id set not null;
 create index if not exists masar_applicants_office_time
  on public.masar_applicants(office_id,created_at desc);

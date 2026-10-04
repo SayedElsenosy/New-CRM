@@ -114,7 +114,8 @@ test('compound answer is saved once, learned side info is answered, and the same
  assert.equal(r.knowledge_id,'k-license');
  assert.match(r.reply,/رخصة الموتوسيكل/);
  assert.doesNotMatch(r.reply,/معاك موتوسيكل/);
- assert.match(r.reply,/تم الاستلام/);
+ assert.doesNotMatch(r.reply,/تم الاستلام/);
+ assert.equal(r.followup_reply,'تم الاستلام');
 });
 
 test('learned entry for the same structured question does not create a second answer',async()=>{
@@ -133,7 +134,8 @@ test('approved knowledge answers side questions then resumes the pending applica
  const a={...applicant,awaiting_id:'name'};
  const r=await planTurn({applicant:a,message:{body:'التأمين الطبي بيبدأ امتى؟'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},interpret,knowledge:kb});
  assert.equal(r.knowledge_id,'k1');assert.equal(r.patch.awaiting_id,'name');assert.equal(r.patch.bot_enabled,undefined);
- assert.match(r.reply,/التأمين الطبي يبدأ/);assert.match(r.reply,/اسمك بالكامل/);
+ assert.match(r.reply,/التأمين الطبي يبدأ/);assert.doesNotMatch(r.reply,/اسمك بالكامل/);
+ assert.equal(r.followup_reply,'اسمك بالكامل؟');
 });
 
 test('unknown side question hands off safely instead of inventing an answer',async()=>{

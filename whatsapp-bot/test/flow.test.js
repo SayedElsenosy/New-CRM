@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry} from '../src/domain.js';
+import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
 import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
@@ -158,9 +158,9 @@ test('generic available-areas question is answered directly instead of handed of
   settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},
   interpret,knowledge:[]
  });
- assert.match(r.reply,/المناطق المتاحة حاليًا للشغل/);
- assert.match(r.reply,/أكتوبر/);
- assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
+ assert.doesNotMatch(r.reply,/• أكتوبر/);
+ assert.doesNotMatch(r.reply,/• الشيخ زايد/);
  assert.match(r.reply,/اسمك بالكامل/);
  assert.equal(r.handoff,undefined);
 });
@@ -173,7 +173,7 @@ test('short "المناطق" message after completion returns area list, not com
   bike:{value:true,display:'نعم',kind:'yes_no'}
  }};
  const r=await planTurn({applicant:completeApplicant,message:{body:'المناطق'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
- assert.match(r.reply,/المناطق المتاحة حاليًا للشغل/);
+ assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
  assert.doesNotMatch(r.reply,/تم الاستلام/);
 });
 
@@ -186,4 +186,26 @@ test('unrecognized message after completion does not repeat the completion recei
  const r=await run(completeApplicant,'تمام يا باشا');
  assert.match(r.reply,/بياناتك متسجلة عندنا بالفعل/);
  assert.doesNotMatch(r.reply,/تم الاستلام/);
+});
+
+
+test('area question text never lists area names because choices are buttons only',()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const text=questionPrompt(questions[1],liveAreas);
+ assert.match(text,/اختار المنطقة من الأزرار/);
+ assert.doesNotMatch(text,/• أكتوبر/);
+ assert.doesNotMatch(text,/• الشيخ زايد/);
+});
+
+test('completed applicant can browse area details from area buttons without changing application data',async()=>{
+ const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
+ const completeApplicant={...applicant,stage:'complete',awaiting_id:null,answers:{
+  name:{value:'سيد محمد',display:'سيد محمد',kind:'name'},
+  area:{value:'oct',display:'أكتوبر',kind:'area'},
+  bike:{value:true,display:'نعم',kind:'yes_no'}
+ }};
+ const r=await planTurn({applicant:completeApplicant,message:{body:'area_preview:zayed'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
+ assert.match(r.reply,/تفاصيل الشيخ زايد/);
+ assert.match(r.reply,/اختار منطقة تانية من الأزرار/);
+ assert.equal(r.patch.answers,undefined);
 });

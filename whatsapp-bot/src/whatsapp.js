@@ -107,7 +107,7 @@ export async function normalizedRecord(sock,msg,{upsertType=null}={}){
  const jid=String(msg?.key?.remoteJid||'');
  if(!jid||jid.endsWith('@g.us')||jid==='status@broadcast'||!msg?.key?.id||!msg.message)return null;
  const fromMe=Boolean(msg?.key?.fromMe);
- if(fromMe&&upsertType&&upsertType!=='notify')return null;
+ if(upsertType&&upsertType!=='notify')return null;
  let media=null,media_error=null;
  const meta=mediaMeta(msg.message);
  if(meta){
@@ -128,7 +128,8 @@ export async function normalizedRecord(sock,msg,{upsertType=null}={}){
   direction:fromMe?'out':'in',from_me:fromMe,source:fromMe?'linked_whatsapp_device':'applicant',
   body:extractMessageText(msg.message).slice(0,10000),media,media_error,
   referral:fromMe?null:extractAdReferral(msg.message),
-  created_at:new Date((Number.isFinite(ts)?ts:Math.floor(Date.now()/1000))*1000).toISOString()
+  created_at:new Date((Number.isFinite(ts)?ts:Math.floor(Date.now()/1000))*1000).toISOString(),
+  received_at:new Date().toISOString(),upsert_type:upsertType||null
  };
 }
 export class WhatsAppConnection{

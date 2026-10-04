@@ -95,3 +95,22 @@ test('WhatsApp voice-note MIME types are normalized for storage and transcriptio
  assert.equal(isAudioType('audio/ogg; codecs=opus'),true);
  assert.equal(isAudioType('image/jpeg'),false);
 });
+
+
+test('WhatsApp history append messages are ignored so deleted applicants are not recreated from old chat history',async()=>{
+ const oldInbound=await normalizedRecord({},{
+  key:{remoteJid:'201099999999@s.whatsapp.net',fromMe:false,id:'old-history-1'},
+  message:{conversation:'رسالة قديمة'},
+  messageTimestamp:1750000000
+ },{upsertType:'append'});
+ assert.equal(oldInbound,null);
+
+ const liveInbound=await normalizedRecord({},{
+  key:{remoteJid:'201099999999@s.whatsapp.net',fromMe:false,id:'live-1'},
+  message:{conversation:'ابدأ من جديد'},
+  messageTimestamp:1760000000
+ },{upsertType:'notify'});
+ assert.equal(liveInbound.direction,'in');
+ assert.equal(liveInbound.upsert_type,'notify');
+ assert.ok(Date.parse(liveInbound.received_at));
+});

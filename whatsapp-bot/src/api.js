@@ -441,7 +441,18 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(!uuid(req.params.id))throw bad('معرف المتقدم غير صحيح');
   let mediaPaths=[];
   await serial(async()=>{
-   const a=must(await db.from('masar_applicants').select('id').eq('id',req.params.id).single());
+   const select=whatsapp.configured?'id,contact_id,phone,whatsapp_account_id':'id,contact_id,phone';
+   const a=must(await db.from('masar_applicants').select(select).eq('id',req.params.id).single());
+   if(whatsapp.configured){
+    try{
+     must(await db.from('masar_applicant_resets').upsert({
+      whatsapp_account_id:a.whatsapp_account_id,contact_id:a.contact_id,phone:a.phone||null,reset_at:new Date().toISOString()
+     },{onConflict:'whatsapp_account_id,contact_id'}));
+    }catch(e){
+     if(schemaMissing(e))throw bad('فعّل إعادة ضبط المتقدمين أولاً بتشغيل ملف supabase/008_clean_applicant_reset.sql في Supabase SQL Editor.',503);
+     throw e;
+    }
+   }
    const messages=must(await db.from('masar_messages').select('media_path').eq('applicant_id',a.id));
    mediaPaths=[...new Set(messages.map(x=>x.media_path).filter(Boolean))];
    try{must(await db.from('masar_learning_suggestions').delete().eq('applicant_id',a.id));}catch(e){if(!schemaMissing(e))throw e;}
@@ -456,7 +467,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    try{const result=await db.storage.from('masar-documents').remove(mediaPaths.slice(i,i+100));if(result.error)throw result.error;}
    catch(e){media_cleanup_ok=false;console.warn('Applicant media cleanup failed:',e.code||e.name);}
   }
-  res.json({ok:true,media_cleanup_ok});
+  res.json({ok:true,media_cleanup_ok,clean_reset:true});
  });
  permissionRoute('reports','get','/reports',async(req,res)=>{
   const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);

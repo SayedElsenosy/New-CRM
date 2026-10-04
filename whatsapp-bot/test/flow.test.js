@@ -209,3 +209,14 @@ test('completed applicant can browse area details from area buttons without chan
  assert.match(r.reply,/اختار منطقة تانية من الأزرار/);
  assert.equal(r.patch.answers,undefined);
 });
+
+
+test('area button pagination changes page without listing names in message text',async()=>{
+ const manyAreas=Array.from({length:15},(_,i)=>({id:'a'+i,name:'منطقة '+(i+1),active:true,details:'تفاصيل '+(i+1)}));
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'area_page:1'},questions,areas:manyAreas,settings,interpret,knowledge:[]});
+ assert.equal(r.patch.answers.__area_page.value,1);
+ assert.match(r.reply,/صفحة 2 من 3/);
+ assert.match(r.reply,/اختار المنطقة من الأزرار/);
+ assert.doesNotMatch(r.reply,/منطقة 8/);
+});

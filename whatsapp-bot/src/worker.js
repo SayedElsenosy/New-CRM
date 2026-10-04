@@ -238,6 +238,12 @@ export class Worker {
     const snapshot=this.connections?this.connections.snapshot(accountId):this.connection?.snapshot();
     if(snapshot?.status!=='connected')continue;
     const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled,answers').eq('id',m.applicant_id).single());
+    let outgoingRunMode=sendConfig?.settings?.ai_run_mode||'live';
+    if(outgoingRunMode==='training'&&sendConfig?.settings?.ai_training_until&&Date.parse(sendConfig.settings.ai_training_until)<=Date.now())outgoingRunMode='paused';
+    if(m.sender==='bot'&&(!a.bot_enabled||outgoingRunMode!=='live')){
+     must(await this.db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي لأن البوت متوقف.'}).eq('id',m.id));
+     continue;
+    }
     let buttons=[];
     if(m.sender==='bot'&&a.bot_enabled&&sendConfig){
      const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);

@@ -251,7 +251,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  adminRoute('post','/whatsapp/accounts',async(req,res)=>{await serial(async()=>{
   if(!whatsapp.configured)throw bad('فعّل تعدد أرقام واتساب أولاً بتشغيل ملف supabase/003_multi_whatsapp.sql في Supabase SQL Editor.',503);
   const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
-  const officeId=req.body.office_id?String(req.body.office_id):null;if(officeId)await ensureOfficeAccess(req,officeId);
+  const offices=await officeState(req),officeId=req.body.office_id?String(req.body.office_id):null;
+  if(offices.configured&&!officeId)throw bad('اختر مكتب التوظيف الخاص برقم واتساب');
+  if(officeId)await ensureOfficeAccess(req,officeId);
   const insertRow={name,legacy_session:false,active:true};if(officeId)insertRow.office_id=officeId;
   const row=must(await db.from('masar_whatsapp_accounts').insert(insertRow).select().single());
   await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));

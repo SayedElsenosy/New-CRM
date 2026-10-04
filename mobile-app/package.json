@@ -19,5 +19,8 @@
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-url-polyfill": "^2.0.0"
+  },
+  "devDependencies": {
+    "babel-preset-expo": "^57.0.0"
   }
 }

@@ -230,6 +230,16 @@ export class Worker {
      const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),knowledge=await loadKnowledge(this.db);
      const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge});
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
+     if(turn.followup_reply){
+      try{
+       const row={applicant_id:a.id,direction:'out',sender:'bot',body:String(turn.followup_reply),status:'queued',reply_to:m.id};
+       if(this.multi())row.whatsapp_account_id=a.whatsapp_account_id;
+       must(await this.db.from('masar_messages').insert(row));
+      }catch(e){
+       this.lastError='تم الرد على المتقدم لكن تعذر إرسال سؤال المتابعة تلقائياً.';
+       console.error('Turn follow-up queue failed:',e.code||e.name);
+      }
+     }
      if(turn.knowledge_id){
       try{
        const row=must(await this.db.from('masar_knowledge').select('usage_count').eq('id',turn.knowledge_id).single());
@@ -282,7 +292,7 @@ export class Worker {
      const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);
      const body=String(m.body||'');
      const browseAreas=body.includes('اختار المنطقة من الأزرار')||body.includes('اختار منطقة تانية من الأزرار')||body.includes('المناطق المتاحة موجودة في الأزرار');
-     if(q?.kind==='area'||browseAreas){
+     if(browseAreas){
       const activeAreas=sendConfig.areas.filter(area=>area.active);
       const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
       const rawPage=Number(a.answers?.__area_page?.value||0);

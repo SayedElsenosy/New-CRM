@@ -5,11 +5,12 @@ import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.js';
+import {followupDue,buildFollowupMessage} from './followup.js';
 
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
   Object.assign(this,{db,connection,connections,serial,speech});
-  this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;
+  this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;this.lastFollowupSweep=0;
  }
  multi(){return Boolean(this.connections?.configured);}
  async init(){
@@ -152,6 +153,39 @@ export class Worker {
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'voice_message',detail:{message_id:saved.id,direction:'in',transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
   }
  }
+ async queueFollowups(){
+  const now=Date.now();
+  if(now-this.lastFollowupSweep<60000)return;
+  this.lastFollowupSweep=now;
+  let c;
+  try{c=await config(this.db);}catch(e){throw e;}
+  let runMode=c.settings?.ai_run_mode||'live';
+  if(runMode==='training'&&c.settings?.ai_training_until&&Date.parse(c.settings.ai_training_until)<=now)runMode='paused';
+  if(runMode!=='live'||c.settings?.followup_enabled!==true)return;
+  const hours=Math.max(1,Math.min(72,Number(c.settings.followup_hours)||8));
+  let candidates;
+  try{
+   candidates=must(await this.db.from('masar_applicants').select('*').in('stage',['new','incomplete']).eq('bot_enabled',true).order('updated_at',{ascending:true}).limit(1000));
+  }catch(e){
+   if(['42703','PGRST204'].includes(e?.code))return;
+   throw e;
+  }
+  if(!candidates.length)return;
+  const open=must(await this.db.from('masar_messages').select('applicant_id').in('status',['pending','queued','sending','uncertain','failed']).limit(5000));
+  const blocked=new Set(open.map(x=>x.applicant_id));
+  for(const a of candidates){
+   if(blocked.has(a.id)||!followupDue(a,{now,hours}))continue;
+   const body=buildFollowupMessage(a,c.questions,c.areas);
+   if(!body)continue;
+   const row={applicant_id:a.id,direction:'out',sender:'bot',body,status:'queued'};
+   if(this.multi())row.whatsapp_account_id=a.whatsapp_account_id;
+   must(await this.db.from('masar_messages').insert(row));
+   const at=new Date(now).toISOString();
+   must(await this.db.from('masar_applicants').update({followup_last_sent_at:at,followup_count:Number(a.followup_count||0)+1,updated_at:at}).eq('id',a.id));
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'followup',detail:{hours,count:Number(a.followup_count||0)+1,awaiting_id:a.awaiting_id||null}}));
+   blocked.add(a.id);
+  }
+ }
  async tick(){
   if(this.ticking)return;this.ticking=true;
   try{await this.serial(async()=>{
@@ -195,6 +229,8 @@ export class Worker {
     }
    }
 
+   await this.queueFollowups();
+
    const outgoing=must(await this.db.from('masar_messages').select('*').eq('status','queued').order('sequence').limit(30));
    const sendConfig=outgoing.length?await config(this.db):null;
    for(const m of outgoing){
@@ -216,7 +252,9 @@ export class Worker {
     must(await this.db.from('masar_messages').update({status:'sending'}).eq('id',m.id));
     try{
      const sent=this.connections?await this.connections.send(accountId,a.contact_id,m.body,{buttons}):await this.connection.send(a.contact_id,m.body,{buttons});
+     const sentAt=new Date().toISOString();
      must(await this.db.from('masar_messages').update({status:'sent',wa_id:sent?.key?.id||sent?.id?._serialized||null,error:null}).eq('id',m.id));
+     must(await this.db.from('masar_applicants').update({last_message_at:sentAt,updated_at:sentAt}).eq('id',m.applicant_id));
     }catch{
      must(await this.db.from('masar_messages').update({status:'uncertain',error:'لم نتأكد من وصول الرد. راجع واتساب قبل إعادة إرساله.'}).eq('id',m.id));
     }

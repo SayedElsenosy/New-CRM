@@ -25,7 +25,7 @@ function rejectedAreaReply(area,current,areas){
 }
 
 export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[]}) {
- if(!a.bot_enabled||['lecture','working'].includes(a.stage))return {patch:{},reply:''};
+ if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));

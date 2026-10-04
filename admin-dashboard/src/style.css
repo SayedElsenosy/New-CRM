@@ -266,3 +266,13 @@ tbody tr:hover{background:#fbfdf5}
 
 .intelligence-loading>svg{animation:intelligence-spin 1.1s linear infinite}
 @keyframes intelligence-spin{to{transform:rotate(360deg)}}
+
+
+/* Applicant bot controls and test reset */
+.bot-control-row>div{display:flex;flex-direction:column;gap:5px}
+.bot-control-row small{color:var(--muted);max-width:640px;line-height:1.7}
+.danger-zone{margin-top:18px;padding:16px;border:1px solid #efc5c1;border-radius:14px;background:#fff7f6;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.danger-zone>div{display:flex;flex-direction:column;gap:5px}
+.danger-zone strong{color:#a63d34}
+.danger-zone small{color:#775c59;line-height:1.7}
+@media(max-width:700px){.danger-zone{align-items:stretch;flex-direction:column}.danger-zone button{width:100%}}

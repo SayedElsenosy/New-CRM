@@ -43,14 +43,24 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(req.headers.origin&&!origins.includes(req.headers.origin))throw bad('هذا العنوان غير مسموح',403);
   const token=req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];if(!token)throw bad('سجل الدخول أولاً',401);
   const {data,error}=await db.auth.getUser(token);if(error||!data.user)throw bad('انتهت الجلسة؛ سجل الدخول مجدداً',401);
-  const staff=must(await db.from('masar_staff').select('user_id').eq('user_id',data.user.id).maybeSingle());if(!staff)throw bad('الحساب غير مصرح له بإدارة مسار',403);
-  req.user=data.user;req.role=data.user.app_metadata?.masar_role==='recruiter'?'recruiter':'admin';req.permissions=req.role==='admin'?[...PERMISSIONS]:cleanPermissions(data.user.app_metadata?.masar_permissions);next();
+  let staffResult=await db.from('masar_staff').select('user_id,office_id,phone,job_title,bio,avatar_path').eq('user_id',data.user.id).maybeSingle();
+  if(staffResult.error&&['42703','PGRST204'].includes(staffResult.error.code))staffResult=await db.from('masar_staff').select('user_id').eq('user_id',data.user.id).maybeSingle();
+  const staff=must(staffResult);if(!staff)throw bad('الحساب غير مصرح له بإدارة مسار',403);
+  const rawRole=data.user.app_metadata?.masar_role;
+  req.user=data.user;req.staff=staff;req.role=rawRole==='recruiter'?'recruiter':rawRole==='office_admin'?'office_admin':'admin';
+  req.officeId=staff.office_id||data.user.app_metadata?.masar_office_id||null;
+  req.permissions=['admin','office_admin'].includes(req.role)?[...PERMISSIONS]:cleanPermissions(data.user.app_metadata?.masar_permissions);next();
  }catch(e){next(e);}});
  const route=(method,url,fn)=>app[method]('/api'+url,async(req,res,next)=>{try{await fn(req,res);}catch(e){next(e);}});
- const adminRoute=(method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin')throw bad('هذه الصفحة متاحة لمسؤول النظام فقط',403);await fn(req,res);});
- const permissionRoute=(permission,method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin'&&!req.permissions.includes(permission))throw bad('ليس لديك صلاحية لهذه الصفحة',403);await fn(req,res);});
+ const adminRoute=(method,url,fn)=>route(method,url,async(req,res)=>{if(req.role!=='admin')throw bad('هذه الصفحة متاحة لمسؤول النظام العام فقط',403);await fn(req,res);});
+ const managerRoute=(method,url,fn)=>route(method,url,async(req,res)=>{if(!['admin','office_admin'].includes(req.role))throw bad('هذه العملية متاحة لمدير المكتب أو مسؤول النظام فقط',403);await fn(req,res);});
+ const permissionRoute=(permission,method,url,fn)=>route(method,url,async(req,res)=>{if(!['admin','office_admin'].includes(req.role)&&!req.permissions.includes(permission))throw bad('ليس لديك صلاحية لهذه الصفحة',403);await fn(req,res);});
  async function accessibleAccountIds(req){
   if(!whatsapp.configured||req.role==='admin')return null;
+  if(req.role==='office_admin'&&req.officeId){
+   const rows=must(await db.from('masar_whatsapp_accounts').select('id').eq('office_id',req.officeId));
+   return rows.map(x=>x.id);
+  }
   const rows=must(await db.from('masar_staff_whatsapp_access').select('whatsapp_account_id').eq('user_id',req.user.id));
   return rows.map(x=>x.whatsapp_account_id);
  }
@@ -98,15 +108,17 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const dbAccounts=must(await db.from('masar_whatsapp_accounts').select('id,name,phone,active,office_id,created_at').order('created_at',{ascending:true}));
    const snapshots=new Map((await whatsapp.snapshots()).map(x=>[x.id,x]));
    const allowed=await accessibleAccountIds(req);
-   const visibleAccounts=allowed===null?dbAccounts:dbAccounts.filter(x=>allowed.includes(x.id));
+   let visibleAccounts=allowed===null?dbAccounts:dbAccounts.filter(x=>allowed.includes(x.id));
+   if(req.officeId&&req.role!=='admin')visibleAccounts=visibleAccounts.filter(x=>x.office_id===req.officeId);
    const visibleOfficeIds=new Set(visibleAccounts.map(x=>x.office_id).filter(Boolean));
-   if(allowed!==null)offices=offices.filter(x=>visibleOfficeIds.has(x.id));
+   if(req.officeId&&req.role!=='admin'){offices=offices.filter(x=>x.id===req.officeId);visibleOfficeIds.add(req.officeId);}
+   else if(allowed!==null)offices=offices.filter(x=>visibleOfficeIds.has(x.id));
    const applicantRows=must(await db.from('masar_applicants').select('office_id,recruitment_stage'));
-   const visibleApplicants=allowed===null?applicantRows:applicantRows.filter(x=>visibleOfficeIds.has(x.office_id));
+   const visibleApplicants=req.officeId&&req.role!=='admin'?applicantRows.filter(x=>x.office_id===req.officeId):(allowed===null?applicantRows:applicantRows.filter(x=>visibleOfficeIds.has(x.office_id)));
    let interviews=[];
    try{interviews=must(await db.from('masar_interviews').select('office_id,status'));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
    let access=[];
-   if(req.role==='admin'){
+   if(['admin','office_admin'].includes(req.role)){
     try{access=must(await db.from('masar_staff_whatsapp_access').select('user_id,whatsapp_account_id'));}catch(e){if(!schemaMissing(e))throw e;}
    }
    const accountOffice=new Map(dbAccounts.map(x=>[x.id,x.office_id]));
@@ -115,7 +127,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     const accounts=publicAccounts.filter(x=>x.office_id===o.id);
     const applicantSubset=visibleApplicants.filter(x=>x.office_id===o.id);
     const staffIds=new Set(access.filter(x=>accountOffice.get(x.whatsapp_account_id)===o.id).map(x=>x.user_id));
-    return {...o,whatsapp_accounts:accounts,applicant_count:applicantSubset.length,hired_count:applicantSubset.filter(x=>recruitmentStageOf(x)==='hired').length,interview_count:interviews.filter(x=>x.office_id===o.id&&x.status==='scheduled').length,staff_count:req.role==='admin'?staffIds.size:null};
+    return {...o,whatsapp_accounts:accounts,applicant_count:applicantSubset.length,hired_count:applicantSubset.filter(x=>recruitmentStageOf(x)==='hired').length,interview_count:interviews.filter(x=>x.office_id===o.id&&x.status==='scheduled').length,staff_count:['admin','office_admin'].includes(req.role)?staffIds.size:null};
    })};
   }catch(e){
    if(schemaMissing(e)||e.code==='PGRST204'||e.code==='42703')return {configured:false,whatsapp_accounts:[],items:[]};

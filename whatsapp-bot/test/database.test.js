@@ -113,8 +113,10 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  // Office-manager isolation: staff profiles, office-specific questions/areas/settings,
  // and safe cloning for existing offices.
  await db.exec(`create table if not exists masar_campaigns(id uuid primary key default gen_random_uuid(),name text not null,meta_campaign_id text,active boolean not null default true,created_at timestamptz not null default now(),updated_at timestamptz not null default now());`);
- // Put the second WhatsApp account back in its own office so the upgrade has two active scopes.
- await db.query("update masar_whatsapp_accounts set office_id=$1 where id=$1",[second.id]);
+ // Put the second WhatsApp account in the non-primary office so cloning/remapping is deterministic.
+ const {rows:[primaryOfficeForConfig]}=await db.query("select id from masar_offices order by created_at,id limit 1");
+ const {rows:[targetOfficeForConfig]}=await db.query("select id from masar_offices where id<>$1 order by created_at,id limit 1",[primaryOfficeForConfig.id]);
+ await db.query("update masar_whatsapp_accounts set office_id=$1 where id=$2",[targetOfficeForConfig.id,second.id]);
  await db.query("insert into masar_staff(user_id) values($1) on conflict(user_id) do nothing",[reader.id]);
  await db.query("insert into masar_staff_whatsapp_access(user_id,whatsapp_account_id) values($1,$2) on conflict do nothing",[reader.id,second.id]);
  const {rows:[areaBefore]}=await db.query("insert into masar_areas(name,details,position) values('Test Area','Office scoped area',1) returning id");
@@ -124,7 +126,7 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const officeAdminSql=(await fs.readFile(new URL('../../supabase/012_office_admin_scoped_config.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
  await db.exec(officeAdminSql);await db.exec(officeAdminSql);
  const {rows:[staffOffice]}=await db.query("select office_id,job_title,bio,avatar_path from masar_staff where user_id=$1",[reader.id]);
- assert.equal(String(staffOffice.office_id),String(second.id));assert.equal(staffOffice.job_title,'');assert.equal(staffOffice.bio,'');assert.equal(staffOffice.avatar_path,null);
+ assert.equal(String(staffOffice.office_id),String(targetOfficeForConfig.id));assert.equal(staffOffice.job_title,'');assert.equal(staffOffice.bio,'');assert.equal(staffOffice.avatar_path,null);
  const {rows:officeSettings}=await db.query("select office_id,welcome,followup_hours from masar_office_settings order by office_id");
  assert.equal(officeSettings.length,2);assert.ok(officeSettings.every(x=>x.followup_hours===8));
  const {rows:qByOffice}=await db.query("select office_id,count(*)::int as n from masar_questions group by office_id order by office_id");
@@ -135,7 +137,7 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.notEqual(String(remapped.awaiting_id),String(areaQuestionBefore.id));
  const remappedAnswer=remapped.answers[String(remapped.awaiting_id)];
  assert.ok(remappedAnswer);assert.equal(remappedAnswer.kind,'area');assert.notEqual(String(remappedAnswer.value),String(areaBefore.id));
- const {rows:[targetArea]}=await db.query("select id from masar_areas where office_id=$1 and name='Test Area'",[second.id]);
+ const {rows:[targetArea]}=await db.query("select id from masar_areas where office_id=$1 and name='Test Area'",[targetOfficeForConfig.id]);
  assert.equal(String(remappedAnswer.value),String(targetArea.id));
  assert.equal((await db.query("select has_table_privilege('anon','masar_office_settings','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}

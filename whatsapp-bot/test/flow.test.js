@@ -140,7 +140,7 @@ test('explicitly re-enabled bot can reply even after lecture or working stage',a
   bike:{value:true,display:'نعم',kind:'yes_no'}
  }};
  const r=await run(a,'السلام عليكم');
- assert.match(r.reply,/تم الاستلام/);
+ assert.match(r.reply,/بياناتك متسجلة عندنا بالفعل/);
 });
 
 test('disabled applicant bot stays silent until explicitly re-enabled',async()=>{

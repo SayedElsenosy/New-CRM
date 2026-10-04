@@ -222,17 +222,25 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(!/^[A-Z0-9_-]{2,30}$/.test(code))throw bad('كود المكتب يكون حروف إنجليزية أو أرقام فقط');
   if(address.length>300||manager.length>120)throw bad('راجع بيانات المكتب');
   const row=must(await db.from('masar_offices').insert({name,code,address,phone,manager_name:manager,active:req.body.active!==false}).select().single());
+  try{
+   const source=must(await db.from('masar_offices').select('id').neq('id',row.id).order('created_at',{ascending:true}).limit(1).maybeSingle());
+   if(source?.id)must(await db.rpc('masar_clone_office_config',{p_source:source.id,p_target:row.id,p_remap_existing:false}));
+   else{
+    const s=must(await db.from('masar_settings').select('ai_enabled,welcome,completion,followup_enabled,followup_hours').eq('id',true).single());
+    must(await db.from('masar_office_settings').upsert({office_id:row.id,ai_enabled:s.ai_enabled,welcome:s.welcome,completion:s.completion,followup_enabled:s.followup_enabled??true,followup_hours:s.followup_hours||8}));
+   }
+  }catch(e){if(!schemaMissing(e)&&!['42703','PGRST204','PGRST202'].includes(e.code||''))throw e;}
   await saveOfficeAccounts(row.id,req.body.whatsapp_account_ids||[]);
   res.status(201).json(row);
  });});
- adminRoute('put','/offices/:id',async(req,res)=>{await serial(async()=>{
+ managerRoute('put','/offices/:id',async(req,res)=>{await serial(async()=>{
   await ensureOfficeAccess(req,req.params.id);
   const name=String(req.body.name||'').trim(),code=String(req.body.code||'').trim().toUpperCase(),address=String(req.body.address||'').trim(),phone=String(req.body.phone||'').trim()||null,manager=String(req.body.manager_name||'').trim();
   if(name.length<2||name.length>120)throw bad('اكتب اسم واضح للمكتب');
   if(!/^[A-Z0-9_-]{2,30}$/.test(code))throw bad('كود المكتب يكون حروف إنجليزية أو أرقام فقط');
   if(address.length>300||manager.length>120)throw bad('راجع بيانات المكتب');
   const row=must(await db.from('masar_offices').update({name,code,address,phone,manager_name:manager,active:req.body.active!==false,updated_at:new Date().toISOString()}).eq('id',req.params.id).select().single());
-  await saveOfficeAccounts(row.id,req.body.whatsapp_account_ids);
+  if(req.role==='admin')await saveOfficeAccounts(row.id,req.body.whatsapp_account_ids);
   res.json(row);
  });});
 
@@ -274,20 +282,22 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(id)await ensureAccountAccess(req,id);res.json(await whatsapp.disconnect(id));
  });
  permissionRoute('whatsapp','get','/whatsapp/accounts',async(req,res)=>res.json({configured:whatsapp.configured,items:await accountRows(req),worker_error:worker.lastError}));
- adminRoute('post','/whatsapp/accounts',async(req,res)=>{await serial(async()=>{
+ managerRoute('post','/whatsapp/accounts',async(req,res)=>{await serial(async()=>{
   if(!whatsapp.configured)throw bad('فعّل تعدد أرقام واتساب أولاً بتشغيل ملف supabase/003_multi_whatsapp.sql في Supabase SQL Editor.',503);
   const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
-  const offices=await officeState(req),officeId=req.body.office_id?String(req.body.office_id):null;
+  const offices=await officeState(req),officeId=req.role==='admin'?(req.body.office_id?String(req.body.office_id):null):req.officeId;
   if(offices.configured&&!officeId)throw bad('اختر مكتب التوظيف الخاص برقم واتساب');
   if(officeId)await ensureOfficeAccess(req,officeId);
   const insertRow={name,legacy_session:false,active:true};if(officeId)insertRow.office_id=officeId;
   const row=must(await db.from('masar_whatsapp_accounts').insert(insertRow).select().single());
   await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));
  });});
- adminRoute('put','/whatsapp/accounts/:id',async(req,res)=>{await serial(async()=>{
+ managerRoute('put','/whatsapp/accounts/:id',async(req,res)=>{await serial(async()=>{
   if(!whatsapp.configured||!uuid(req.params.id))throw bad('معرف رقم واتساب غير صحيح');
+  await ensureAccountAccess(req,req.params.id);
   const name=String(req.body.name||'').trim();if(name.length<2||name.length>80)throw bad('اكتب اسم واضح لرقم واتساب');
-  const patch={name,updated_at:new Date().toISOString()};if(req.body.office_id){const officeId=String(req.body.office_id);await ensureOfficeAccess(req,officeId);patch.office_id=officeId;}
+  const patch={name,updated_at:new Date().toISOString()};
+  if(req.role==='admin'&&req.body.office_id){const officeId=String(req.body.office_id);await ensureOfficeAccess(req,officeId);patch.office_id=officeId;}
   const row=must(await db.from('masar_whatsapp_accounts').update(patch).eq('id',req.params.id).select().single());
   const item=whatsapp.item?.(req.params.id);if(item)item.account={...item.account,...row};
   res.json(whatsapp.snapshot(req.params.id)||row);

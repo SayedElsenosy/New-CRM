@@ -1,0 +1,23 @@
+{
+  "name": "speed-crm-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "check": "expo config --type public"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "expo": "^57.0.0",
+    "expo-constants": "~57.0.20",
+    "expo-device": "~57.0.2",
+    "expo-notifications": "~57.0.21",
+    "react": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-url-polyfill": "^2.0.0"
+  }
+}

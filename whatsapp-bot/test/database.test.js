@@ -82,5 +82,13 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  await db.query("update masar_alerts set status='resolved',resolved_at=now(),resolution='test' where id=$1",[alert.id]);
  assert.equal((await db.query("select status from masar_alerts where id=$1",[alert.id])).rows[0].status,'resolved');
  assert.equal((await db.query("select has_table_privilege('anon','masar_alerts','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Mobile push tokens are server-only and tied to authorized auth users.
+ const pushSql=await fs.readFile(new URL('../../supabase/010_mobile_push.sql',import.meta.url),'utf8');
+ await db.exec(pushSql);await db.exec(pushSql);
+ await db.query("insert into masar_push_tokens(user_id,token,platform,device_name) values($1,'ExponentPushToken[test-token-123456]','android','Test phone')",[reader.id]);
+ const {rows:[push]}=await db.query("select platform,active from masar_push_tokens where user_id=$1",[reader.id]);
+ assert.equal(push.platform,'android');assert.equal(push.active,true);
+ assert.equal((await db.query("select has_table_privilege('anon','masar_push_tokens','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

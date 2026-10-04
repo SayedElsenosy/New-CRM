@@ -364,14 +364,42 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const account=whatsapp.configured?whatsapp.snapshot(a.whatsapp_account_id):null;
   res.json({applicant:{...a,stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
  });
- permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{await serial(async()=>{
-  const a=await applicantById(req,req.params.id),b=req.body,patch={updated_at:new Date().toISOString()};
-  if(b.notes!==undefined){if(typeof b.notes!=='string'||b.notes.length>4000)throw bad('الملاحظات لا تتجاوز 4000 حرف');patch.notes=b.notes;}
-  if(b.bot_enabled!==undefined){if(typeof b.bot_enabled!=='boolean')throw bad('قيمة غير صحيحة');patch.bot_enabled=b.bot_enabled;}
-  if(b.stage!==undefined){if(!['lecture','working','auto'].includes(b.stage))throw bad('حالة غير صحيحة');const cfg=await config(db);if(b.stage!=='auto'&&!completion(cfg.questions,a.answers,cfg.areas).complete)throw bad('أكمل البيانات المطلوبة قبل تأكيد الحضور أو بدء العمل');patch.stage=b.stage==='auto'?computedStage({...a,stage:'new'},cfg.questions,cfg.areas):b.stage;patch.lecture_at=b.stage==='auto'?null:(a.lecture_at||new Date().toISOString());patch.working_at=b.stage==='working'?new Date().toISOString():null;}
-  must(await db.from('masar_applicants').update(patch).eq('id',a.id));
-  must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined}}));res.json({ok:true});
- });});
+ permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{
+  let resumedMessageId=null;
+  await serial(async()=>{
+   const a=await applicantById(req,req.params.id),b=req.body,patch={updated_at:new Date().toISOString()};
+   if(b.notes!==undefined){if(typeof b.notes!=='string'||b.notes.length>4000)throw bad('الملاحظات لا تتجاوز 4000 حرف');patch.notes=b.notes;}
+   if(b.bot_enabled!==undefined){
+    if(typeof b.bot_enabled!=='boolean')throw bad('قيمة غير صحيحة');
+    patch.bot_enabled=b.bot_enabled;
+    if(b.bot_enabled){
+     let settings=null;try{settings=must(await db.from('masar_settings').select('*').eq('id',true).single());}catch(e){if(!schemaMissing(e))throw e;}
+     if(effectiveRunMode(settings)!=='live')throw bad('البوت العام متوقف حاليًا. شغّله أولًا من صفحة ذكاء البوت.',409);
+     const answers={...(a.answers||{})};delete answers.__ai_handoff;patch.answers=answers;
+     const lastOut=must(await db.from('masar_messages').select('sequence').eq('applicant_id',a.id).eq('direction','out').order('sequence',{ascending:false}).limit(1).maybeSingle());
+     let q=db.from('masar_messages').select('id,sequence,status,media_error').eq('applicant_id',a.id).eq('direction','in').eq('status','processed').order('sequence',{ascending:false}).limit(1);
+     if(lastOut?.sequence)q=q.gt('sequence',lastOut.sequence);
+     const missed=must(await q.maybeSingle());
+     if(missed&&!String(missed.media_error||'').includes('غير موثوق')){
+      must(await db.from('masar_messages').update({status:'pending',attempts:0,error:null}).eq('id',missed.id));
+      resumedMessageId=missed.id;
+     }
+    }
+   }
+   if(b.stage!==undefined){
+    if(!['lecture','working','auto'].includes(b.stage))throw bad('حالة غير صحيحة');
+    const cfg=await config(db);if(b.stage!=='auto'&&!completion(cfg.questions,a.answers,cfg.areas).complete)throw bad('أكمل البيانات المطلوبة قبل تأكيد الحضور أو بدء العمل');
+    patch.stage=b.stage==='auto'?computedStage({...a,stage:'new'},cfg.questions,cfg.areas):b.stage;
+    patch.lecture_at=b.stage==='auto'?null:(a.lecture_at||new Date().toISOString());
+    patch.working_at=b.stage==='working'?new Date().toISOString():null;
+    if(['lecture','working'].includes(b.stage)&&b.bot_enabled===undefined)patch.bot_enabled=false;
+   }
+   must(await db.from('masar_applicants').update(patch).eq('id',a.id));
+   must(await db.from('masar_events').insert({applicant_id:a.id,kind:'staff_update',staff_id:req.user.id,detail:{stage:patch.stage,bot_enabled:patch.bot_enabled,notes_changed:b.notes!==undefined,resumed_message_id:resumedMessageId}}));
+  });
+  if(resumedMessageId)worker.tick();
+  res.json({ok:true,resumed_message_id:resumedMessageId});
+ });
  permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{
   const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');
   await serial(async()=>{
@@ -397,6 +425,26 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(!['failed','uncertain'].includes(m.status))throw bad('هذه الرسالة لا تحتاج إعادة محاولة');if(m.status==='uncertain'&&req.body.confirm!==true)throw bad('راجع واتساب ثم أكد إعادة الإرسال');
   must(await db.from('masar_messages').update({status:m.direction==='in'?'pending':'queued',attempts:0,error:null}).eq('id',m.id));
  });res.json({ok:true});});
+ adminRoute('delete','/applicants/:id',async(req,res)=>{
+  if(!uuid(req.params.id))throw bad('معرف المتقدم غير صحيح');
+  let mediaPaths=[];
+  await serial(async()=>{
+   const a=must(await db.from('masar_applicants').select('id').eq('id',req.params.id).single());
+   const messages=must(await db.from('masar_messages').select('media_path').eq('applicant_id',a.id));
+   mediaPaths=[...new Set(messages.map(x=>x.media_path).filter(Boolean))];
+   try{must(await db.from('masar_learning_suggestions').delete().eq('applicant_id',a.id));}catch(e){if(!schemaMissing(e))throw e;}
+   must(await db.from('masar_events').delete().eq('applicant_id',a.id));
+   must(await db.from('masar_contacts').delete().eq('applicant_id',a.id));
+   must(await db.from('masar_messages').delete().eq('applicant_id',a.id));
+   must(await db.from('masar_applicants').delete().eq('id',a.id));
+  });
+  let media_cleanup_ok=true;
+  for(let i=0;i<mediaPaths.length;i+=100){
+   try{const result=await db.storage.from('masar-documents').remove(mediaPaths.slice(i,i+100));if(result.error)throw result.error;}
+   catch(e){media_cleanup_ok=false;console.warn('Applicant media cleanup failed:',e.code||e.name);}
+  }
+  res.json({ok:true,media_cleanup_ok});
+ });
  permissionRoute('reports','get','/reports',async(req,res)=>{
   const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);
   const base=summaryFor(rows),stages=base.stages;

@@ -62,5 +62,13 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(followup.followup_enabled,true);assert.equal(followup.followup_hours,8);
  const {rows:[followApplicant]}=await db.query("select followup_count,followup_last_sent_at from masar_applicants where id=$1",[samePersonOtherNumber.id]);
  assert.equal(followApplicant.followup_count,0);assert.equal(followApplicant.followup_last_sent_at,null);
+
+ // Clean-reset markers protect a deleted applicant from stale WhatsApp history.
+ const resetSql=await fs.readFile(new URL('../../supabase/008_clean_applicant_reset.sql',import.meta.url),'utf8');
+ await db.exec(resetSql);await db.exec(resetSql);
+ await db.query("insert into masar_applicant_resets(whatsapp_account_id,contact_id,phone) values($1,'201012345678@c.us','+201012345678') on conflict(whatsapp_account_id,contact_id) do update set reset_at=now()",[second.id]);
+ const {rows:[reset]}=await db.query("select phone,reset_at from masar_applicant_resets where whatsapp_account_id=$1 and contact_id='201012345678@c.us'",[second.id]);
+ assert.equal(reset.phone,'+201012345678');assert.ok(reset.reset_at);
+ assert.equal((await db.query("select has_table_privilege('anon','masar_applicant_resets','SELECT') as allowed")).rows[0].allowed,false);
  }finally{await db.close();}
 });

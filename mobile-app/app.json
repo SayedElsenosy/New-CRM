@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Speed CRM",
+    "slug": "speed-crm-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "masar",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.speeddelivery.crm"
+    },
+    "android": {
+      "package": "com.speeddelivery.crm"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "intervention"
+        }
+      ]
+    ]
+  }
+}

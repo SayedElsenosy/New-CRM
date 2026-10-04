@@ -215,7 +215,23 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(['admin','office_admin'].includes(req.role)||req.permissions.includes('settings'))payload.settings=cfg.settings;
   res.json(payload);
  });
- route('get','/offices',async(req,res)=>res.json(await officeState(req)));
+ route('get','/profile',async(req,res)=>res.json(await profilePayload(req)));
+ route('put','/profile',async(req,res)=>{
+  const phone=String(req.body.phone||'').trim(),jobTitle=String(req.body.job_title||'').trim(),bio=String(req.body.bio||'').trim();
+  const avatarPath=req.body.avatar_path===null||req.body.avatar_path===''?null:String(req.body.avatar_path||'').trim();
+  if(phone.length>30||jobTitle.length>100||bio.length>600)throw bad('راجع بيانات الحساب');
+  if(avatarPath&&!avatarPath.startsWith('staff/'+req.user.id+'/'))throw bad('مسار الصورة الشخصية غير صحيح');
+  const patch={phone:phone||null,job_title:jobTitle,bio,avatar_path:avatarPath,updated_at:new Date().toISOString()};
+  must(await db.from('masar_staff').update(patch).eq('user_id',req.user.id));
+  req.staff={...(req.staff||{}),...patch};res.json(await profilePayload(req));
+ });
+ route('put','/profile/password',async(req,res)=>{
+  const password=String(req.body.password||'');
+  if(password.length<8||password.length>100)throw bad('كلمة المرور لازم تكون 8 أحرف على الأقل');
+  const changed=await db.auth.admin.updateUserById(req.user.id,{password});if(changed.error)throw changed.error;
+  res.json({ok:true});
+ });
+  route('get','/offices',async(req,res)=>res.json(await officeState(req)));
  adminRoute('post','/offices',async(req,res)=>{await serial(async()=>{
   const name=String(req.body.name||'').trim(),code=String(req.body.code||'').trim().toUpperCase(),address=String(req.body.address||'').trim(),phone=String(req.body.phone||'').trim()||null,manager=String(req.body.manager_name||'').trim();
   if(name.length<2||name.length>120)throw bad('اكتب اسم واضح للمكتب');

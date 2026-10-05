@@ -581,6 +581,28 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    res.json(must(await query.select().single()));
   });});
  }
+ permissionRoute('areas','delete','/areas/:id',async(req,res)=>{await serial(async()=>{
+  if(!uuid(req.params.id))throw bad('معرف المنطقة غير صحيح');
+  const officeId=await scopedOfficeId(req),area=must(await db.from('masar_areas').select('*').eq('id',req.params.id).maybeSingle());
+  if(!area||area.office_id!==officeId)throw bad('المنطقة غير موجودة أو تابعة لمكتب آخر',404);
+  let page=0,archivedAnswers=0;
+  while(true){
+   const applicants=must(await db.from('masar_applicants').select('id,answers').eq('office_id',officeId).order('id').range(page*500,page*500+499));
+   for(const applicant of applicants){
+    let changed=false;const answers={...(applicant.answers||{})};
+    for(const [key,value] of Object.entries(answers)){
+     if(value&&typeof value==='object'&&String(value.value||'')===area.id&&['area','area_preview'].includes(value.kind)){
+      answers[key]={...value,archived_area:true,archived_area_id:area.id,archived_area_name:area.name,archived_area_zone:area.zone||'UNKNOWN',archived_area_recruitment_eligible:area.recruitment_eligible===true};
+      changed=true;archivedAnswers++;
+     }
+    }
+    if(changed)must(await db.from('masar_applicants').update({answers,updated_at:new Date().toISOString()}).eq('id',applicant.id));
+   }
+   if(applicants.length<500)break;page++;
+  }
+  must(await db.from('masar_areas').delete().eq('id',area.id));
+  res.json({ok:true,archived_answers:archivedAnswers});
+ });});
  permissionRoute('questions','post','/questions/reorder',async(req,res)=>{await serial(async()=>{
   const officeId=await scopedOfficeId(req),qs=must(await db.from('masar_questions').select('id').eq('office_id',officeId));
   const ids=req.body.ids;if(!Array.isArray(ids)||ids.length!==qs.length||new Set(ids).size!==ids.length||ids.some(id=>!qs.some(q=>q.id===id)))throw bad('تم تغيير قائمة الأسئلة؛ حدّث الصفحة');

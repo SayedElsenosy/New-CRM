@@ -8,6 +8,7 @@ import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} 
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,createLearningSuggestion} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
+import {metaConfig,metaLoginUrl,metaStateHash,exchangeMetaCode,encryptMetaToken,decryptMetaToken,getMetaIdentity,listMetaAdAccounts,fetchMetaAccountSnapshot,normalizeMetaAdAccountId} from './meta.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -29,6 +30,58 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   connect:async()=>{await connection?.connect?.();return connection?.snapshot?.()||{status:'disconnected'};},
   disconnect:async()=>{await connection?.disconnect?.();return connection?.snapshot?.()||{status:'disconnected'};}
  };
+ async function metaSyncOffice(officeId){
+  const cfg=metaConfig();if(!cfg.configured)throw bad('إعداد ربط Meta ناقص: '+cfg.missing.join('، '),503);
+  let connection;
+  try{connection=must(await db.from('masar_meta_connections').select('*').eq('office_id',officeId).maybeSingle());}
+  catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))throw bad('شغّل ملف supabase/014_meta_ads_connection.sql أولاً',503);throw e;}
+  if(!connection)throw bad('اربط حساب Meta بالمكتب أولاً',409);
+  if(!connection.selected_ad_account_id)throw bad('اختر الحساب الإعلاني الخاص بالمكتب أولاً',409);
+  let token;try{token=decryptMetaToken(connection.access_token_encrypted,cfg.encryptionKey);}catch{throw bad('تعذر قراءة مفتاح Meta المحفوظ؛ أعد ربط الحساب',409);}
+  const now=new Date().toISOString();
+  try{
+   const snapshot=await fetchMetaAccountSnapshot(token,cfg,connection.selected_ad_account_id);
+   const campaignMap=new Map();
+   for(const metaCampaign of snapshot.campaigns){
+    const metaId=String(metaCampaign.id||'').trim();if(!metaId)continue;
+    const existing=must(await db.from('masar_campaigns').select('*').eq('office_id',officeId).eq('meta_campaign_id',metaId).limit(1).maybeSingle());
+    const row={
+     office_id:officeId,name:String(metaCampaign.name||'Meta Campaign').slice(0,150),meta_campaign_id:metaId,
+     active:!['ARCHIVED','DELETED'].includes(String(metaCampaign.effective_status||metaCampaign.status||'').toUpperCase()),
+     meta_status:metaCampaign.status||null,meta_effective_status:metaCampaign.effective_status||null,objective:metaCampaign.objective||null,
+     meta_start_time:metaCampaign.start_time||null,meta_stop_time:metaCampaign.stop_time||null,meta_synced_at:now,updated_at:now
+    };
+    const saved=existing
+     ?must(await db.from('masar_campaigns').update(row).eq('id',existing.id).select().single())
+     :must(await db.from('masar_campaigns').insert(row).select().single());
+    campaignMap.set(metaId,saved);
+   }
+   for(const metaAd of snapshot.ads){
+    const adId=String(metaAd.id||'').trim();if(!/^\d{5,40}$/.test(adId))continue;
+    const existing=must(await db.from('masar_ads').select('*').eq('ad_id',adId).maybeSingle());
+    if(existing?.office_id&&existing.office_id!==officeId)throw bad('Ad ID '+adId+' مربوط بمكتب آخر',409);
+    const localCampaign=campaignMap.get(String(metaAd.campaign_id||''))||null;
+    const row={
+     ad_id:adId,office_id:officeId,campaign_id:localCampaign?.id||existing?.campaign_id||null,
+     name:String(metaAd.name||existing?.name||'').slice(0,200),source_app:'meta',source_type:'ad',
+     meta_adset_id:metaAd.adset_id||null,meta_status:metaAd.status||null,meta_effective_status:metaAd.effective_status||null,
+     meta_synced_at:now,last_seen_at:now,updated_at:now
+    };
+    if(!existing){row.first_seen_at=now;row.zone='UNKNOWN';}
+    if(!snapshot.insights_error){
+     row.spend=Math.round(Number(snapshot.spendByAd.get(adId)||0)*100)/100;
+     row.spend_source='meta';row.spend_synced_at=now;
+    }
+    if(existing)must(await db.from('masar_ads').update(row).eq('ad_id',adId));
+    else must(await db.from('masar_ads').insert(row));
+   }
+   must(await db.from('masar_meta_connections').update({status:'connected',last_sync_at:now,last_sync_error:snapshot.insights_error||null,updated_at:now}).eq('office_id',officeId));
+   return {ok:true,campaigns:snapshot.campaigns.length,ads:snapshot.ads.length,last_sync_at:now,warning:snapshot.insights_error||null};
+  }catch(e){
+   try{await db.from('masar_meta_connections').update({status:'error',last_sync_error:String(e.message||'Meta sync failed').slice(0,1000),updated_at:now}).eq('office_id',officeId);}catch{}
+   throw e;
+  }
+ }
  const app=express();app.set('trust proxy',1);app.use(helmet({
   contentSecurityPolicy:{
    directives:{
@@ -41,6 +94,36 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  app.use(express.json({limit:'64kb'}));
  app.get('/health',(_req,res)=>res.json({ok:true}));
  app.use('/integrations/meta',rateLimit({windowMs:60000,limit:30,standardHeaders:'draft-8',legacyHeaders:false}));
+ app.get('/integrations/meta/callback',async(req,res,next)=>{try{
+  const cfg=metaConfig();if(!cfg.configured)throw bad('إعداد ربط Meta ناقص: '+cfg.missing.join('، '),503);
+  const code=String(req.query.code||''),state=String(req.query.state||'');
+  if(!code||state.length<20)throw bad('طلب ربط Meta غير صالح',400);
+  const stateHash=metaStateHash(state);
+  let oauthState;
+  try{oauthState=must(await db.from('masar_meta_oauth_states').select('*').eq('state_hash',stateHash).maybeSingle());}
+  catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))throw bad('شغّل ملف supabase/014_meta_ads_connection.sql أولاً',503);throw e;}
+  if(!oauthState||Date.parse(oauthState.expires_at)<=Date.now())throw bad('جلسة ربط Meta انتهت؛ ابدأ الربط من صفحة الحملات مرة أخرى',400);
+  must(await db.from('masar_meta_oauth_states').delete().eq('state_hash',stateHash));
+  const exchanged=await exchangeMetaCode(code,cfg),identity=await getMetaIdentity(exchanged.access_token,cfg),accounts=await listMetaAdAccounts(exchanged.access_token,cfg);
+  const previous=must(await db.from('masar_meta_connections').select('selected_ad_account_id').eq('office_id',oauthState.office_id).maybeSingle());
+  const accountIds=new Set(accounts.map(x=>x.account_id));
+  let selected=previous?.selected_ad_account_id&&accountIds.has(previous.selected_ad_account_id)?previous.selected_ad_account_id:null;
+  if(!selected&&accounts.length===1)selected=accounts[0].account_id;
+  const selectedRow=accounts.find(x=>x.account_id===selected)||null,now=new Date().toISOString();
+  must(await db.from('masar_meta_connections').upsert({
+   office_id:oauthState.office_id,meta_user_id:identity.id||null,meta_user_name:identity.name||'',
+   access_token_encrypted:encryptMetaToken(exchanged.access_token,cfg.encryptionKey),
+   token_expires_at:exchanged.expires_in?new Date(Date.now()+exchanged.expires_in*1000).toISOString():null,
+   selected_ad_account_id:selected,selected_ad_account_name:selectedRow?.name||null,currency:selectedRow?.currency||null,timezone_name:selectedRow?.timezone_name||null,
+   status:'connected',connected_by:oauthState.user_id,last_sync_error:null,updated_at:now
+  },{onConflict:'office_id'}));
+  must(await db.from('masar_meta_ad_accounts').delete().eq('office_id',oauthState.office_id));
+  if(accounts.length)must(await db.from('masar_meta_ad_accounts').insert(accounts.map(x=>({...x,office_id:oauthState.office_id,updated_at:now}))));
+  if(selected){try{await metaSyncOffice(oauthState.office_id);}catch(e){console.warn('Meta initial sync failed:',e.message);}}
+  const origin=String(process.env.DASHBOARD_ORIGIN||'').split(',').map(x=>x.trim()).find(Boolean)||'/';
+  const target=new URL(origin);target.searchParams.set('meta',selected?'connected':'choose-account');target.searchParams.set('office_id',oauthState.office_id);
+  res.redirect(302,target.toString());
+ }catch(e){next(e);}});
  app.post('/integrations/meta/ads-sync',async(req,res,next)=>{try{
   const expected=String(process.env.META_ADS_SYNC_SECRET||''),provided=String(req.headers['x-integration-key']||'');
   if(!expected)throw bad('تكامل مزامنة المصروف غير مفعّل على الخادم',503);

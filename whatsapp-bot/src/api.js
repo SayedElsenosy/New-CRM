@@ -375,6 +375,77 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(req.role==='admin')await saveOfficeAccounts(row.id,req.body.whatsapp_account_ids);
   res.json(row);
  });});
+ adminRoute('delete','/offices/:id',async(req,res)=>{
+  if(!uuid(req.params.id))throw bad('معرف المكتب غير صحيح');
+  const office=must(await db.from('masar_offices').select('*').eq('id',req.params.id).maybeSingle());
+  if(!office)throw bad('المكتب غير موجود',404);
+  const confirmCode=String(req.body?.confirm_code||'').trim().toUpperCase();
+  if(confirmCode!==String(office.code||'').trim().toUpperCase())throw bad('اكتب كود المكتب للتأكيد قبل الحذف النهائي');
+  const accounts=must(await db.from('masar_whatsapp_accounts').select('id,name,legacy_session').eq('office_id',office.id));
+  const staffRows=must(await db.from('masar_staff').select('user_id,office_id').eq('office_id',office.id));
+  const applicants=[];for(let page=0;;page++){
+   const part=must(await db.from('masar_applicants').select('id,answers').eq('office_id',office.id).order('id').range(page*500,page*500+499));
+   applicants.push(...part);if(part.length<500)break;
+  }
+  const applicantIds=applicants.map(x=>x.id),attributedAdIds=[...new Set(applicants.map(a=>String(a.answers?.__attribution?.source_id||'')).filter(x=>/^\d{5,40}$/.test(x)))];
+  const campaigns=must(await db.from('masar_campaigns').select('id').eq('office_id',office.id)),campaignIds=campaigns.map(x=>x.id);
+  const mediaPaths=[];
+  for(let i=0;i<applicantIds.length;i+=100){
+   const rows=must(await db.from('masar_messages').select('media_path').in('applicant_id',applicantIds.slice(i,i+100)));
+   mediaPaths.push(...rows.map(x=>x.media_path).filter(Boolean));
+  }
+  const whatsappWarnings=[];
+  for(const account of accounts){
+   try{if(whatsapp.item?.(account.id))await whatsapp.disconnect(account.id);}catch(e){whatsappWarnings.push(account.name||account.id);}
+  }
+  await serial(async()=>{
+   for(let i=0;i<applicantIds.length;i+=100){
+    const ids=applicantIds.slice(i,i+100);
+    try{must(await db.from('masar_learning_suggestions').delete().in('applicant_id',ids));}catch(e){if(!schemaMissing(e))throw e;}
+    must(await db.from('masar_events').delete().in('applicant_id',ids));
+    must(await db.from('masar_contacts').delete().in('applicant_id',ids));
+    must(await db.from('masar_messages').update({reply_to:null}).in('applicant_id',ids));
+    must(await db.from('masar_messages').delete().in('applicant_id',ids));
+   }
+   must(await db.from('masar_interviews').delete().eq('office_id',office.id));
+   must(await db.from('masar_applicants').delete().eq('office_id',office.id));
+   if(campaignIds.length)for(let i=0;i<campaignIds.length;i+=100)must(await db.from('masar_ads').delete().in('campaign_id',campaignIds.slice(i,i+100)));
+   if(attributedAdIds.length)for(let i=0;i<attributedAdIds.length;i+=100)must(await db.from('masar_ads').delete().in('ad_id',attributedAdIds.slice(i,i+100)));
+   try{must(await db.from('masar_ads').delete().eq('office_id',office.id));}catch(e){if(!schemaMissing(e)&&!['42703','PGRST204'].includes(e?.code||''))throw e;}
+   must(await db.from('masar_campaigns').delete().eq('office_id',office.id));
+   const removableStaff=staffRows.map(x=>x.user_id).filter(id=>id!==req.user.id);
+   if(removableStaff.length){
+    for(let i=0;i<removableStaff.length;i+=100){
+     const ids=removableStaff.slice(i,i+100);
+     must(await db.from('masar_events').update({staff_id:null}).in('staff_id',ids));
+     must(await db.from('masar_staff').delete().in('user_id',ids));
+    }
+   }
+   if(staffRows.some(x=>x.user_id===req.user.id))must(await db.from('masar_staff').update({office_id:null,updated_at:new Date().toISOString()}).eq('user_id',req.user.id));
+   must(await db.from('masar_whatsapp_accounts').delete().eq('office_id',office.id));
+   must(await db.from('masar_offices').delete().eq('id',office.id));
+  });
+  for(const account of accounts){try{await whatsapp.remove?.(account.id);}catch{}}
+  const authDeleteFailures=[];
+  for(const staff of staffRows){
+   if(staff.user_id===req.user.id)continue;
+   const result=await db.auth.admin.deleteUser(staff.user_id);
+   if(result.error)authDeleteFailures.push(staff.user_id);
+  }
+  if(staffRows.some(x=>x.user_id===req.user.id)){
+   const current=await db.auth.admin.getUserById(req.user.id);
+   if(!current.error&&current.data.user){
+    const metadata={...(current.data.user.app_metadata||{}),masar_office_id:null};
+    await db.auth.admin.updateUserById(req.user.id,{app_metadata:metadata});
+   }
+  }
+  let media_cleanup_ok=true;const uniqueMedia=[...new Set(mediaPaths)];
+  for(let i=0;i<uniqueMedia.length;i+=100){
+   try{const result=await db.storage.from('masar-documents').remove(uniqueMedia.slice(i,i+100));if(result.error)throw result.error;}
+   catch(e){media_cleanup_ok=false;console.warn('Office media cleanup failed:',e.code||e.name);}
+  }
+  res.json({ok:true,deleted:{office:office.name,applicants:applicantIds.length,whatsapp_accounts:accounts.length,staff:staffRows.length,campaigns:campaignIds.length},media_cleanup_ok,whatsapp_warnings:whatsappWarnings,auth_delete_failures:authDeleteFailures});
+ });
 
  route('post','/mobile/push-token',async(req,res)=>{
   const token=String(req.body.token||'').trim();

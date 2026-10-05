@@ -215,6 +215,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  const areaQuestion=/(تفاصيل|مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(norm(m.body));
+ if(areaQuestion&&settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&explicitAreaHits(m.body,areas).length===0){
+  const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
+  if(match){
+   return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence};
+  }
+ }
  if(areaQuestion){
   let area=null,intent=null;
   if(settings.ai_enabled){intent=await interpret(m.body,current,areas);if(intent?.intent==='area_info')area=areas.find(z=>z.active&&z.id===intent.area_id);}

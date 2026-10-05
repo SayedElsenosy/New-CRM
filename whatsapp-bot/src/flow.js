@@ -8,6 +8,29 @@ function areaPreviewReply(area,areas){
  return areaDetails(area)+`\n\nلو ${area.name} هي المنطقة اللي هتنزل فيها اضغط «✅ تأكيد ${area.name}».`+choices;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
+function startText(text){
+ return norm(String(text||'').replace(/[’']/g,'')).replace(/[!?؟.,،؛:"“”‘’…]/g,' ').replace(/\s+/g,' ').trim();
+}
+export function isApplicationStartMessage(text){
+ const n=startText(text);
+ if(!n)return false;
+ if(/^(?:مرحبا\s+)?هل يمكنني الحصول على مزيد من المعلومات(?: حول هذا)?$/.test(n))return true;
+ if(/^(?:عايز|عاوز|ممكن|حابب|اريد)\s+(?:اقدم|التقديم)(?:\s+علي\s+(?:الوظيفه|الشغل))?$/.test(n))return true;
+ if(/^(?:عايز|عاوز|ممكن|حابب)\s+تفاصيل(?:\s+(?:عن|عن الشغل|عن الوظيفه))?$/.test(n))return true;
+ if(/^im interested(?: in (?:this|the job|the position))?$/.test(n))return true;
+ if(/^can i get more information(?: about this)?$/.test(n))return true;
+ return false;
+}
+function hasMetaAdAttribution(answers){
+ const attribution=answers?.__attribution;
+ return Boolean(attribution&&(attribution.source_id||attribution.ad_id||attribution.ctwa_clid||norm(attribution.source_type)==='ad'));
+}
+function isFreshApplicationStart(applicant,message){
+ return !applicant?.awaiting_id
+  &&realAnswerCount(applicant?.answers)===0
+  &&(!applicant?.stage||applicant.stage==='new')
+  &&(hasMetaAdAttribution(applicant?.answers)||isApplicationStartMessage(message?.body));
+}
 async function parseStructuredPendingAnswer({current,message,areas,settings,interpret}){
  if(!current||!['yes_no','number','name'].includes(current.kind))return null;
  let parsed=validateAnswer(current,message.body,areas,message.media_path?{path:message.media_path}:null);
@@ -174,6 +197,15 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
  const qualificationFlowEnabled=qs.some(q=>q.field_key==='has_motorcycle')&&qs.some(q=>q.field_key==='preferred_work_area');
+
+ if(isFreshApplicationStart(a,m)){
+  const first=qs[0];
+  const welcome=String(settings.welcome||'').trim();
+  return {
+   patch:{awaiting_id:first.id,stage:'new'},
+   reply:(welcome?welcome+'\n':'')+questionPrompt(first,areas)
+  };
+ }
 
  if(answers.__qualification_stop){
   if(areaListInquiry(m.body)){

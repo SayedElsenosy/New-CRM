@@ -611,7 +611,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const alertIds=await openAlertApplicantIds(req),rawRows=await allRows(db,'masar_applicants'),cfgCache=new Map();
   const cfgFor=async officeId=>{const key=officeId||'__global__';if(!cfgCache.has(key))cfgCache.set(key,await config(db,officeId||null));return cfgCache.get(key);};
   let rows=[];
-  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)});}
+  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:qualificationFor(a,cfg.questions,cfg.areas),needs_intervention:alertIds.has(a.id)});}
   if(whatsapp.configured){
    const allowed=await accessibleAccountIds(req);
    if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
@@ -629,6 +629,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||(a.display_name||'').toLowerCase().includes(s)||Object.values(a.answers||{}).some(v=>v?.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
   if(req.query.stage)rows=rows.filter(a=>a.stage===req.query.stage);
   if(req.query.recruitment_stage){const rs=String(req.query.recruitment_stage);if(!RECRUITMENT_STAGE_SET.has(rs))throw bad('مرحلة التوظيف غير صحيحة');rows=rows.filter(a=>recruitmentStageOf(a)===rs);}
+  if(req.query.qualification){const q=String(req.query.qualification);if(!['qualified','not_qualified','pending'].includes(q))throw bad('حالة التأهيل غير صحيحة');rows=rows.filter(a=>a.qualification?.overall_status===q);}
+  if(req.query.motorcycle){const m=String(req.query.motorcycle);if(!['yes','no','unknown'].includes(m))throw bad('فلتر الموتوسيكل غير صحيح');rows=rows.filter(a=>m==='yes'?a.qualification?.motorcycle_qualified===true:m==='no'?a.qualification?.motorcycle_qualified===false:a.qualification?.motorcycle_qualified==null);}
+  if(req.query.geo){const g=String(req.query.geo);if(!['qualified','outside','unknown'].includes(g))throw bad('فلتر المنطقة غير صحيح');rows=rows.filter(a=>a.qualification?.geo_status===g);}
+  if(req.query.zone){const z=String(req.query.zone).toUpperCase();if(!RECRUITMENT_ZONES.includes(z))throw bad('Zone غير صحيحة');rows=rows.filter(a=>(a.qualification?.zone||'UNKNOWN')===z);}
   if(['1','true','yes'].includes(String(req.query.needs_intervention||'').toLowerCase()))rows=rows.filter(a=>a.needs_intervention);
   if(req.query.ad_id)rows=rows.filter(a=>String(attributionOf(a)?.source_id||'')===String(req.query.ad_id));
   if(req.query.campaign_id){
@@ -665,7 +669,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const events=must(await db.from('masar_events').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).limit(50));
   const account=whatsapp.configured?whatsapp.snapshot(a.whatsapp_account_id):null;
   let office=null;try{if(a.office_id)office=must(await db.from('masar_offices').select('id,name,code,address,phone,manager_name').eq('id',a.office_id).maybeSingle());}catch(e){if(!schemaMissing(e)&&e.code!=='42703')throw e;}
-  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
+  const qualification=qualificationFor(a,cfg.questions,cfg.areas);
+  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:{...qualification,reason_labels:qualificationReasonLabels(qualification.reasons)},office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
  });
  permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{
   let resumedMessageId=null;

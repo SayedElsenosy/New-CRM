@@ -8,6 +8,7 @@ import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.
 import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
+import {withFirstAttribution} from './attribution.js';
 
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
@@ -106,12 +107,12 @@ export class Worker {
   if(!a){
    const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at};
    if(multi)row.whatsapp_account_id=accountId;
-   if(referral)row.answers={__attribution:referral};
+   if(referral)row.answers=withFirstAttribution({},referral);
    a=must(await this.db.from('masar_applicants').insert(row).select().single());
   }else{
    const patch={contact_id:record.contact_id,last_message_at:record.created_at,updated_at:new Date().toISOString()};
    if(record.phone)patch.phone=record.phone;
-   if(referral&&!a.answers?.__attribution)patch.answers={...(a.answers||{}),__attribution:referral};
+   if(referral){const nextAnswers=withFirstAttribution(a.answers,referral);if(nextAnswers!==a.answers)patch.answers=nextAnswers;}
    must(await this.db.from('masar_applicants').update(patch).eq('id',a.id));
    if(patch.answers)a={...a,answers:patch.answers};
   }

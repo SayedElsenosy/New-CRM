@@ -269,11 +269,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
      if(candidate&&!sameKnowledgeTopic(current.label,candidate.question))match=candidate;
     }
    }
-   let reply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
-   let followup_reply=null;
+   const continuation=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
+   let reply=continuation,followup_reply=null;
    if(match){
     reply=String(match.answer||'').trim();
-    followup_reply=next?questionPrompt(next,areas):settings.completion;
+    followup_reply=continuation;
    }
    const result={patch:{answers,stage,awaiting_id:next?.id||null},reply};
    if(match){

@@ -11,6 +11,9 @@ export async function allRows(db,table,select='*'){
  }
 }
 export function createSerial(){let tail=Promise.resolve();return task=>{const p=tail.then(task);tail=p.catch(()=>{});return p;};}
+export function normalizeWorkAreas(areas=[]){
+ return areas.map(area=>area?.active===true?{...area,recruitment_eligible:true}:area);
+}
 export async function config(db,officeId=null){
  const baseSettings=must(await db.from('masar_settings').select('*').eq('id',true).single());
  let q=db.from('masar_questions').select('*').order('position'),a=db.from('masar_areas').select('*').order('position');
@@ -25,7 +28,7 @@ export async function config(db,officeId=null){
   if(!r.error)officeSettings=r.data;
   else if(!['PGRST205','42P01','42703','PGRST204'].includes(r.error.code))throw r.error;
  }
- const areas=must(ar).map(area=>area?.active===true?{...area,recruitment_eligible:true}:area);
+ const areas=normalizeWorkAreas(must(ar));
  return {
   questions:must(qr),
   areas,

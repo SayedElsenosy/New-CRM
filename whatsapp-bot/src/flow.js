@@ -49,8 +49,13 @@ function areaListInquiry(text){
   && /(?:متاح|متاحه|الشغل|العمل|التعيين|اشتغل|اقدم|التقديم|فين|ايه|اي|كل)/.test(n)
   || ['المناطق','مناطق الشغل','اماكن الشغل','الاماكن المتاحه'].includes(n);
 }
+function recruitmentAreas(areas){
+ const live=areas.filter(z=>z.active);
+ const eligibilityConfigured=live.some(z=>z.recruitment_eligible!==undefined);
+ return eligibilityConfigured?live.filter(z=>z.recruitment_eligible===true):live;
+}
 function areaListReply(areas){
- const live=areas.filter(z=>z.active&&z.recruitment_eligible===true);
+ const live=recruitmentAreas(areas);
  if(!live.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
  return 'المناطق المتاحة موجودة في الأزرار تحت 👇\nاختار المنطقة من الأزرار علشان تشوف تفاصيلها.';
 }
@@ -142,13 +147,14 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
+ const qualificationFlowEnabled=qs.some(q=>q.field_key==='has_motorcycle')&&qs.some(q=>q.field_key==='residence_area');
 
  if(answers.__qualification_stop){
   if(areaListInquiry(m.body)){
    answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
    return {patch:{answers,awaiting_id:null},reply:areaListReply(areas)};
   }
-  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&current?.field_key!=='residence_area'){
    const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
    if(match)return {patch:{awaiting_id:null},reply:String(match.answer||'').trim(),knowledge_id:match.id,knowledge_confidence:match.confidence};
   }
@@ -162,7 +168,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const action=areaAction(m.body);
  if(action?.type==='page'){
   const eligibilityOnly=answers.__area_page?.eligibility_only===true;
-  const activeAreas=areas.filter(z=>z.active&&(!eligibilityOnly||z.recruitment_eligible===true)),pages=Math.max(1,Math.ceil(activeAreas.length/7));
+  const activeAreas=eligibilityOnly?recruitmentAreas(areas):areas.filter(z=>z.active),pages=Math.max(1,Math.ceil(activeAreas.length/7));
   const page=Math.max(0,Math.min(pages-1,Number.isInteger(action.page)?action.page:0));
   answers.__area_page={value:page,kind:'area_page',at:new Date().toISOString(),...(eligibilityOnly?{eligibility_only:true}:{})};
   const pageNote=pages>1?'\nصفحة '+(page+1)+' من '+pages:'';
@@ -254,7 +260,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    }
    const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
    const comp=completion(questions,answers,areas);
-   const qualification=qualificationFor({...a,answers},questions,areas,settings);
+   const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
    if(comp.complete&&qualification.qualified_candidate===false){
     const reason=qualification.reasons[0]||'not_qualified';
     return {patch:stopQualification(answers,reason),reply:stoppedReply(reason)};
@@ -383,7 +389,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
  const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const comp=completion(questions,answers,areas);
- const qualification=qualificationFor({...a,answers},questions,areas,settings);
+ const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
  if(comp.complete&&qualification.qualified_candidate===false){
   const reason=qualification.reasons[0]||'not_qualified';
   return {patch:stopQualification(answers,reason),reply:stoppedReply(reason)};

@@ -163,6 +163,62 @@ begin
     mapped_key=pair.key;
     mapped_value=pair.value;
     if mapped_key ~* '^[0-9a-f]{8}-[0-9a-f-]{27}
+     select new_id::text into mapped_key from masar_q_map where old_id::text=pair.key;
+     mapped_key=coalesce(mapped_key,pair.key);
+    end if;
+    if pair.value->>'kind' in ('area','area_preview') and (pair.value->>'value') ~* '^[0-9a-f]{8}-[0-9a-f-]{27}
+     select jsonb_set(pair.value,'{value}',to_jsonb(new_id::text),false) into mapped_value
+     from masar_a_map where old_id::text=pair.value->>'value';
+     mapped_value=coalesce(mapped_value,pair.value);
+    end if;
+    update public.masar_applicants
+    set answers=coalesce(answers,'{}'::jsonb) - pair.key || jsonb_build_object(mapped_key,mapped_value)
+    where id=app_row.id;
+   end loop;
+  end loop;
+ end if;
+end $;
+revoke all on function public.masar_clone_office_config(uuid,uuid,boolean) from public,anon,authenticated;
+grant execute on function public.masar_clone_office_config(uuid,uuid,boolean) to service_role;
+
+commit;
+ then
+     select new_id::text into mapped_key from masar_q_map where old_id::text=pair.key;
+     mapped_key=coalesce(mapped_key,pair.key);
+    end if;
+    if pair.value->>'kind' in ('area','area_preview') and (pair.value->>'value') ~* '^[0-9a-f]{8}-[0-9a-f-]{27}
+ then
+     select jsonb_set(pair.value,'{value}',to_jsonb(new_id::text),false) into mapped_value
+     from masar_a_map where old_id::text=pair.value->>'value';
+     mapped_value=coalesce(mapped_value,pair.value);
+    end if;
+    update public.masar_applicants
+    set answers=coalesce(answers,'{}'::jsonb) - pair.key || jsonb_build_object(mapped_key,mapped_value)
+    where id=app_row.id;
+   end loop;
+  end loop;
+ end if;
+end $;
+revoke all on function public.masar_clone_office_config(uuid,uuid,boolean) from public,anon,authenticated;
+grant execute on function public.masar_clone_office_config(uuid,uuid,boolean) to service_role;
+
+commit;
+ then
+     select jsonb_set(pair.value,'{value}',to_jsonb(new_id::text),false) into mapped_value
+     from masar_a_map where old_id::text=pair.value->>'value';
+     mapped_value=coalesce(mapped_value,pair.value);
+    end if;
+    update public.masar_applicants
+    set answers=coalesce(answers,'{}'::jsonb) - pair.key || jsonb_build_object(mapped_key,mapped_value)
+    where id=app_row.id;
+   end loop;
+  end loop;
+ end if;
+end $;
+revoke all on function public.masar_clone_office_config(uuid,uuid,boolean) from public,anon,authenticated;
+grant execute on function public.masar_clone_office_config(uuid,uuid,boolean) to service_role;
+
+commit;
  then
      select new_id::text into mapped_key from masar_q_map where old_id::text=pair.key;
      mapped_key=coalesce(mapped_key,pair.key);

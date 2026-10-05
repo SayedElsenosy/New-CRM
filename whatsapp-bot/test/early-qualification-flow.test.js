@@ -151,8 +151,9 @@ test('eligible work area button is saved immediately and continues the flow',asy
  assert.equal(r.patch.answers.__area_preview,undefined);
  assert.equal(r.patch.awaiting_id,'q3');
  assert.match(r.reply,/سجلت منطقة العمل: التجمع/);
- assert.match(r.reply,/اكتب اسمك بالكامل/);
- assert.doesNotMatch(r.reply,/تفاصيل التجمع|تأكيد التجمع/);
+ assert.match(r.reply,/تفاصيل التجمع/);
+ assert.doesNotMatch(r.reply,/اكتب اسمك بالكامل|تأكيد التجمع/);
+ assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
  const q=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
  assert.equal(q.geo_qualified,true);
  assert.equal(q.geo_basis,'preferred_work_area');
@@ -174,7 +175,9 @@ test('legacy active work area cannot appear in bot and then fail qualification',
  assert.equal(r.patch.awaiting_id,'q3');
  assert.equal(r.patch.answers.__qualification_stop,undefined);
  assert.match(r.reply,/سجلت منطقة العمل: حدائق الأهرام ماركت/);
- assert.match(r.reply,/اكتب اسمك بالكامل/);
+ assert.match(r.reply,/تفاصيل حدائق الأهرام ماركت/);
+ assert.doesNotMatch(r.reply,/اكتب اسمك بالكامل/);
+ assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
 });
 
 test('typing an eligible area name directly saves it without preview or confirmation',async()=>{
@@ -185,8 +188,9 @@ test('typing an eligible area name directly saves it without preview or confirma
  assert.equal(r.patch.answers.q2.value,'nasr');
  assert.equal(r.patch.awaiting_id,'q3');
  assert.match(r.reply,/سجلت منطقة العمل: مدينة نصر/);
- assert.match(r.reply,/اكتب اسمك بالكامل/);
- assert.doesNotMatch(r.reply,/تفاصيل مدينة نصر|تأكيد مدينة نصر/);
+ assert.match(r.reply,/تفاصيل مدينة نصر/);
+ assert.doesNotMatch(r.reply,/اكتب اسمك بالكامل|تأكيد مدينة نصر/);
+ assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
 });
 
 test('explicit no available work area stops as not qualified',async()=>{

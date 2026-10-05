@@ -99,11 +99,11 @@ begin
    active=true,
    recruitment_eligible=true,
    zone=excluded.zone,
-   aliases=(
+   aliases=coalesce((
     select array_agg(distinct v order by v)
     from unnest(coalesce(public.masar_areas.aliases,'{}'::text[])||excluded.aliases) v
     where length(trim(v))>0
-   );
+   ),'{}'::text[]);
  end loop;
 end $$;
 

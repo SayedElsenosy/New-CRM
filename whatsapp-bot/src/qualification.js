@@ -57,6 +57,11 @@ function residenceInfo(applicant,questions,areas){
  const {answer}=answerFor(applicant,questions,'residence_area');
  if(!answer)return {answered:false,name:null,area:null,zone:null,geo_qualified:null,status:'unknown'};
  const raw=String(answer.display||answer.value||'').trim();
+ if(answer.archived_area===true){
+  const zone=RECRUITMENT_ZONES.includes(answer.archived_area_zone)?answer.archived_area_zone:'UNKNOWN';
+  const eligible=answer.archived_area_recruitment_eligible===true;
+  return {answered:true,name:answer.archived_area_name||raw,area:null,zone,geo_qualified:eligible,status:eligible?'qualified':'outside'};
+ }
  let matched=null;
  if(answer.kind==='area'||answer.kind==='area_preview')matched=(areas||[]).find(a=>String(a.id)===String(answer.value))||null;
  if(!matched)matched=areaMatch(raw,areas);

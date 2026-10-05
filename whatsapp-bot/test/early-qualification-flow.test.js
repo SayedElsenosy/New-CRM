@@ -5,16 +5,17 @@ import {qualificationFor} from '../src/qualification.js';
 
 const questions=[
  {id:'q1',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',position:1,active:true,required:true},
- {id:'q2',field_key:'residence_area',kind:'text',label:'ساكن فين حاليًا؟ اكتب اسم المنطقة أو الحي بالتحديد.',position:2,active:true,required:true},
- {id:'q3',field_key:'preferred_work_area',kind:'area',label:'أنهي منطقة تفضل تشتغل فيها؟',position:3,active:true,required:true},
- {id:'q4',field_key:'full_name',kind:'name',label:'اكتب اسمك بالكامل.',position:4,active:true,required:true},
- {id:'q5',field_key:'shift_acceptance',kind:'yes_no',label:'الشيفت 9 ساعات. النظام ده مناسب ليك؟',position:5,active:true,required:true},
- {id:'q6',field_key:'ready_to_start',kind:'yes_no',label:'لو تم قبولك، تقدر تبدأ الشغل قريب؟',position:6,active:true,required:true}
+ {id:'q2',field_key:'preferred_work_area',kind:'area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.',position:2,active:true,required:true},
+ {id:'q3',field_key:'full_name',kind:'name',label:'اكتب اسمك بالكامل.',position:3,active:true,required:true},
+ {id:'q4',field_key:'shift_acceptance',kind:'yes_no',label:'الشيفت 9 ساعات. النظام ده مناسب ليك؟',position:4,active:true,required:true},
+ {id:'q5',field_key:'ready_to_start',kind:'yes_no',label:'لو تم قبولك، تقدر تبدأ الشغل قريب؟',position:5,active:true,required:true},
+ {id:'res',field_key:'residence_area',kind:'text',label:'ساكن فين؟',position:90,active:false,required:false}
 ];
 const areas=[
- {id:'oct',name:'أكتوبر',aliases:['اكتوبر','6 أكتوبر','6 اكتوبر','السادس من أكتوبر'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل أكتوبر'},
+ {id:'oct',name:'أكتوبر',aliases:['اكتوبر','6 أكتوبر'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل أكتوبر'},
  {id:'nasr',name:'مدينة نصر',aliases:['مدينه نصر'],active:true,recruitment_eligible:true,zone:'NORTH_CENTRAL',details:'تفاصيل مدينة نصر'},
- {id:'tagamoa',name:'التجمع',aliases:['القاهرة الجديدة','التجمع الخامس'],active:true,recruitment_eligible:true,zone:'EAST',details:'تفاصيل التجمع'}
+ {id:'tagamoa',name:'التجمع',aliases:['القاهرة الجديدة'],active:true,recruitment_eligible:true,zone:'EAST',details:'تفاصيل التجمع'},
+ {id:'outside',name:'المنصورة',active:true,recruitment_eligible:false,zone:'UNKNOWN',details:'غير متاحة للتوظيف'}
 ];
 const settings={
  ai_enabled:true,ai_knowledge_enabled:true,ai_confidence_threshold:.55,
@@ -33,7 +34,7 @@ test('welcome starts with motorcycle qualification question',async()=>{
  assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
 });
 
-test('has_motorcycle=no saves answer and stops the application without recruiter rejection',async()=>{
+test('has_motorcycle=no saves answer and stops without recruiter rejection',async()=>{
  const attribution={source_id:'1202552915330556',ctwa_clid:'first-touch'};
  const a={...applicant,awaiting_id:'q1',answers:{__attribution:attribution}};
  const r=await call(a,'لا');
@@ -43,83 +44,83 @@ test('has_motorcycle=no saves answer and stops the application without recruiter
  assert.equal(r.patch.awaiting_id,null);
  assert.equal(r.patch.recruitment_stage,undefined);
  assert.equal(r.patch.answers.__attribution.source_id,attribution.source_id);
- assert.match(r.reply,/مش هنقدر نكمل التقديم/);
- assert.doesNotMatch(r.reply,/ساكن فين|اسمك بالكامل|منطقة تفضل/);
+ assert.doesNotMatch(r.reply,/أنهي منطقة تقدر تشتغل|اسمك بالكامل/);
 });
 
-test('stopped applicant is not asked missing questions again',async()=>{
- const a={...applicant,stage:'incomplete',awaiting_id:null,answers:{
-  q1:{value:false,display:'لا',kind:'yes_no',key:'has_motorcycle'},
-  __qualification_stop:{reason:'no_motorcycle',at:new Date().toISOString()},
-  __application_flow_status:{value:'stopped_not_qualified'}
- }};
- const r=await call(a,'تمام');
- assert.equal(r.patch.awaiting_id,null);
- assert.match(r.reply,/بتشترط وجود موتوسيكل/);
+test('motorcycle=yes goes directly to preferred work area, not residence',async()=>{
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await call(a,'أيوه');
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
  assert.doesNotMatch(r.reply,/ساكن فين/);
 });
 
-test('eligible residence alias continues to preferred work area',async()=>{
- const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}}};
- const r=await call(a,'انا ساكن في 6 اكتوبر');
- assert.equal(r.patch.answers.q2.geo_status,'qualified');
- assert.equal(r.patch.answers.q2.matched_area_id,'oct');
- assert.equal(r.patch.awaiting_id,'q3');
- assert.match(r.reply,/أنهي منطقة تفضل تشتغل فيها/);
-});
-
-test('first unknown residence asks clarification and remains geo pending',async()=>{
- const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}}};
- const r=await call(a,'مكان قريب من الطريق');
- assert.equal(r.patch.answers.q2.geo_status,'unknown');
- assert.equal(r.patch.answers.__residence_clarification.attempts,1);
- assert.equal(r.patch.awaiting_id,'q2');
- const qualification=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
- assert.equal(qualification.geo_qualified,null);
- assert.equal(qualification.geo_status,'unknown');
- assert.equal(qualification.overall_status,'pending');
- assert.match(r.reply,/مش قادر أحدد منطقة سكنك بدقة/);
-});
-
-test('second unmatched residence stops as outside hiring zones',async()=>{
- const firstAnswers={
+test('eligible work area qualifies geo and continues the flow',async()=>{
+ const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
   q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
-  q2:{value:'مكان قريب من الطريق',display:'مكان قريب من الطريق',kind:'text',key:'residence_area',geo_status:'unknown'},
-  __residence_clarification:{attempts:1,first_value:'مكان قريب من الطريق'}
- };
- const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:firstAnswers};
- const r=await call(a,'الشرقية');
- assert.equal(r.patch.answers.q2.geo_status,'outside');
- assert.equal(r.patch.answers.q2.geo_confirmed_outside,true);
- assert.equal(r.patch.answers.__qualification_stop.reason,'residence_outside_hiring_zones');
+  __area_preview:{value:'tagamoa',display:'التجمع',kind:'area_preview'}
+ }};
+ const r=await call(a,'confirm_area:tagamoa');
+ assert.equal(r.patch.answers.q2.value,'tagamoa');
+ assert.equal(r.patch.answers.q2.work_area_eligible,true);
+ assert.equal(r.patch.awaiting_id,'q3');
+ assert.match(r.reply,/اكتب اسمك بالكامل/);
+ const q=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
+ assert.equal(q.geo_qualified,true);
+ assert.equal(q.geo_basis,'preferred_work_area');
+ assert.equal(q.zone,'EAST');
+});
+
+test('explicit no available work area stops as not qualified',async()=>{
+ const attribution={source_id:'ad-1'};
+ const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
+  __attribution:attribution
+ }};
+ const r=await call(a,'no_work_area');
+ assert.equal(r.patch.answers.q2.no_eligible_work_area,true);
+ assert.equal(r.patch.answers.__qualification_stop.reason,'no_eligible_work_area');
  assert.equal(r.patch.awaiting_id,null);
  assert.equal(r.patch.recruitment_stage,undefined);
- const qualification=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
- assert.equal(qualification.geo_qualified,false);
- assert.equal(qualification.qualified_candidate,false);
- assert.ok(qualification.reasons.includes('residence_outside_hiring_zones'));
- assert.match(r.reply,/مش ضمن مناطق التعيين الحالية/);
+ assert.equal(r.patch.answers.__attribution.source_id,'ad-1');
+ assert.match(r.reply,/مفيش منطقة متاحة تقدر تلتزم بالشغل فيها يوميًا/);
 });
 
-test('preferred work area never overrides residence qualification',()=>{
- const a={answers:{
-  q1:{value:true,display:'نعم',kind:'yes_no'},
-  q2:{value:'الشرقية',display:'الشرقية',kind:'text',geo_status:'outside',geo_confirmed_outside:true},
-  q3:{value:'tagamoa',display:'التجمع',kind:'area'}
- }};
- const q=qualificationFor(a,questions,areas,settings);
- assert.equal(q.geo_qualified,false);
- assert.equal(q.zone,'UNKNOWN');
- assert.equal(q.qualified_candidate,false);
-});
-
-test('qualified applicant reaches qualified-only completion message',async()=>{
- const a={...applicant,stage:'incomplete',awaiting_id:'q6',answers:{
+test('selecting an ineligible work area stops qualification',async()=>{
+ const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
   q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
-  q2:{value:'مدينة نصر',display:'مدينة نصر',kind:'text',key:'residence_area',geo_status:'qualified',matched_area_id:'nasr'},
-  q3:{value:'tagamoa',display:'التجمع',kind:'area',key:'preferred_work_area'},
-  q4:{value:'محمد أحمد علي',display:'محمد أحمد علي',kind:'name',key:'full_name'},
-  q5:{value:true,display:'نعم',kind:'yes_no',key:'shift_acceptance'}
+  __area_preview:{value:'outside',display:'المنصورة',kind:'area_preview'}
+ }};
+ const r=await call(a,'confirm_area:outside');
+ assert.equal(r.patch.answers.q2.value,'outside');
+ assert.equal(r.patch.answers.__qualification_stop.reason,'no_eligible_work_area');
+ const q=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
+ assert.equal(q.geo_qualified,false);
+ assert.equal(q.qualified_candidate,false);
+ assert.ok(q.reasons.includes('no_eligible_work_area'));
+});
+
+test('residence never affects work-area qualification',()=>{
+ const withOutsideResidence={answers:{
+  q1:{value:true,kind:'yes_no'},
+  q2:{value:'tagamoa',display:'التجمع',kind:'area'},
+  res:{value:'الشرقية',display:'الشرقية',kind:'text',geo_status:'outside',geo_confirmed_outside:true}
+ }};
+ const q=qualificationFor(withOutsideResidence,questions,areas,settings);
+ assert.equal(q.residence_area,'الشرقية');
+ assert.equal(q.preferred_work_area,'التجمع');
+ assert.equal(q.geo_qualified,true);
+ assert.equal(q.qualified_candidate,true);
+ assert.deepEqual(q.reasons,[]);
+});
+
+test('qualified applicant reaches completion after work-area qualification',async()=>{
+ const a={...applicant,stage:'incomplete',awaiting_id:'q5',answers:{
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
+  q2:{value:'nasr',display:'مدينة نصر',kind:'area',key:'preferred_work_area',work_area_eligible:true},
+  q3:{value:'محمد أحمد علي',display:'محمد أحمد علي',kind:'name',key:'full_name'},
+  q4:{value:true,display:'نعم',kind:'yes_no',key:'shift_acceptance'}
  }};
  const r=await call(a,'نعم');
  assert.equal(r.patch.stage,'complete');
@@ -129,21 +130,21 @@ test('qualified applicant reaches qualified-only completion message',async()=>{
  assert.doesNotMatch(r.reply,/تم قبولك|تم تعيينك/);
 });
 
-test('salary question during flow answers from knowledge then resumes pending question',async()=>{
+test('salary question during work-area step answers from knowledge then resumes it',async()=>{
  const kb=[{id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه، بالإضافة لنظام القبض الأسبوعي والحوافز حسب نظام التشغيل.',keywords:['مرتب','6200'],active:true}];
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}}};
  const r=await planTurn({applicant:a,message:{body:'المرتب كام؟'},questions,areas,settings,interpret:noAi,knowledge:kb});
  assert.equal(r.knowledge_id,'salary');
  assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/6200/);
- assert.equal(r.followup_reply,questions[1].label);
+ assert.match(r.followup_reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
 });
 
-test('ready_to_start is priority data only and never blocks qualification',()=>{
+test('ready_to_start remains priority data only',()=>{
  const a={answers:{
   q1:{value:true,kind:'yes_no'},
-  q2:{value:'أكتوبر',display:'أكتوبر',kind:'text',geo_status:'qualified',matched_area_id:'oct'},
-  q6:{value:false,kind:'yes_no'}
+  q2:{value:'oct',display:'أكتوبر',kind:'area'},
+  q5:{value:false,kind:'yes_no'}
  }};
  const q=qualificationFor(a,questions,areas,settings);
  assert.equal(q.qualified_candidate,true);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shouldBrowseAreaButtons} from '../src/worker.js';
+import {shouldBrowseAreaButtons,botAreaChoices} from '../src/worker.js';
 
 test('work-area qualification prompt renders area buttons',()=>{
  const q={field_key:'preferred_work_area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.'};
@@ -15,4 +15,24 @@ test('knowledge reply while waiting for work area does not attach area buttons',
 
 test('legacy area browser prompts still render area buttons',()=>{
  assert.equal(shouldBrowseAreaButtons(null,'المناطق المتاحة موجودة في الأزرار تحت 👇'),true);
+});
+
+
+test('bot area choices come directly from active Areas-section rows',()=>{
+ const areas=[
+  {id:'oct',name:'أكتوبر',active:true,recruitment_eligible:true},
+  {id:'nasr',name:'مدينة نصر',active:true,recruitment_eligible:false},
+  {id:'zayed',name:'الشيخ زايد',active:false,recruitment_eligible:true}
+ ];
+ assert.deepEqual(botAreaChoices(areas).map(x=>x.id),['oct','nasr']);
+});
+
+test('deleted area disappears from bot choices because it is no longer in Areas source',()=>{
+ const before=[
+  {id:'oct',name:'أكتوبر',active:true},
+  {id:'nasr',name:'مدينة نصر',active:true}
+ ];
+ const after=before.filter(x=>x.id!=='nasr');
+ assert.deepEqual(botAreaChoices(before).map(x=>x.id),['oct','nasr']);
+ assert.deepEqual(botAreaChoices(after).map(x=>x.id),['oct']);
 });

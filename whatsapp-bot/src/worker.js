@@ -10,6 +10,15 @@ import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
 
+export function shouldBrowseAreaButtons(question,body){
+ const text=String(body||'');
+ return text.includes('اختار المنطقة من الأزرار')
+  ||text.includes('اختار منطقة العمل من الأزرار')
+  ||text.includes('اختار منطقة تانية من الأزرار')
+  ||text.includes('المناطق المتاحة موجودة في الأزرار')
+  ||(question?.field_key==='preferred_work_area'&&text.includes(String(question.label||'')));
+}
+
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
   Object.assign(this,{db,connection,connections,serial,speech});
@@ -309,11 +318,7 @@ export class Worker {
     if(m.sender==='bot'&&a.bot_enabled&&sendConfig){
      const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);
      const body=String(m.body||'');
-     const browseAreas=body.includes('اختار المنطقة من الأزرار')
-      ||body.includes('اختار منطقة العمل من الأزرار')
-      ||body.includes('اختار منطقة تانية من الأزرار')
-      ||body.includes('المناطق المتاحة موجودة في الأزرار')
-      ||(q?.field_key==='preferred_work_area'&&body.includes(String(q.label||'')));
+     const browseAreas=shouldBrowseAreaButtons(q,body);
      if(browseAreas){
       const eligibilityOnly=q?.field_key==='preferred_work_area'||body.includes('المناطق المتاحة موجودة في الأزرار')||a.answers?.__area_page?.eligibility_only===true;
       const liveAreas=sendConfig.areas.filter(area=>area.active),eligibilityConfigured=liveAreas.some(area=>area.recruitment_eligible!==undefined);

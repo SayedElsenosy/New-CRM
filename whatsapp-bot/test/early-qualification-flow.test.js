@@ -28,11 +28,12 @@ const applicant={stage:'new',recruitment_stage:'new',answers:{},awaiting_id:null
 const noAi=async()=>null;
 const call=(a,body,extra={})=>planTurn({applicant:a,message:{body},questions,areas,settings,interpret:noAi,knowledge:[],...extra});
 
-test('welcome starts with motorcycle qualification question',async()=>{
+test('welcome is sent separately before the motorcycle qualification question',async()=>{
  const r=await call(applicant,'السلام عليكم');
  assert.equal(r.patch.awaiting_id,'q1');
  assert.match(r.reply,/Breadfast/);
- assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
+ assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
+ assert.match(r.followup_reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
 });
 
 test('Meta ad default opener starts application without knowledge handoff or consuming an answer',async()=>{
@@ -57,8 +58,8 @@ test('Meta ad default opener starts application without knowledge handoff or con
  assert.equal(r.handoff,undefined);
  assert.equal(r.knowledge_id,undefined);
  assert.match(r.reply,/Breadfast/);
- assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
- assert.doesNotMatch(r.reply,/رد Knowledge/);
+ assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا|رد Knowledge/);
+ assert.match(r.followup_reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
  assert.deepEqual(a.answers.__attribution,attribution);
  assert.equal(a.bot_enabled,true);
 });
@@ -81,7 +82,9 @@ test('clear application openers start the flow even when Meta referral is missin
   assert.equal(r.patch.awaiting_id,'q1',body);
   assert.equal(r.handoff,undefined,body);
   assert.equal(r.knowledge_id,undefined,body);
-  assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/,body);
+  assert.match(r.reply,/Breadfast/,body);
+  assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/,body);
+  assert.match(r.followup_reply,/هل معاك موتوسيكل متاح للشغل يوميًا/,body);
  }
 });
 

@@ -207,5 +207,25 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[knowledgeCount]}=await db.query("select count(*)::int as n from masar_knowledge where question in ('المرتب كام؟','الدخل كام؟','الشيفت كام ساعة؟','لازم موتوسيكل؟','في تأمين؟','التقديم بفلوس؟')");
  assert.equal(knowledgeCount.n,6);
  assert.equal((await db.query("select count(*)::int as n from masar_ads where ad_id='120240000000000001'")).rows[0].n,1);
+
+ // Work-area correction removes residence from qualification flow without deleting historical residence data.
+ const {rows:[targetResidenceQuestion]}=await db.query("select id from masar_questions where office_id=$1 and field_key='residence_area'",[targetOfficeForConfig.id]);
+ await db.query("update masar_applicants set awaiting_id=$2,answers=jsonb_build_object('__qualification_stop',jsonb_build_object('reason','residence_outside_hiring_zones','at',now()),'__application_flow_status',jsonb_build_object('value','stopped_not_qualified','reason','residence_outside_hiring_zones')) where id=$1",[samePersonOtherNumber.id,targetResidenceQuestion.id]);
+ const workAreaSql=await fs.readFile(new URL('../../supabase/016_work_area_qualification.sql',import.meta.url),'utf8');
+ await db.exec(workAreaSql);await db.exec(workAreaSql);
+
+ const {rows:correctedQuestions}=await db.query("select field_key,kind,required,active,position,label from masar_questions where office_id=$1 order by position,field_key",[targetOfficeForConfig.id]);
+ const activeCorrected=correctedQuestions.filter(x=>x.active);
+ assert.deepEqual(activeCorrected.map(x=>x.field_key),['has_motorcycle','preferred_work_area','full_name','shift_acceptance','ready_to_start']);
+ assert.equal(activeCorrected[1].label,'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.');
+ const residenceCorrected=correctedQuestions.find(x=>x.field_key==='residence_area');
+ assert.equal(residenceCorrected.active,false);assert.equal(residenceCorrected.required,false);
+ const {rows:[preferredCorrected]}=await db.query("select id from masar_questions where office_id=$1 and field_key='preferred_work_area'",[targetOfficeForConfig.id]);
+ const {rows:[reopenedApplicant]}=await db.query("select awaiting_id,answers,recruitment_stage from masar_applicants where id=$1",[samePersonOtherNumber.id]);
+ assert.equal(String(reopenedApplicant.awaiting_id),String(preferredCorrected.id));
+ assert.equal(reopenedApplicant.answers.__qualification_stop,undefined);
+ assert.equal(reopenedApplicant.answers.__application_flow_status.value,'active');
+ assert.notEqual(reopenedApplicant.recruitment_stage,'rejected');
+ assert.equal((await db.query("select count(*)::int as n from masar_ads where ad_id='120240000000000001'")).rows[0].n,1);
  }finally{await db.close();}
 });

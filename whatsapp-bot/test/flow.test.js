@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange} from '../src/knowledge.js';
+import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -98,6 +98,13 @@ test('plain text fallback previews first and confirms when repeated',async()=>{
  assert.equal(second.patch.awaiting_id,'bike');
 });
 
+
+test('plain application answers are not mistaken for questions',()=>{
+ assert.equal(looksLikeQuestion('اه معايا'),false);
+ assert.equal(looksLikeQuestion('اه بس مش معايا رخصة'),false);
+ assert.equal(looksLikeQuestion('المرتب كام'),true);
+ assert.equal(looksLikeQuestion('في تأمين؟'),true);
+});
 
 test('knowledge matcher understands Egyptian wording variants',()=>{
  const rows=[{id:'k1',question:'ميعاد بداية التأمين الطبي امتى؟',answer:'من أول يوم',keywords:['تأمين طبي'],active:true}];

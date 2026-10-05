@@ -12,7 +12,6 @@ export function answered(q,answers,areas) {
  const a=answers[q.id];
  if (!a || a.value===null || a.value===undefined || a.value==='') return false;
  if (a.kind && a.kind!==q.kind) return false;
- if(q.field_key==='residence_area'&&a.geo_status==='unknown')return false;
  return q.kind!=='area' || a.archived_area===true || areas.some(z=>z.id===a.value && z.active);
 }
 export function completion(questions,answers,areas) {

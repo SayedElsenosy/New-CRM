@@ -311,7 +311,7 @@ export class Worker {
      const body=String(m.body||'');
      const browseAreas=body.includes('اختار المنطقة من الأزرار')||body.includes('اختار منطقة تانية من الأزرار')||body.includes('المناطق المتاحة موجودة في الأزرار');
      if(browseAreas){
-      const eligibilityOnly=body.includes('المناطق المتاحة موجودة في الأزرار')||a.answers?.__area_page?.eligibility_only===true;
+      const eligibilityOnly=q?.field_key==='preferred_work_area'||body.includes('المناطق المتاحة موجودة في الأزرار')||a.answers?.__area_page?.eligibility_only===true;
       const liveAreas=sendConfig.areas.filter(area=>area.active),eligibilityConfigured=liveAreas.some(area=>area.recruitment_eligible!==undefined);
       const activeAreas=eligibilityOnly&&eligibilityConfigured?liveAreas.filter(area=>area.recruitment_eligible===true):liveAreas;
       const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
@@ -322,6 +322,7 @@ export class Worker {
       const preview=activeAreas.find(area=>area.id===previewId);
       if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ تأكيد '+preview.name});
       buttons.push(...pageAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
+      if(q?.field_key==='preferred_work_area')buttons.push({id:'no_work_area',text:'❌ ولا منطقة مناسبة'});
       if(page>0)buttons.push({id:'area_page:'+(page-1),text:'⬅️ السابق'});
       if(page<pages-1)buttons.push({id:'area_page:'+(page+1),text:'التالي ➡️'});
      }

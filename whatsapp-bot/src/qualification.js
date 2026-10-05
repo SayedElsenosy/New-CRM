@@ -65,25 +65,27 @@ export function matchResidenceArea(value,areas=[]){
  ranked.sort((a,b)=>b.score-a.score);
  return ranked[0]?.area||null;
 }
-function residenceInfo(applicant,questions,areas){
+function residenceInfo(applicant,questions){
  const {answer}=answerFor(applicant,questions,'residence_area');
+ if(!answer)return {name:null};
+ return {name:String(answer.display||answer.value||'').trim()||null};
+}
+function workAreaInfo(applicant,questions,areas){
+ const {answer}=answerFor(applicant,questions,'preferred_work_area');
  if(!answer)return {answered:false,name:null,area:null,zone:null,geo_qualified:null,status:'unknown'};
- const raw=String(answer.display||answer.value||'').trim();
+ if(answer.no_eligible_work_area===true||answer.work_area_eligible===false&&String(answer.value)==='__none__'){
+  return {answered:true,name:answer.display||'لا توجد منطقة مناسبة',area:null,zone:'UNKNOWN',geo_qualified:false,status:'outside'};
+ }
  if(answer.archived_area===true){
   const zone=RECRUITMENT_ZONES.includes(answer.archived_area_zone)?answer.archived_area_zone:'UNKNOWN';
   const eligible=answer.archived_area_recruitment_eligible===true;
-  return {answered:true,name:answer.archived_area_name||raw,area:null,zone,geo_qualified:eligible,status:eligible?'qualified':'outside'};
+  return {answered:true,name:answer.archived_area_name||String(answer.display||''),area:null,zone,geo_qualified:eligible,status:eligible?'qualified':'outside'};
  }
- let matched=null;
- if(answer.matched_area_id)matched=(areas||[]).find(a=>String(a.id)===String(answer.matched_area_id))||null;
- if(!matched&&(answer.kind==='area'||answer.kind==='area_preview'))matched=(areas||[]).find(a=>String(a.id)===String(answer.value))||null;
- if(!matched)matched=matchResidenceArea(raw,areas);
- if(!matched){
-  const confirmedOutside=answer.geo_status==='outside'||answer.geo_confirmed_outside===true;
-  return {answered:true,name:raw,area:null,zone:'UNKNOWN',geo_qualified:confirmedOutside?false:null,status:confirmedOutside?'outside':'unknown'};
- }
- const eligible=matched.recruitment_eligible===true;
- return {answered:true,name:matched.name||raw,area:matched,zone:RECRUITMENT_ZONES.includes(matched.zone)?matched.zone:'UNKNOWN',geo_qualified:eligible,status:eligible?'qualified':'outside'};
+ const area=(areas||[]).find(a=>String(a.id)===String(answer.value))||null;
+ if(!area)return {answered:true,name:String(answer.display||answer.value||'').trim()||null,area:null,zone:'UNKNOWN',geo_qualified:false,status:'outside'};
+ const eligible=area.active!==false&&area.recruitment_eligible===true;
+ const zone=RECRUITMENT_ZONES.includes(area.zone)?area.zone:'UNKNOWN';
+ return {answered:true,name:area.name||String(answer.display||answer.value||''),area,zone,geo_qualified:eligible,status:eligible?'qualified':'outside'};
 }
 function configuredBooleanCondition(applicant,questions,key,reason,enabled){
  if(enabled!==true)return {required:false,value:true,reason:null,pending:false};
@@ -98,30 +100,34 @@ function configuredBooleanCondition(applicant,questions,key,reason,enabled){
 export function qualificationFor(applicant,questions=[],areas=[],settings={}){
  const motorcycle=answerFor(applicant,questions,'has_motorcycle');
  const motorcycleValue=booleanValue(motorcycle.answer);
- const residence=residenceInfo(applicant,questions,areas);
+ const residence=residenceInfo(applicant,questions);
+ const workArea=workAreaInfo(applicant,questions,areas);
  const license=configuredBooleanCondition(applicant,questions,'motorcycle_license','no_motorcycle_license',settings.qualification_require_motorcycle_license===true);
  const shift=configuredBooleanCondition(applicant,questions,'shift_acceptance','shift_not_accepted',settings.qualification_require_shift===true);
  const reasons=[];
  if(motorcycleValue===false)reasons.push('no_motorcycle');
- if(residence.geo_qualified===false)reasons.push('residence_outside_hiring_zones');
+ if(workArea.geo_qualified===false)reasons.push('no_eligible_work_area');
  if(license.reason)reasons.push(license.reason);
  if(shift.reason)reasons.push(shift.reason);
- const pending=motorcycleValue===null||residence.geo_qualified===null||license.pending||shift.pending;
+ const pending=motorcycleValue===null||workArea.geo_qualified===null||license.pending||shift.pending;
  const qualified=reasons.length?false:pending?null:true;
  return {
   motorcycle_qualified:motorcycleValue,
   motorcycle_status:motorcycleValue===true?'qualified':motorcycleValue===false?'not_qualified':'unknown',
   residence_area:residence.name,
-  residence_area_id:residence.area?.id||null,
-  zone:residence.zone,
-  geo_qualified:residence.geo_qualified,
-  geo_status:residence.status,
+  preferred_work_area:workArea.name,
+  preferred_work_area_id:workArea.area?.id||null,
+  zone:workArea.zone,
+  geo_qualified:workArea.geo_qualified,
+  geo_status:workArea.status,
+  geo_basis:'preferred_work_area',
   qualified_candidate:qualified,
   overall_status:qualified===true?'qualified':qualified===false?'not_qualified':'pending',
   reasons,
   checks:{
    motorcycle:{required:true,value:motorcycleValue},
-   residence:{required:true,value:residence.geo_qualified},
+   work_area:{required:true,value:workArea.geo_qualified},
+   residence:{required:false,value:null},
    motorcycle_license:{required:license.required,value:license.value},
    shift_acceptance:{required:shift.required,value:shift.value}
   }
@@ -173,7 +179,7 @@ export function funnelFor(rows=[],spend=0){
 export function qualificationReasonLabels(reasons=[]){
  const labels={
   no_motorcycle:'لا يوجد موتوسيكل متاح للشغل',
-  residence_outside_hiring_zones:'السكن خارج مناطق التوظيف المعتمدة',
+  no_eligible_work_area:'لا توجد منطقة توظيف متاحة يستطيع الالتزام بالعمل فيها يوميًا',
   no_motorcycle_license:'لا توجد رخصة موتوسيكل سارية',
   shift_not_accepted:'لم يوافق على نظام الشيفت المطلوب'
  };

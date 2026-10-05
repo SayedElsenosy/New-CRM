@@ -519,7 +519,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');
   const hours=Number(b.followup_hours);
   if(typeof b.followup_enabled!=='boolean'||!Number.isInteger(hours)||hours<1||hours>72)throw bad('متابعة البيانات الناقصة لازم تكون من 1 إلى 72 ساعة');
-  const patch={office_id:officeId,ai_enabled:b.ai_enabled,welcome:String(b.welcome).trim(),completion:String(b.completion).trim(),followup_enabled:b.followup_enabled,followup_hours:hours,updated_at:new Date().toISOString()};
+  const patch={office_id:officeId,ai_enabled:b.ai_enabled,welcome:String(b.welcome).trim(),completion:String(b.completion).trim(),followup_enabled:b.followup_enabled,followup_hours:hours,qualification_require_shift:b.qualification_require_shift===true,qualification_require_motorcycle_license:b.qualification_require_motorcycle_license===true,updated_at:new Date().toISOString()};
   try{must(await db.from('masar_office_settings').upsert(patch,{onConflict:'office_id'}));}
   catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code))throw bad('فعّل إعدادات المكاتب أولاً بتشغيل ملف supabase/012_office_admin_scoped_config.sql في Supabase SQL Editor.',503);throw e;}
   res.json({ok:true});
@@ -645,7 +645,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    if(type==='areas'){
     if(typeof b.name!=='string'||!b.name.trim()||b.name.length>100||typeof b.details!=='string'||b.details.length>4000)throw bad('راجع اسم المنطقة وتفاصيلها');
     const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
-    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible===true};
+    const aliases=Array.isArray(b.aliases)?b.aliases:String(b.aliases||'').split(/[,،\n]/);
+    const cleanAliases=[...new Set(aliases.map(x=>String(x||'').trim()).filter(Boolean).slice(0,30).map(x=>x.slice(0,100)))];
+    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible===true,aliases:cleanAliases};
    }else{
     if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع السؤال ونوعه ومفتاح حفظ البيانات');
     row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
@@ -845,7 +847,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const alertIds=await openAlertApplicantIds(req),rawRows=await allRows(db,'masar_applicants'),cfgCache=new Map();
   const cfgFor=async officeId=>{const key=officeId||'__global__';if(!cfgCache.has(key))cfgCache.set(key,await config(db,officeId||null));return cfgCache.get(key);};
   let rows=[];
-  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:qualificationFor(a,cfg.questions,cfg.areas),needs_intervention:alertIds.has(a.id)});}
+  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:qualificationFor(a,cfg.questions,cfg.areas,cfg.settings),application_flow_status:a.answers?.__qualification_stop?'stopped_not_qualified':completion(cfg.questions,a.answers,cfg.areas).complete?'completed':'active',needs_intervention:alertIds.has(a.id)});}
   if(whatsapp.configured){
    const allowed=await accessibleAccountIds(req);
    if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
@@ -903,8 +905,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const events=must(await db.from('masar_events').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).limit(50));
   const account=whatsapp.configured?whatsapp.snapshot(a.whatsapp_account_id):null;
   let office=null;try{if(a.office_id)office=must(await db.from('masar_offices').select('id,name,code,address,phone,manager_name').eq('id',a.office_id).maybeSingle());}catch(e){if(!schemaMissing(e)&&e.code!=='42703')throw e;}
-  const qualification=qualificationFor(a,cfg.questions,cfg.areas);
-  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:{...qualification,reason_labels:qualificationReasonLabels(qualification.reasons)},office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
+  const qualification=qualificationFor(a,cfg.questions,cfg.areas,cfg.settings);
+  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),application_flow_status:a.answers?.__qualification_stop?'stopped_not_qualified':completion(cfg.questions,a.answers,cfg.areas).complete?'completed':'active',qualification:{...qualification,reason_labels:qualificationReasonLabels(qualification.reasons)},office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
  });
  permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{
   let resumedMessageId=null;

@@ -8,7 +8,9 @@ const KEY_ALIASES={
  preferred_work_area:['preferred_work_area','work_area','area'],
  has_motorcycle:['has_motorcycle','motorcycle'],
  motorcycle_license:['motorcycle_license','license'],
- shift_acceptance:['shift_acceptance']
+ shift_acceptance:['shift_acceptance'],
+ ready_to_start:['ready_to_start'],
+ full_name:['full_name','name']
 };
 const STAGE_ORDER={new:0,review:1,interview:2,accepted:3,hired:4};
 
@@ -40,17 +42,27 @@ function booleanValue(answer){
  if(FALSE_VALUES.has(raw))return false;
  return null;
 }
-function areaMatch(value,areas){
+function areaTerms(area){
+ return [area?.name,...(Array.isArray(area?.aliases)?area.aliases:[])]
+  .map(cleanText).filter(Boolean);
+}
+export function matchResidenceArea(value,areas=[]){
  const text=cleanText(value);
  if(!text)return null;
- const ranked=(areas||[]).map(area=>{
-  const name=cleanText(area.name);
-  let score=0;
-  if(text===name)score=10000+name.length;
-  else if(name.length>=3&&text.includes(name))score=5000+name.length;
-  else if(text.length>=3&&name.includes(text))score=1000+text.length;
-  return {area,score};
- }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+ const ranked=[];
+ for(const area of areas){
+  if(area?.active===false)continue;
+  let best=0;
+  for(const term of areaTerms(area)){
+   let score=0;
+   if(text===term)score=10000+term.length;
+   else if(term.length>=3&&text.includes(term))score=5000+term.length;
+   else if(text.length>=3&&term.includes(text))score=1000+text.length;
+   if(score>best)best=score;
+  }
+  if(best>0)ranked.push({area,score:best});
+ }
+ ranked.sort((a,b)=>b.score-a.score);
  return ranked[0]?.area||null;
 }
 function residenceInfo(applicant,questions,areas){
@@ -63,28 +75,32 @@ function residenceInfo(applicant,questions,areas){
   return {answered:true,name:answer.archived_area_name||raw,area:null,zone,geo_qualified:eligible,status:eligible?'qualified':'outside'};
  }
  let matched=null;
- if(answer.kind==='area'||answer.kind==='area_preview')matched=(areas||[]).find(a=>String(a.id)===String(answer.value))||null;
- if(!matched)matched=areaMatch(raw,areas);
- if(!matched)return {answered:true,name:raw,area:null,zone:'UNKNOWN',geo_qualified:false,status:'outside'};
+ if(answer.matched_area_id)matched=(areas||[]).find(a=>String(a.id)===String(answer.matched_area_id))||null;
+ if(!matched&&(answer.kind==='area'||answer.kind==='area_preview'))matched=(areas||[]).find(a=>String(a.id)===String(answer.value))||null;
+ if(!matched)matched=matchResidenceArea(raw,areas);
+ if(!matched){
+  const confirmedOutside=answer.geo_status==='outside'||answer.geo_confirmed_outside===true;
+  return {answered:true,name:raw,area:null,zone:'UNKNOWN',geo_qualified:confirmedOutside?false:null,status:confirmedOutside?'outside':'unknown'};
+ }
  const eligible=matched.recruitment_eligible===true;
  return {answered:true,name:matched.name||raw,area:matched,zone:RECRUITMENT_ZONES.includes(matched.zone)?matched.zone:'UNKNOWN',geo_qualified:eligible,status:eligible?'qualified':'outside'};
 }
-function requiredBooleanCondition(applicant,questions,key,reason){
- const activeRequired=questionCandidates(questions,key).find(q=>q.active&&q.required);
- if(!activeRequired)return {required:false,value:true,reason:null,pending:false};
- const answer=applicant?.answers?.[activeRequired.id];
- const value=booleanValue(answer);
+function configuredBooleanCondition(applicant,questions,key,reason,enabled){
+ if(enabled!==true)return {required:false,value:true,reason:null,pending:false};
+ const active=questionCandidates(questions,key).find(q=>q.active);
+ if(!active)return {required:false,value:true,reason:null,pending:false};
+ const answer=applicant?.answers?.[active.id],value=booleanValue(answer);
  if(value===null)return {required:true,value:null,reason:null,pending:true};
  if(value===false)return {required:true,value:false,reason,pending:false};
  return {required:true,value:true,reason:null,pending:false};
 }
 
-export function qualificationFor(applicant,questions=[],areas=[]){
+export function qualificationFor(applicant,questions=[],areas=[],settings={}){
  const motorcycle=answerFor(applicant,questions,'has_motorcycle');
  const motorcycleValue=booleanValue(motorcycle.answer);
  const residence=residenceInfo(applicant,questions,areas);
- const license=requiredBooleanCondition(applicant,questions,'motorcycle_license','no_motorcycle_license');
- const shift=requiredBooleanCondition(applicant,questions,'shift_acceptance','shift_not_accepted');
+ const license=configuredBooleanCondition(applicant,questions,'motorcycle_license','no_motorcycle_license',settings.qualification_require_motorcycle_license===true);
+ const shift=configuredBooleanCondition(applicant,questions,'shift_acceptance','shift_not_accepted',settings.qualification_require_shift===true);
  const reasons=[];
  if(motorcycleValue===false)reasons.push('no_motorcycle');
  if(residence.geo_qualified===false)reasons.push('residence_outside_hiring_zones');

@@ -181,5 +181,31 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal((await db.query("select count(*)::int as n from masar_meta_ad_accounts where office_id=$1",[thirdOffice.id])).rows[0].n,0);
  assert.equal((await db.query("select count(*)::int as n from masar_campaigns where id=$1",[metaCampaign.id])).rows[0].n,0);
  assert.equal((await db.query("select count(*)::int as n from masar_ads where ad_id='120240000000000099'")).rows[0].n,0);
+
+ // Early qualification migration is idempotent, keeps Meta/attribution tables untouched,
+ // installs the six canonical questions, residence aliases, messages and approved KB answers.
+ const earlyFlowSql=(await fs.readFile(new URL('../../supabase/015_early_qualification_flow.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(earlyFlowSql);await db.exec(earlyFlowSql);
+ const {rows:canonicalQuestions}=await db.query("select field_key,kind,required,active,position,label from masar_questions where office_id=$1 and active=true order by position",[primaryOfficeForConfig.id]);
+ assert.deepEqual(canonicalQuestions.map(x=>x.field_key),['has_motorcycle','residence_area','preferred_work_area','full_name','shift_acceptance','ready_to_start']);
+ assert.deepEqual(canonicalQuestions.map(x=>x.kind),['yes_no','text','area','name','yes_no','yes_no']);
+ assert.ok(canonicalQuestions.every(x=>x.required===true));
+ assert.equal(canonicalQuestions[0].label,'هل معاك موتوسيكل متاح للشغل يوميًا؟');
+ assert.equal(canonicalQuestions[1].label,'ساكن فين حاليًا؟ اكتب اسم المنطقة أو الحي بالتحديد.');
+
+ const {rows:[octoberArea]}=await db.query("select zone,recruitment_eligible,aliases from masar_areas where office_id=$1 and name='أكتوبر'",[primaryOfficeForConfig.id]);
+ assert.equal(octoberArea.zone,'WEST');assert.equal(octoberArea.recruitment_eligible,true);
+ assert.ok(octoberArea.aliases.includes('6 اكتوبر'));
+ assert.ok(octoberArea.aliases.includes('السادس من أكتوبر'));
+
+ const {rows:[flowSettings]}=await db.query("select welcome,completion,qualification_require_shift,qualification_require_motorcycle_license from masar_office_settings where office_id=$1",[primaryOfficeForConfig.id]);
+ assert.match(flowSettings.welcome,/Breadfast/);assert.match(flowSettings.welcome,/6200/);
+ assert.match(flowSettings.completion,/مرحلة التقديم الأولية/);
+ assert.equal(flowSettings.qualification_require_shift,false);
+ assert.equal(flowSettings.qualification_require_motorcycle_license,false);
+
+ const {rows:[knowledgeCount]}=await db.query("select count(*)::int as n from masar_knowledge where question in ('المرتب كام؟','الدخل كام؟','الشيفت كام ساعة؟','لازم موتوسيكل؟','في تأمين؟','التقديم بفلوس؟')");
+ assert.equal(knowledgeCount.n,6);
+ assert.equal((await db.query("select count(*)::int as n from masar_ads where ad_id='120240000000000001'")).rows[0].n,1);
  }finally{await db.close();}
 });

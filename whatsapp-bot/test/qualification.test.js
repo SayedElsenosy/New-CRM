@@ -62,9 +62,9 @@ test('complete application can still be not qualified',()=>{
 test('required active license and shift checks participate in qualification',()=>{
  const questions=[q('m','has_motorcycle','yes_no'),q('r','residence_area','text'),q('l','motorcycle_license','yes_no'),q('s','shift_acceptance','yes_no')];
  let applicant={answers:{m:answer(true,'yes_no'),r:answer('زايد'),l:answer(true,'yes_no')}};
- assert.equal(qualificationFor(applicant,questions,areas).overall_status,'pending');
+ assert.equal(qualificationFor(applicant,questions,areas,{qualification_require_motorcycle_license:true,qualification_require_shift:true}).overall_status,'pending');
  applicant.answers.s=answer(false,'yes_no','لا');
- const result=qualificationFor(applicant,questions,areas);
+ const result=qualificationFor(applicant,questions,areas,{qualification_require_motorcycle_license:true,qualification_require_shift:true});
  assert.equal(result.overall_status,'not_qualified');
  assert.ok(result.reasons.includes('shift_not_accepted'));
 });
@@ -139,4 +139,22 @@ test('archived residence keeps its historical geo qualification',()=>{
  assert.equal(result.zone,'WEST');
  assert.equal(result.geo_qualified,true);
  assert.equal(result.qualified_candidate,true);
+});
+
+
+test('residence aliases are normalized and matched',()=>{
+ const questions=[q('m','has_motorcycle','yes_no'),q('r','residence_area','text')];
+ const aliasAreas=[{id:'oct',name:'أكتوبر',aliases:['6 اكتوبر','السادس من أكتوبر'],zone:'WEST',recruitment_eligible:true,active:true}];
+ const applicant={answers:{m:answer(true,'yes_no'),r:answer('انا ساكن في 6 أكتوبر')}};
+ const result=qualificationFor(applicant,questions,aliasAreas);
+ assert.equal(result.geo_qualified,true);
+ assert.equal(result.zone,'WEST');
+});
+
+test('unmatched residence stays pending until flow confirms outside',()=>{
+ const questions=[q('m','has_motorcycle','yes_no'),q('r','residence_area','text')];
+ const pending={answers:{m:answer(true,'yes_no'),r:{value:'الشرقية',display:'الشرقية',kind:'text',geo_status:'unknown'}}};
+ assert.equal(qualificationFor(pending,questions,areas).geo_qualified,null);
+ const outside={answers:{m:answer(true,'yes_no'),r:{value:'الشرقية',display:'الشرقية',kind:'text',geo_status:'outside',geo_confirmed_outside:true}}};
+ assert.equal(qualificationFor(outside,questions,areas).geo_qualified,false);
 });

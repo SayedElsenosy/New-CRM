@@ -206,10 +206,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(isFreshApplicationStart(a,m)){
   const first=qs[0];
   const welcome=String(settings.welcome||'').trim();
-  return {
-   patch:{awaiting_id:first.id,stage:'new'},
-   reply:(welcome?welcome+'\n':'')+questionPrompt(first,areas)
-  };
+  const firstQuestion=questionPrompt(first,areas);
+  return welcome
+   ?{patch:{awaiting_id:first.id,stage:'new'},reply:welcome,followup_reply:firstQuestion}
+   :{patch:{awaiting_id:first.id,stage:'new'},reply:firstQuestion};
  }
 
  if(answers.__qualification_stop){
@@ -388,7 +388,14 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
   return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:postCompletionReply()};
  }
- if(!a.awaiting_id || a.awaiting_id!==current.id) return {patch:{awaiting_id:current.id},reply:(realAnswerCount(answers)?'نكمل بياناتك: ':settings.welcome+'\n')+questionPrompt(current,areas)};
+ if(!a.awaiting_id || a.awaiting_id!==current.id){
+  const prompt=questionPrompt(current,areas);
+  if(realAnswerCount(answers))return {patch:{awaiting_id:current.id},reply:'نكمل بياناتك: '+prompt};
+  const welcome=String(settings.welcome||'').trim();
+  return welcome
+   ?{patch:{awaiting_id:current.id},reply:welcome,followup_reply:prompt}
+   :{patch:{awaiting_id:current.id},reply:prompt};
+ }
 
  if(!current.required&&norm(m.body)==='تخطي')answers[current.id]={skipped:true,label:current.label,key:current.field_key,kind:current.kind};
  else {

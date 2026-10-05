@@ -8,13 +8,6 @@ function areaPreviewReply(area,areas){
  return areaDetails(area)+`\n\nلو ${area.name} هي المنطقة اللي هتنزل فيها اضغط «✅ تأكيد ${area.name}».`+choices;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
-function directAnswerHasExtra(text,current){
- if(current?.kind!=='yes_no')return false;
- const parts=norm(text).split(/\s+/).filter(Boolean);
- if(!parts.length||!['نعم','ايوه','ايوا','اه','لا','لاء','yes','no','yep','yeah'].includes(parts[0]))return false;
- const rest=parts.slice(1).join(' ').replace(/^(?:بس|لكن|لاكن|و|ولا)\s+/,'').trim();
- return rest.length>=3;
-}
 async function parseStructuredPendingAnswer({current,message,areas,settings,interpret}){
  if(!current||!['yes_no','number','name'].includes(current.kind))return null;
  let parsed=validateAnswer(current,message.body,areas,message.media_path?{path:message.media_path}:null);
@@ -310,13 +303,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
    const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
    let match=null;
-   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true){
+   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
     const threshold=Number(settings.ai_confidence_threshold||0.62);
-    const allowStatement=directAnswerHasExtra(m.body,current);
-    if(looksLikeQuestion(m.body)||allowStatement){
-     const candidate=findKnowledgeAnswer(m.body,knowledge,threshold,{allowStatement});
-     if(candidate&&!sameKnowledgeTopic(current.label,candidate.question))match=candidate;
-    }
+    const candidate=findKnowledgeAnswer(m.body,knowledge,threshold);
+    if(candidate&&!sameKnowledgeTopic(current.label,candidate.question))match=candidate;
    }
    const continuation=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
    let reply=continuation,followup_reply=null;

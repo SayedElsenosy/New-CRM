@@ -154,7 +154,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
    return {patch:{answers,awaiting_id:null},reply:areaListReply(areas)};
   }
-  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&current?.field_key!=='residence_area'){
+  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
    const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
    if(match)return {patch:{awaiting_id:null},reply:String(match.answer||'').trim(),knowledge_id:match.id,knowledge_confidence:match.confidence};
   }
@@ -292,7 +292,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
  }
 
- if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+ if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&current?.field_key!=='residence_area'){
   const threshold=Number(settings.ai_confidence_threshold||0.62);
   const match=findKnowledgeAnswer(m.body,knowledge,threshold);
   if(match){

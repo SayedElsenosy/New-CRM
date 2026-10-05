@@ -67,9 +67,7 @@ function areaListInquiry(text){
   || ['المناطق','مناطق الشغل','اماكن الشغل','الاماكن المتاحه'].includes(n);
 }
 function recruitmentAreas(areas){
- const live=areas.filter(z=>z.active);
- const eligibilityConfigured=live.some(z=>z.recruitment_eligible!==undefined);
- return eligibilityConfigured?live.filter(z=>z.recruitment_eligible===true):live;
+ return areas.filter(z=>z.active);
 }
 function areaListReply(areas){
  const live=recruitmentAreas(areas);

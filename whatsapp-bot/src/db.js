@@ -25,9 +25,10 @@ export async function config(db,officeId=null){
   if(!r.error)officeSettings=r.data;
   else if(!['PGRST205','42P01','42703','PGRST204'].includes(r.error.code))throw r.error;
  }
+ const areas=must(ar).map(area=>area?.active===true?{...area,recruitment_eligible:true}:area);
  return {
   questions:must(qr),
-  areas:must(ar),
+  areas,
   settings:officeSettings?{...baseSettings,...officeSettings,id:true,office_id:officeId}:baseSettings
  };
 }

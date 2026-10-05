@@ -611,11 +611,12 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    if(!existing){
     const inserted=must(await db.from('masar_ads').insert({
      ad_id:adId,name:ref.title||'',headline:ref.title||'',source_url:ref.source_url||null,
-     source_app:ref.source_app||null,source_type:ref.source_type||'ad',
+     source_app:ref.source_app||null,source_type:ref.source_type||'ad',office_id:applicant.office_id||null,
      first_seen_at:ref.captured_at||applicant.created_at,last_seen_at:ref.captured_at||applicant.created_at
     }).select().single());byId.set(adId,inserted);catalog.ads.unshift(inserted);
    }else{
     const patch={last_seen_at:ref.captured_at||applicant.created_at,updated_at:new Date().toISOString()};
+    if(!existing.office_id&&applicant.office_id)patch.office_id=applicant.office_id;
     if(!existing.headline&&ref.title)patch.headline=ref.title;
     if(!existing.source_url&&ref.source_url)patch.source_url=ref.source_url;
     if(!existing.source_app&&ref.source_app)patch.source_app=ref.source_app;
@@ -629,10 +630,52 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const completed=rows.filter(a=>['complete','lecture','working'].includes(a.stage)).length;
   return {total:rows.length,completed,stages};
  };
+ permissionRoute('campaigns','get','/meta/status',async(req,res)=>{
+  const officeId=await scopedOfficeId(req,{body:false}),cfg=metaConfig();
+  try{
+   const connection=must(await db.from('masar_meta_connections').select('office_id,meta_user_id,meta_user_name,token_expires_at,selected_ad_account_id,selected_ad_account_name,currency,timezone_name,status,last_sync_at,last_sync_error,updated_at').eq('office_id',officeId).maybeSingle());
+   const accounts=must(await db.from('masar_meta_ad_accounts').select('account_id,name,account_status,currency,timezone_name,business_name,updated_at').eq('office_id',officeId).order('name',{ascending:true}));
+   res.json({configured:true,env_configured:cfg.configured,missing_env:cfg.missing,connected:Boolean(connection),connection,accounts});
+  }catch(e){
+   if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))return res.json({configured:false,env_configured:cfg.configured,missing_env:cfg.missing,connected:false,connection:null,accounts:[]});
+   throw e;
+  }
+ });
+ managerRoute('get','/meta/connect-url',async(req,res)=>{
+  const officeId=await scopedOfficeId(req,{body:false}),cfg=metaConfig();
+  if(!cfg.configured)throw bad('إعداد ربط Meta ناقص على Railway: '+cfg.missing.join('، '),503);
+  const state=crypto.randomBytes(32).toString('base64url'),stateHash=metaStateHash(state),expiresAt=new Date(Date.now()+15*60*1000).toISOString();
+  try{
+   await db.from('masar_meta_oauth_states').delete().lt('expires_at',new Date().toISOString());
+   must(await db.from('masar_meta_oauth_states').insert({state_hash:stateHash,office_id:officeId,user_id:req.user.id,expires_at:expiresAt}));
+  }catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))throw bad('شغّل ملف supabase/014_meta_ads_connection.sql أولاً',503);throw e;}
+  res.json({url:metaLoginUrl({state,config:cfg}),expires_at:expiresAt});
+ });
+ managerRoute('put','/meta/account',async(req,res)=>{
+  const officeId=await scopedOfficeId(req),accountId=normalizeMetaAdAccountId(req.body.account_id);
+  if(!/^\d+$/.test(accountId))throw bad('اختر حسابًا إعلانيًا صحيحًا');
+  const account=must(await db.from('masar_meta_ad_accounts').select('*').eq('office_id',officeId).eq('account_id',accountId).maybeSingle());
+  if(!account)throw bad('الحساب الإعلاني غير موجود ضمن حساب Meta المتصل',404);
+  const connection=must(await db.from('masar_meta_connections').select('office_id').eq('office_id',officeId).maybeSingle());
+  if(!connection)throw bad('اربط حساب Meta أولاً',409);
+  must(await db.from('masar_meta_connections').update({selected_ad_account_id:accountId,selected_ad_account_name:account.name||'',currency:account.currency||null,timezone_name:account.timezone_name||null,status:'connected',last_sync_error:null,updated_at:new Date().toISOString()}).eq('office_id',officeId));
+  res.json(await metaSyncOffice(officeId));
+ });
+ managerRoute('post','/meta/sync',async(req,res)=>{
+  const officeId=await scopedOfficeId(req);res.json(await metaSyncOffice(officeId));
+ });
+ managerRoute('delete','/meta/connection',async(req,res)=>{
+  const officeId=await scopedOfficeId(req);
+  try{
+   must(await db.from('masar_meta_ad_accounts').delete().eq('office_id',officeId));
+   must(await db.from('masar_meta_connections').delete().eq('office_id',officeId));
+  }catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))throw bad('شغّل ملف supabase/014_meta_ads_connection.sql أولاً',503);throw e;}
+  res.json({ok:true});
+ });
  permissionRoute('campaigns','get','/campaigns',async(req,res)=>{
   const {campaigns,ads}=await discoverAds(),applicants=(await applicantList(req)).rows,officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||'');
   const visibleIds=new Set(applicants.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean)),scopeActive=req.role!=='admin'||Boolean(officeId);
-  const scopedAds=scopeActive?ads.filter(ad=>visibleIds.has(ad.ad_id)):ads;
+  const scopedAds=scopeActive?ads.filter(ad=>ad.office_id===officeId||visibleIds.has(ad.ad_id)):ads;
   const scopedCampaignIds=new Set(scopedAds.map(ad=>ad.campaign_id).filter(Boolean));
   const scopedCampaigns=campaigns.filter(x=>(!scopeActive||x.office_id===officeId||scopedCampaignIds.has(x.id)));
   const stats=Object.fromEntries(scopedAds.map(ad=>{const subset=applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id);return [ad.ad_id,{...summaryFor(subset),...funnelFor(subset,Number(ad.spend||0))}];}));
@@ -672,7 +715,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const {campaigns,ads}=await discoverAds(),rows=(await applicantList(req)).rows;
    const ids=new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
    const officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||''),scopeActive=req.role!=='admin'||Boolean(officeId);
-   const scopedAds=scopeActive?ads.filter(x=>ids.has(x.ad_id)):ads;
+   const scopedAds=scopeActive?ads.filter(x=>x.office_id===officeId||ids.has(x.ad_id)):ads;
    const campaignIds=new Set(scopedAds.map(x=>x.campaign_id).filter(Boolean));
    const scopedCampaigns=campaigns.filter(x=>!scopeActive||x.office_id===officeId||campaignIds.has(x.id));
    const accounts=(await accountRows(req)).map(({id,name,phone,status})=>({id,name,phone,status}));
@@ -950,7 +993,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
 
   const visibleIds=new Set(scopedRows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
   const officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||'');
-  let ads=catalog.ads.filter(ad=>!officeId||visibleIds.has(ad.ad_id)||(ad.campaign_id&&campaignById.get(ad.campaign_id)?.office_id===officeId));
+  let ads=catalog.ads.filter(ad=>!officeId||ad.office_id===officeId||visibleIds.has(ad.ad_id)||(ad.campaign_id&&campaignById.get(ad.campaign_id)?.office_id===officeId));
   if(req.query.campaign_id)ads=ads.filter(ad=>ad.campaign_id===String(req.query.campaign_id));
   if(req.query.ad_id)ads=ads.filter(ad=>ad.ad_id===String(req.query.ad_id));
   if(requestedZone)ads=ads.filter(ad=>(ad.zone||'UNKNOWN')===requestedZone);

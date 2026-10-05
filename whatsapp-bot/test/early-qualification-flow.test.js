@@ -56,6 +56,40 @@ test('motorcycle=yes goes directly to preferred work area, not residence',async(
  assert.doesNotMatch(r.reply,/ساكن فين/);
 });
 
+test('natural motorcycle answer does not trigger an unrelated knowledge reply',async()=>{
+ const kb=[{
+  id:'license-noise',
+  question:'معاك رخصة موتوسيكل؟',
+  answer:'مش معاك رخصة شخصية ولا رخصة موتوسيكل',
+  keywords:['معاك','معايا','موتوسيكل'],
+  active:true
+ }];
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'اه معايا'},questions,areas,settings,interpret:noAi,knowledge:kb});
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.knowledge_id,undefined);
+ assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.doesNotMatch(r.reply,/رخصة شخصية|رخصة موتوسيكل/);
+});
+
+test('answer plus a real question still uses knowledge then resumes the flow',async()=>{
+ const kb=[{
+  id:'salary',
+  question:'المرتب كام؟',
+  answer:'المرتب الثابت 6200 جنيه، بالإضافة لنظام القبض الأسبوعي والحوافز حسب نظام التشغيل.',
+  keywords:['مرتب','6200'],
+  active:true
+ }];
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'ايوه بس المرتب كام؟'},questions,areas,settings,interpret:noAi,knowledge:kb});
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.knowledge_id,'salary');
+ assert.match(r.reply,/6200/);
+ assert.match(r.followup_reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+});
+
 test('eligible work area button is saved immediately and continues the flow',async()=>{
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
   q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}

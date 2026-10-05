@@ -1060,8 +1060,12 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const zones=[...residenceCounts.entries()].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
   const days={};for(const a of rows){const day=new Date(a.created_at).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});days[day]=(days[day]||0)+1;}
   const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
-  const adIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))],visibleAdIds=new Set(adIds);
-  const relevantAds=catalog.ads.filter(x=>visibleAdIds.has(x.ad_id));
+  const attributedAdIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))],visibleAdIds=new Set(attributedAdIds);
+  const officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||'');
+  let relevantAds=catalog.ads.filter(x=>!officeId||x.office_id===officeId||visibleAdIds.has(x.ad_id)||(x.campaign_id&&campaignById.get(x.campaign_id)?.office_id===officeId));
+  if(req.query.campaign_id)relevantAds=relevantAds.filter(x=>x.campaign_id===String(req.query.campaign_id));
+  if(req.query.ad_id)relevantAds=relevantAds.filter(x=>x.ad_id===String(req.query.ad_id));
+  const adIds=[...new Set([...relevantAds.map(x=>x.ad_id),...attributedAdIds])];
   const ad_breakdown=adIds.map(adId=>{const subset=rows.filter(a=>String(attributionOf(a)?.source_id||'')===adId),ad=adById.get(adId),s=summaryFor(subset);return {
    ad_id:adId,name:ad?.name||ad?.headline||'',campaign_id:ad?.campaign_id||null,campaign_name:campaignById.get(ad?.campaign_id)?.name||'غير مربوط بحملة',
    spend:Number(ad?.spend||0),...s

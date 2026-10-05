@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {planTurn,isApplicationStartMessage} from '../src/flow.js';
 import {qualificationFor} from '../src/qualification.js';
+import {normalizeWorkAreas} from '../src/db.js';
 
 const questions=[
  {id:'q1',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',position:1,active:true,required:true},
@@ -156,6 +157,24 @@ test('eligible work area button is saved immediately and continues the flow',asy
  assert.equal(q.geo_qualified,true);
  assert.equal(q.geo_basis,'preferred_work_area');
  assert.equal(q.zone,'EAST');
+});
+
+
+test('legacy active work area cannot appear in bot and then fail qualification',async()=>{
+ const legacyAreas=normalizeWorkAreas([
+  ...areas.filter(x=>x.id!=='outside'),
+  {id:'hadayek-market',name:'حدائق الأهرام ماركت',active:true,recruitment_eligible:false,zone:'WEST',details:'تفاصيل حدائق الأهرام ماركت'}
+ ]);
+ const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}
+ }};
+ const r=await planTurn({applicant:a,message:{body:'area_preview:hadayek-market'},questions,areas:legacyAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers.q2.value,'hadayek-market');
+ assert.equal(r.patch.answers.q2.work_area_eligible,true);
+ assert.equal(r.patch.awaiting_id,'q3');
+ assert.equal(r.patch.answers.__qualification_stop,undefined);
+ assert.match(r.reply,/سجلت منطقة العمل: حدائق الأهرام ماركت/);
+ assert.match(r.reply,/اكتب اسمك بالكامل/);
 });
 
 test('typing an eligible area name directly saves it without preview or confirmation',async()=>{

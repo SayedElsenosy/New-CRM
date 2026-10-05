@@ -161,9 +161,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
 
  const action=areaAction(m.body);
  if(action?.type==='page'){
-  const activeAreas=areas.filter(z=>z.active),pages=Math.max(1,Math.ceil(activeAreas.length/7));
+  const eligibilityOnly=answers.__area_page?.eligibility_only===true;
+  const activeAreas=areas.filter(z=>z.active&&(!eligibilityOnly||z.recruitment_eligible===true)),pages=Math.max(1,Math.ceil(activeAreas.length/7));
   const page=Math.max(0,Math.min(pages-1,Number.isInteger(action.page)?action.page:0));
-  answers.__area_page={value:page,kind:'area_page',at:new Date().toISOString()};
+  answers.__area_page={value:page,kind:'area_page',at:new Date().toISOString(),...(eligibilityOnly?{eligibility_only:true}:{})};
   const pageNote=pages>1?'\nصفحة '+(page+1)+' من '+pages:'';
   const continueFlow=current&&current.kind!=='area'?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
   return {patch:{answers,...(current?{awaiting_id:current.id}:{})},reply:(current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas))+pageNote+continueFlow};

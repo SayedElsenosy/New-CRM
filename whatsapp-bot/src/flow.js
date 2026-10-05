@@ -14,7 +14,7 @@ function startText(text){
 export function isApplicationStartMessage(text){
  const n=startText(text);
  if(!n)return false;
- if(/^(?:مرحبا\s+)?هل يمكنني الحصول على مزيد من المعلومات(?: حول هذا)?$/.test(n))return true;
+ if(/^(?:مرحبا\s+)?هل يمكنني الحصول علي مزيد من المعلومات(?: حول هذا)?$/.test(n))return true;
  if(/^(?:عايز|عاوز|ممكن|حابب|اريد)\s+(?:اقدم|التقديم)(?:\s+علي\s+(?:الوظيفه|الشغل))?$/.test(n))return true;
  if(/^(?:عايز|عاوز|ممكن|حابب)\s+تفاصيل(?:\s+(?:عن|عن الشغل|عن الوظيفه))?$/.test(n))return true;
  if(/^im interested(?: in (?:this|the job|the position))?$/.test(n))return true;

@@ -120,3 +120,23 @@ test('first attribution is never replaced by a later referral',()=>{
  assert.equal(next.__attribution.ctwa_clid,'first');
  assert.equal(next,initial);
 });
+
+
+test('deleted area snapshots keep historical completion valid',()=>{
+ const questions=[q('r','preferred_work_area','area')];
+ const applicant={answers:{r:{value:'deleted-area',display:'أكتوبر',kind:'area',archived_area:true,archived_area_name:'أكتوبر',archived_area_zone:'WEST',archived_area_recruitment_eligible:true}}};
+ assert.equal(completion(questions,applicant.answers,[]).complete,true);
+});
+
+test('archived residence keeps its historical geo qualification',()=>{
+ const questions=[q('m','has_motorcycle','yes_no'),q('r','residence_area','area')];
+ const applicant={answers:{
+  m:answer(true,'yes_no','نعم'),
+  r:{value:'deleted-area',display:'أكتوبر',kind:'area',archived_area:true,archived_area_name:'أكتوبر',archived_area_zone:'WEST',archived_area_recruitment_eligible:true}
+ }};
+ const result=qualificationFor(applicant,questions,[]);
+ assert.equal(result.residence_area,'أكتوبر');
+ assert.equal(result.zone,'WEST');
+ assert.equal(result.geo_qualified,true);
+ assert.equal(result.qualified_candidate,true);
+});

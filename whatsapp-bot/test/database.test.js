@@ -164,5 +164,22 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(clonedEligible.zone,'WEST');assert.equal(clonedEligible.recruitment_eligible,true);
  const {rows:[clonedResidence]}=await db.query("select field_key from masar_questions where office_id=$1 and field_key='residence_area'",[thirdOffice.id]);
  assert.equal(clonedResidence.field_key,'residence_area');
+
+ // Meta integration schema stores only encrypted tokens server-side, scopes assets by office,
+ // and cascades Meta/campaign/ad data when an office is removed.
+ const metaSql=(await fs.readFile(new URL('../../supabase/014_meta_ads_connection.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(metaSql);await db.exec(metaSql);
+ await db.query("insert into masar_meta_connections(office_id,meta_user_id,meta_user_name,access_token_encrypted,connected_by) values($1,'meta-user','Tester','v1.encrypted.token.payload',$2)",[thirdOffice.id,reader.id]);
+ await db.query("insert into masar_meta_ad_accounts(office_id,account_id,name,currency) values($1,'123456','Main Ad Account','EGP')",[thirdOffice.id]);
+ const {rows:[metaCampaign]}=await db.query("insert into masar_campaigns(name,meta_campaign_id,office_id,meta_status,meta_synced_at) values('Meta Campaign','987654',$1,'ACTIVE',now()) returning id",[thirdOffice.id]);
+ await db.query("insert into masar_ads(ad_id,name,campaign_id,office_id,meta_status,meta_synced_at) values('120240000000000099','Meta Ad',$1,$2,'ACTIVE',now())",[metaCampaign.id,thirdOffice.id]);
+ const {rows:[metaConnection]}=await db.query("select meta_user_name from masar_meta_connections where office_id=$1",[thirdOffice.id]);
+ assert.equal(metaConnection.meta_user_name,'Tester');
+ assert.equal((await db.query("select has_table_privilege('anon','masar_meta_connections','SELECT') as allowed")).rows[0].allowed,false);
+ await db.query("delete from masar_offices where id=$1",[thirdOffice.id]);
+ assert.equal((await db.query("select count(*)::int as n from masar_meta_connections where office_id=$1",[thirdOffice.id])).rows[0].n,0);
+ assert.equal((await db.query("select count(*)::int as n from masar_meta_ad_accounts where office_id=$1",[thirdOffice.id])).rows[0].n,0);
+ assert.equal((await db.query("select count(*)::int as n from masar_campaigns where id=$1",[metaCampaign.id])).rows[0].n,0);
+ assert.equal((await db.query("select count(*)::int as n from masar_ads where ad_id='120240000000000099'")).rows[0].n,0);
  }finally{await db.close();}
 });

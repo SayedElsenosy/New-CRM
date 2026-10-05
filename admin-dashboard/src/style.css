@@ -1671,3 +1671,37 @@ tbody tr:hover{background:#f7fbfa}
  .performance-funnel-cards{grid-template-columns:repeat(2,minmax(100px,1fr))}
  .qualification-filters select{min-width:100%;width:100%}
 }
+
+
+/* Meta Ads connection */
+.meta-connect-card{margin-bottom:18px;border:1px solid #d8e8e6;background:linear-gradient(135deg,#ffffff,#f4fbfa);overflow:hidden}
+.meta-connect-card .section-heading{align-items:flex-start}
+.meta-connect-card .section-heading p{margin:6px 0 0;color:#708184;max-width:760px}
+.meta-state{display:inline-flex;align-items:center;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:900}
+.meta-state.connected{background:#e7f9f1;color:#087a55;border:1px solid #bcebd9}
+.meta-state.disconnected{background:#f2f5f6;color:#637477;border:1px solid #dce4e5}
+.meta-connect-empty{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px;border-radius:16px;background:#fff;border:1px dashed #cfe0de}
+.meta-connect-empty>div{display:flex;flex-direction:column;gap:5px}
+.meta-connect-empty small{color:#6e8083}
+.meta-account-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+.meta-account-summary>div{display:flex;flex-direction:column;gap:5px;padding:14px;border:1px solid #dfeae9;border-radius:14px;background:#fff}
+.meta-account-summary small,.meta-account-summary span{color:#6d7f82;font-size:12px}
+.meta-account-summary strong{font-size:17px}
+.meta-warning{color:#ad5a00!important}
+.meta-account-tools{display:grid;grid-template-columns:minmax(260px,1fr) auto auto auto;align-items:end;gap:10px}
+.meta-account-tools label{margin:0}
+.meta-account-tools button{white-space:nowrap}
+@media(max-width:900px){
+ .meta-account-summary{grid-template-columns:1fr}
+ .meta-account-tools{grid-template-columns:1fr 1fr}
+ .meta-account-tools label{grid-column:1/-1}
+}
+@media(max-width:600px){
+ .meta-connect-empty{align-items:stretch;flex-direction:column}
+ .meta-account-tools{grid-template-columns:1fr}
+ .meta-account-tools label{grid-column:auto}
+}
+
+.meta-redirect{display:flex;flex-direction:column;gap:6px;margin:10px 0;padding:12px 14px;border:1px solid #dce8e6;border-radius:12px;background:#fff}
+.meta-redirect small{color:#687b7e}
+.meta-redirect code{direction:ltr;text-align:left;overflow:auto;white-space:nowrap;font-size:12px}

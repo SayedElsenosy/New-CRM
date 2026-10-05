@@ -86,6 +86,30 @@ function completeFlow(answers){
  delete answers.__residence_clarification;
  return answers;
 }
+function commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant,qualificationFlowEnabled}){
+ delete answers.__area_preview;
+ delete answers.__area_page;
+ answers[current.id]={
+  value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,
+  at:new Date().toISOString(),
+  ...(current.field_key==='preferred_work_area'?{work_area_eligible:area.recruitment_eligible===true,work_area_zone:area.zone||'UNKNOWN'}:{})
+ };
+ if(current.field_key==='preferred_work_area'&&area.recruitment_eligible!==true){
+  return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:area.name}),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
+ }
+ const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
+ const comp=completion(questions,answers,areas);
+ const qualification=qualificationFlowEnabled?qualificationFor({...applicant,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
+ if(comp.complete&&qualification.qualified_candidate===false){
+  const reason=qualification.reasons[0]||'not_qualified';
+  return {patch:stopQualification(answers,reason),reply:stoppedReply(reason)};
+ }
+ if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
+ const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
+ const finalReply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
+ const prefix=current.field_key==='preferred_work_area'?'تمام، سجلت منطقة العمل: '+area.name+' ✅\n\n':'تم تثبيت منطقة التقديم: '+area.name+' ✅\n\n';
+ return {patch:{answers,stage,awaiting_id:next?.id||null},reply:prefix+finalReply};
+}
 function activeFlow(answers){
  if(!answers.__application_flow_status||answers.__application_flow_status.value!=='active'){
   answers.__application_flow_status={value:'active',at:new Date().toISOString(),kind:'flow_status'};
@@ -197,25 +221,16 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const area=areas.find(z=>z.active&&z.id===action.id);
   if(!area)return {patch:current?{awaiting_id:current.id}:{},reply:current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas)};
   if(current?.kind==='area'){
+   if(current.field_key==='preferred_work_area'&&(action.type==='preview'||action.type==='confirm')){
+    return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+   }
    if(action.type==='preview'){
     answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
     return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
    }
    if(action.type==='confirm'){
     if(answers.__area_preview?.value!==area.id)return {patch:{awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها أكد اختيارك النهائي.\n\n'+questionPrompt(current,areas)};
-    delete answers.__area_preview;
-    delete answers.__area_page;
-    answers[current.id]={value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString(),...(current.field_key==='preferred_work_area'?{work_area_eligible:area.recruitment_eligible===true,work_area_zone:area.zone||'UNKNOWN'}:{})};
-    if(current.field_key==='preferred_work_area'&&area.recruitment_eligible!==true){
-     return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:area.name}),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
-    }
-    const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
-    const comp=completion(questions,answers,areas);
-    const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
-    if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
-    const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
-    const finalReply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
-    return {patch:{answers,stage,awaiting_id:next?.id||null},reply:(`تم تثبيت منطقة التقديم: ${area.name} ✅\n\n`)+finalReply};
+    return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
    }
   }
   if(action.type==='preview'){
@@ -233,6 +248,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const inquiry=areaInquiry(m.body,areas);
  if(inquiry){
   if(current?.kind==='area'){
+   if(current.field_key==='preferred_work_area'){
+    return commitAreaChoice({area:inquiry,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+   }
    answers.__area_preview={value:inquiry.id,display:inquiry.name,kind:'area_preview',at:new Date().toISOString()};
    return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(inquiry,areas)};
   }
@@ -352,6 +370,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    const area=areas.find(z=>z.active&&z.id===ai.area_id);
    if(area){
     if(current.kind==='area'){
+     if(current.field_key==='preferred_work_area'){
+      return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+     }
      answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
      return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
     }
@@ -374,12 +395,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(current.kind==='area'){
    const area=areas.find(z=>z.active&&z.id===parsed.value);
    if(area){
+    if(current.field_key==='preferred_work_area'){
+     return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+    }
     if(answers.__area_preview?.value===area.id){
      delete answers.__area_preview;
-     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString(),...(current.field_key==='preferred_work_area'?{work_area_eligible:area.recruitment_eligible===true,work_area_zone:area.zone||'UNKNOWN'}:{})};
-     if(current.field_key==='preferred_work_area'&&area.recruitment_eligible!==true){
-      return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:area.name}),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
-     }
+     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
     }else{
      answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
      return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};

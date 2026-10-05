@@ -7,6 +7,7 @@ import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
+import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
@@ -145,6 +146,8 @@ export class Worker {
     });
    }
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
+   try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'linked_whatsapp_staff_reply'});}
+   catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
    try{
     const result=await this.db.from('masar_alerts').update({status:'resolved',resolved_at:new Date().toISOString(),resolution:'linked_whatsapp_reply',updated_at:new Date().toISOString()}).eq('applicant_id',a.id).eq('status','open');
     if(result.error)throw result.error;
@@ -170,6 +173,8 @@ export class Worker {
   if(prepared.is_audio){
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'voice_message',detail:{message_id:saved.id,direction:'in',transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
   }
+  try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'applicant_message'});}
+  catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
  }
  async queueFollowups(){
   const now=Date.now();
@@ -228,6 +233,10 @@ export class Worker {
       runMode='paused';
      }
      if(runMode!=='live'){
+      // Silent learning mode: never answer the applicant, but keep understanding
+      // the conversation so the recruitment pipeline can move automatically.
+      try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:runMode==='training'?'training_silent':'paused_silent'});}
+      catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
       must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
       continue;
      }
@@ -320,6 +329,10 @@ export class Worker {
      const sentAt=new Date().toISOString();
      must(await this.db.from('masar_messages').update({status:'sent',wa_id:sent?.key?.id||sent?.id?._serialized||null,error:null}).eq('id',m.id));
      must(await this.db.from('masar_applicants').update({last_message_at:sentAt,updated_at:sentAt}).eq('id',m.applicant_id));
+     if(m.sender==='staff'){
+      try{await syncRecruitmentStageFromConversation(this.db,m.applicant_id,{source:'crm_staff_reply'});}
+      catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
+     }
     }catch{
      must(await this.db.from('masar_messages').update({status:'uncertain',error:'لم نتأكد من وصول الرد. راجع واتساب قبل إعادة إرساله.'}).eq('id',m.id));
     }

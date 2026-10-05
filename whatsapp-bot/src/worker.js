@@ -309,7 +309,11 @@ export class Worker {
     if(m.sender==='bot'&&a.bot_enabled&&sendConfig){
      const q=sendConfig.questions.find(q=>q.active&&q.id===a.awaiting_id);
      const body=String(m.body||'');
-     const browseAreas=body.includes('اختار المنطقة من الأزرار')||body.includes('اختار منطقة تانية من الأزرار')||body.includes('المناطق المتاحة موجودة في الأزرار');
+     const browseAreas=body.includes('اختار المنطقة من الأزرار')
+      ||body.includes('اختار منطقة العمل من الأزرار')
+      ||body.includes('اختار منطقة تانية من الأزرار')
+      ||body.includes('المناطق المتاحة موجودة في الأزرار')
+      ||(q?.field_key==='preferred_work_area'&&body.includes(String(q.label||'')));
      if(browseAreas){
       const eligibilityOnly=q?.field_key==='preferred_work_area'||body.includes('المناطق المتاحة موجودة في الأزرار')||a.answers?.__area_page?.eligibility_only===true;
       const liveAreas=sendConfig.areas.filter(area=>area.active),eligibilityConfigured=liveAreas.some(area=>area.recruitment_eligible!==undefined);

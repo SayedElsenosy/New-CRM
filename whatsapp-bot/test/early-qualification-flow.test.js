@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planTurn} from '../src/flow.js';
+import {planTurn,isApplicationStartMessage} from '../src/flow.js';
 import {qualificationFor} from '../src/qualification.js';
 
 const questions=[
@@ -32,6 +32,56 @@ test('welcome starts with motorcycle qualification question',async()=>{
  assert.equal(r.patch.awaiting_id,'q1');
  assert.match(r.reply,/Breadfast/);
  assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
+});
+
+test('Meta ad default opener starts application without knowledge handoff or consuming an answer',async()=>{
+ const attribution={source_id:'1202552915330556',ctwa_clid:'first-touch',source_type:'ad'};
+ const a={...applicant,answers:{__attribution:attribution}};
+ const kb=[{
+  id:'generic-info',
+  question:'هل يمكنني الحصول على مزيد من المعلومات؟',
+  answer:'رد Knowledge لا يجب استخدامه في بداية الإعلان.',
+  keywords:['مزيد','المعلومات'],
+  active:true
+ }];
+ const r=await planTurn({
+  applicant:a,
+  message:{body:'مرحباً! هل يمكنني الحصول على مزيد من المعلومات حول هذا؟'},
+  questions,areas,settings,interpret:noAi,knowledge:kb
+ });
+ assert.equal(r.patch.awaiting_id,'q1');
+ assert.equal(r.patch.stage,'new');
+ assert.equal(r.patch.bot_enabled,undefined);
+ assert.equal(r.patch.answers,undefined);
+ assert.equal(r.handoff,undefined);
+ assert.equal(r.knowledge_id,undefined);
+ assert.match(r.reply,/Breadfast/);
+ assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
+ assert.doesNotMatch(r.reply,/رد Knowledge/);
+ assert.deepEqual(a.answers.__attribution,attribution);
+ assert.equal(a.bot_enabled,true);
+});
+
+test('clear application openers start the flow even when Meta referral is missing',async()=>{
+ const openers=[
+  'هل يمكنني الحصول على مزيد من المعلومات؟',
+  'عايز أقدم',
+  'عاوز أقدم',
+  'ممكن أقدم',
+  'عايز أقدم على الوظيفة',
+  'عايز تفاصيل',
+  'ممكن تفاصيل',
+  "I'm interested",
+  'Can I get more information?'
+ ];
+ for(const body of openers){
+  assert.equal(isApplicationStartMessage(body),true,body);
+  const r=await call(applicant,body);
+  assert.equal(r.patch.awaiting_id,'q1',body);
+  assert.equal(r.handoff,undefined,body);
+  assert.equal(r.knowledge_id,undefined,body);
+  assert.match(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/,body);
+ }
 });
 
 test('has_motorcycle=no saves answer and stops without recruiter rejection',async()=>{

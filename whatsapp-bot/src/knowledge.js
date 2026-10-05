@@ -43,7 +43,13 @@ export function looksLikeQuestion(text){
  const raw=String(text||'').trim(),n=canonical(raw);
  if(raw.length<4||raw.length>2000)return false;
  if(/[?؟]/.test(raw)&&raw.length>=6)return true;
- return QUESTION_WORDS.some(w=>n.includes(canonical(w)));
+ const words=n.split(/\s+/).filter(Boolean);
+ return QUESTION_WORDS.some(item=>{
+  const q=canonical(item);
+  if(!q)return false;
+  if(q.includes(' '))return (' '+n+' ').includes(' '+q+' ');
+  return words.some(word=>word===q||word==='ال'+q||word==='و'+q||word==='وال'+q);
+ });
 }
 function usefulAnswer(answer){
  const a=String(answer||'').trim();if(a.length<3||a.length>4000)return false;

@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange} from '../src/knowledge.js';
+import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -99,23 +99,29 @@ test('plain text fallback previews first and confirms when repeated',async()=>{
 });
 
 
+test('plain application answers are not mistaken for questions',()=>{
+ assert.equal(looksLikeQuestion('اه معايا'),false);
+ assert.equal(looksLikeQuestion('اه بس مش معايا رخصة'),false);
+ assert.equal(looksLikeQuestion('المرتب كام'),true);
+ assert.equal(looksLikeQuestion('في تأمين؟'),true);
+});
+
 test('knowledge matcher understands Egyptian wording variants',()=>{
  const rows=[{id:'k1',question:'ميعاد بداية التأمين الطبي امتى؟',answer:'من أول يوم',keywords:['تأمين طبي'],active:true}];
  const match=findKnowledgeAnswer('التأمين الطبي بيبدأ امتى؟',rows,.5);
  assert.equal(match.id,'k1');assert.ok(match.confidence>=.5);
 });
 
-test('compound answer is saved once, learned side info is answered, and the same application question is not repeated',async()=>{
+test('compound statement answer is saved without injecting learned side-info replies',async()=>{
  const kb=[{id:'k-license',question:'مش معايا رخصة',answer:'تقصد رخصة الموتوسيكل ولا الرخصة الشخصية؟',keywords:['رخصة'],active:true}];
  const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد',kind:'name'},area:{value:'oct',kind:'area'}}};
  const r=await planTurn({applicant:a,message:{body:'اه بس مش معايا رخصة'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6},interpret,knowledge:kb});
  assert.equal(r.patch.answers.bike.value,true);
  assert.equal(r.patch.awaiting_id,null);
- assert.equal(r.knowledge_id,'k-license');
- assert.match(r.reply,/رخصة الموتوسيكل/);
- assert.doesNotMatch(r.reply,/معاك موتوسيكل/);
- assert.doesNotMatch(r.reply,/تم الاستلام/);
- assert.equal(r.followup_reply,'تم الاستلام');
+ assert.equal(r.knowledge_id,undefined);
+ assert.doesNotMatch(r.reply,/رخصة الموتوسيكل|الرخصة الشخصية/);
+ assert.match(r.reply,/تم الاستلام/);
+ assert.equal(r.followup_reply,undefined);
 });
 
 test('learned entry for the same structured question does not create a second answer',async()=>{

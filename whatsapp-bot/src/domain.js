@@ -30,8 +30,13 @@ export function validateAnswer(q,input,areas,media) {
  if(q.kind==='area') { const z=areas.find(z=>z.active&&(z.id===s||norm(z.name)===norm(s)));return z?{ok:true,value:z.id,display:z.name}:{ok:false}; }
  if(q.kind==='yes_no') {
   if(typeof input==='boolean') return {ok:true,value:input,display:input?'نعم':'لا'};
-  if(['نعم','ايوه','ايوا','اه','تمام','موافق','عندي','yes'].includes(norm(s)))return {ok:true,value:true,display:'نعم'};
-  if(['لا','لاء','معنديش','ما عنديش','مش عندي','no'].includes(norm(s)))return {ok:true,value:false,display:'لا'};
+  const n=norm(s);
+  if(/^(?:لا|لاء|no)(?:\s|$)/.test(n))return {ok:true,value:false,display:'لا'};
+  if(/^(?:نعم|ايوه|ايوا|اه|تمام|موافق|yes)(?:\s|$)/.test(n))return {ok:true,value:true,display:'نعم'};
+  if(['معنديش','ما عنديش','مش عندي','مش معايا'].includes(n)
+    ||/(?:^|\s)(?:معنديش|مش عندي|مش معايا|ما عنديش)(?:\s|$)/.test(n))return {ok:true,value:false,display:'لا'};
+  if(['عندي','معايا'].includes(n)
+    ||/(?:^|\s)(?:عندي|معايا)(?:\s|$)/.test(n))return {ok:true,value:true,display:'نعم'};
   return {ok:false};
  }
  if(q.kind==='number') {

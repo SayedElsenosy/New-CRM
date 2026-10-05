@@ -702,18 +702,25 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const ref=attributionOf(applicant),adId=String(ref?.source_id||'').trim();if(!adId)continue;
    const existing=byId.get(adId);
    if(!existing){
-    const inserted=must(await db.from('masar_ads').insert({
+    const row={
      ad_id:adId,name:ref.title||'',headline:ref.title||'',source_url:ref.source_url||null,
      source_app:ref.source_app||null,source_type:ref.source_type||'ad',office_id:applicant.office_id||null,
      first_seen_at:ref.captured_at||applicant.created_at,last_seen_at:ref.captured_at||applicant.created_at
-    }).select().single());byId.set(adId,inserted);catalog.ads.unshift(inserted);
+    };
+    let result=await db.from('masar_ads').insert(row).select().single();
+    if(result.error&&['42703','PGRST204'].includes(result.error.code||'')){delete row.office_id;result=await db.from('masar_ads').insert(row).select().single();}
+    const inserted=must(result);byId.set(adId,inserted);catalog.ads.unshift(inserted);
    }else{
     const patch={last_seen_at:ref.captured_at||applicant.created_at,updated_at:new Date().toISOString()};
     if(!existing.office_id&&applicant.office_id)patch.office_id=applicant.office_id;
     if(!existing.headline&&ref.title)patch.headline=ref.title;
     if(!existing.source_url&&ref.source_url)patch.source_url=ref.source_url;
     if(!existing.source_app&&ref.source_app)patch.source_app=ref.source_app;
-    if(Object.keys(patch).length>2){must(await db.from('masar_ads').update(patch).eq('ad_id',adId));Object.assign(existing,patch);}
+    if(Object.keys(patch).length>2){
+     let result=await db.from('masar_ads').update(patch).eq('ad_id',adId);
+     if(result.error&&patch.office_id&&['42703','PGRST204'].includes(result.error.code||'')){delete patch.office_id;result=await db.from('masar_ads').update(patch).eq('ad_id',adId);}
+     must(result);Object.assign(existing,patch);
+    }
    }
   }
   return catalog;

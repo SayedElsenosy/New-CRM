@@ -77,7 +77,7 @@ export function inferRecruitmentStage(messages,currentStage='new'){
  }
  if(!best)return {stage:current,changed:false,confidence:0,reason:'no_signal'};
  if(best.stage==='rejected')return {stage:'rejected',changed:current!=='rejected',...best};
- if((STAGE_ORDER[best.stage]??0)<=(STAGE_ORDER[current]??0))return {stage:current,changed:false,...best,reason:'no_downgrade'};
+ if((STAGE_ORDER[best.stage]??0)<=(STAGE_ORDER[current]??0))return {...best,stage:current,changed:false,reason:'no_downgrade'};
  return {stage:best.stage,changed:true,...best};
 }
 

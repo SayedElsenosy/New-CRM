@@ -58,6 +58,7 @@ const NO_MOTORCYCLE_REPLY='شكرًا ليك 🙏\n\nالوظيفة المتاح
 const OUTSIDE_RESIDENCE_REPLY='تمام، سجلت منطقة سكنك.\n\nالتعيين الحالي متاح لسكان مناطق محددة في القاهرة والجيزة، ومنطقتك مش ضمن مناطق التعيين الحالية.\n\nلو اتفتح تعيين قريب منك ممكن يتم التواصل معاك.';
 const RESIDENCE_CLARIFY_REPLY='مش قادر أحدد منطقة سكنك بدقة. ممكن تكتب اسم المنطقة أو الحي فقط؟\nمثال: أكتوبر / مدينة نصر / الشروق';
 const SHIFT_STOP_REPLY='تمام، سجلت إجابتك.\n\nنظام الشيفت الحالي شرط للتقديم على الوظيفة دي، لذلك مش هنكمل باقي خطوات التقديم حاليًا.';
+const QUALIFICATION_PENDING_REPLY='تمام، سجلت بياناتك الحالية. في شرط تأهيل لسه محتاج تأكيد قبل إنهاء التقديم، ومسؤول التوظيف يقدر يراجعه.';
 function stopQualification(answers,reason,extra={}){
  const at=new Date().toISOString();
  answers.__qualification_stop={reason,at,...extra};
@@ -262,7 +263,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
      if(candidate&&!sameKnowledgeTopic(current.label,candidate.question))match=candidate;
     }
    }
-   let reply=next?questionPrompt(next,areas):settings.completion;
+   let reply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
    let followup_reply=null;
    if(match){
     reply=String(match.answer||'').trim();
@@ -382,7 +383,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
  if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
  const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
- let reply=next?questionPrompt(next,areas):settings.completion;
+ let reply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
  if(current.kind==='area'&&answers[current.id]?.value){
   const area=areas.find(z=>z.id===answers[current.id].value);
   if(area)reply=`تم تثبيت منطقة التقديم: ${area.name} ✅\n\n`+reply;

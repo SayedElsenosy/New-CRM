@@ -122,6 +122,13 @@ function commitAreaChoice({area,current,answers,qs,questions,areas,settings,appl
  const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
  const finalReply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
  const prefix=current.field_key==='preferred_work_area'?'تمام، سجلت منطقة العمل: '+area.name+' ✅\n\n':'تم تثبيت منطقة التقديم: '+area.name+' ✅\n\n';
+ if(current.field_key==='preferred_work_area'){
+  return {
+   patch:{answers,stage,awaiting_id:next?.id||null},
+   reply:prefix+areaDetails(area),
+   followup_reply:finalReply
+  };
+ }
  return {patch:{answers,stage,awaiting_id:next?.id||null},reply:prefix+finalReply};
 }
 function activeFlow(answers){

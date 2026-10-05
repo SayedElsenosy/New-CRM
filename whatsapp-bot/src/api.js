@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
+import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,createLearningSuggestion} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
@@ -39,6 +40,35 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  app.use(cors({origin(origin,cb){cb(null,!origin||origins.includes(origin));}}));
  app.use(express.json({limit:'64kb'}));
  app.get('/health',(_req,res)=>res.json({ok:true}));
+ app.use('/integrations/meta',rateLimit({windowMs:60000,limit:30,standardHeaders:'draft-8',legacyHeaders:false}));
+ app.post('/integrations/meta/ads-sync',async(req,res,next)=>{try{
+  const expected=String(process.env.META_ADS_SYNC_SECRET||''),provided=String(req.headers['x-integration-key']||'');
+  if(!expected)throw bad('تكامل مزامنة المصروف غير مفعّل على الخادم',503);
+  const a=Buffer.from(expected),b=Buffer.from(provided);
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw bad('مفتاح التكامل غير صحيح',401);
+  const items=Array.isArray(req.body?.ads)?req.body.ads:[req.body];
+  if(!items.length||items.length>500)throw bad('أرسل من 1 إلى 500 إعلان في الطلب الواحد');
+  const now=new Date().toISOString(),saved=[];
+  for(const item of items){
+   const adId=String(item?.ad_id||item?.meta_ad_id||'').trim(),spend=Number(item?.spend);
+   if(!/^\d{5,40}$/.test(adId))throw bad('Ad ID غير صحيح');
+   if(!Number.isFinite(spend)||spend<0||spend>1000000000)throw bad('قيمة المصروف غير صحيحة');
+   const zone=String(item?.zone||'UNKNOWN').toUpperCase();
+   if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
+   const current=must(await db.from('masar_ads').select('*').eq('ad_id',adId).maybeSingle());
+   const patch={spend:Math.round(spend*100)/100,spend_source:'meta',spend_synced_at:now,updated_at:now};
+   if(item?.zone!==undefined)patch.zone=zone;
+   if(item?.name!==undefined)patch.name=String(item.name||'').trim().slice(0,200);
+   let row;
+   if(current)row=must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single());
+   else row=must(await db.from('masar_ads').insert({ad_id:adId,name:patch.name||'',zone,spend:patch.spend,spend_source:'meta',spend_synced_at:now,first_seen_at:now,last_seen_at:now}).select().single());
+   saved.push(row);
+  }
+  res.json({ok:true,count:saved.length,ads:saved.map(x=>({ad_id:x.ad_id,spend:Number(x.spend||0),zone:x.zone,spend_source:x.spend_source,spend_synced_at:x.spend_synced_at}))});
+ }catch(e){
+  if(schemaMissing(e)||['42703','PGRST204'].includes(e.code||''))return next(bad('شغّل migration 013_recruitment_performance_funnel.sql أولاً',503));
+  next(e);
+ }});
  app.use('/api',rateLimit({windowMs:60000,limit:240,standardHeaders:'draft-8',legacyHeaders:false}));
  app.use('/api',async(req,res,next)=>{try{
   if(req.headers.origin&&!origins.includes(req.headers.origin))throw bad('هذا العنوان غير مسموح',403);
@@ -453,7 +483,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const b=req.body,officeId=await scopedOfficeId(req);let row;
    if(type==='areas'){
     if(typeof b.name!=='string'||!b.name.trim()||b.name.length>100||typeof b.details!=='string'||b.details.length>4000)throw bad('راجع اسم المنطقة وتفاصيلها');
-    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
+    const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
+    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible===true};
    }else{
     if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع السؤال ونوعه ومفتاح حفظ البيانات');
     row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
@@ -521,7 +552,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const scopedAds=scopeActive?ads.filter(ad=>visibleIds.has(ad.ad_id)):ads;
   const scopedCampaignIds=new Set(scopedAds.map(ad=>ad.campaign_id).filter(Boolean));
   const scopedCampaigns=campaigns.filter(x=>(!scopeActive||x.office_id===officeId||scopedCampaignIds.has(x.id)));
-  const stats=Object.fromEntries(scopedAds.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
+  const stats=Object.fromEntries(scopedAds.map(ad=>{const subset=applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id);return [ad.ad_id,{...summaryFor(subset),...funnelFor(subset,Number(ad.spend||0))}];}));
   res.json({campaigns:scopedCampaigns,ads:scopedAds.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
  });
  permissionRoute('campaigns','post','/campaigns',async(req,res)=>{await serial(async()=>{
@@ -549,7 +580,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(campaignId){const campaign=must(await db.from('masar_campaigns').select('office_id').eq('id',campaignId).single()),officeId=req.role==='admin'?(String(req.query.office_id||b.office_id||campaign.office_id)):req.officeId;if(campaign.office_id!==officeId)throw bad('الحملة تابعة لمكتب آخر',403);}
   const spend=Number(b.spend);if(!Number.isFinite(spend)||spend<0||spend>1000000000)throw bad('راجع تكلفة الإعلان');
   const name=String(b.name||'').trim();if(name.length>200)throw bad('اسم الإعلان طويل');
-  const patch={campaign_id:campaignId,name,spend:Math.round(spend*100)/100,updated_at:new Date().toISOString()};
+  const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
+  const patch={campaign_id:campaignId,name,zone,spend:Math.round(spend*100)/100,spend_source:'manual',spend_synced_at:null,updated_at:new Date().toISOString()};
   res.json(must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single()));
  });});
  permissionRoute('reports','get','/reports/options',async(req,res)=>{
@@ -580,7 +612,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const alertIds=await openAlertApplicantIds(req),rawRows=await allRows(db,'masar_applicants'),cfgCache=new Map();
   const cfgFor=async officeId=>{const key=officeId||'__global__';if(!cfgCache.has(key))cfgCache.set(key,await config(db,officeId||null));return cfgCache.get(key);};
   let rows=[];
-  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),needs_intervention:alertIds.has(a.id)});}
+  for(const a of rawRows){const cfg=await cfgFor(a.office_id);rows.push({...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:qualificationFor(a,cfg.questions,cfg.areas),needs_intervention:alertIds.has(a.id)});}
   if(whatsapp.configured){
    const allowed=await accessibleAccountIds(req);
    if(allowed!==null)rows=rows.filter(a=>allowed.includes(a.whatsapp_account_id));
@@ -598,6 +630,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(req.query.search){const s=String(req.query.search).toLowerCase();rows=rows.filter(a=>(a.phone||'').includes(s)||(a.display_name||'').toLowerCase().includes(s)||Object.values(a.answers||{}).some(v=>v?.kind==='name'&&String(v.value).toLowerCase().includes(s)));}
   if(req.query.stage)rows=rows.filter(a=>a.stage===req.query.stage);
   if(req.query.recruitment_stage){const rs=String(req.query.recruitment_stage);if(!RECRUITMENT_STAGE_SET.has(rs))throw bad('مرحلة التوظيف غير صحيحة');rows=rows.filter(a=>recruitmentStageOf(a)===rs);}
+  if(req.query.qualification){const q=String(req.query.qualification);if(!['qualified','not_qualified','pending'].includes(q))throw bad('حالة التأهيل غير صحيحة');rows=rows.filter(a=>a.qualification?.overall_status===q);}
+  if(req.query.motorcycle){const m=String(req.query.motorcycle);if(!['yes','no','unknown'].includes(m))throw bad('فلتر الموتوسيكل غير صحيح');rows=rows.filter(a=>m==='yes'?a.qualification?.motorcycle_qualified===true:m==='no'?a.qualification?.motorcycle_qualified===false:a.qualification?.motorcycle_qualified==null);}
+  if(req.query.geo){const g=String(req.query.geo);if(!['qualified','outside','unknown'].includes(g))throw bad('فلتر المنطقة غير صحيح');rows=rows.filter(a=>a.qualification?.geo_status===g);}
+  if(req.query.zone){const z=String(req.query.zone).toUpperCase();if(!RECRUITMENT_ZONES.includes(z))throw bad('Zone غير صحيحة');rows=rows.filter(a=>(a.qualification?.zone||'UNKNOWN')===z);}
   if(['1','true','yes'].includes(String(req.query.needs_intervention||'').toLowerCase()))rows=rows.filter(a=>a.needs_intervention);
   if(req.query.ad_id)rows=rows.filter(a=>String(attributionOf(a)?.source_id||'')===String(req.query.ad_id));
   if(req.query.campaign_id){
@@ -634,7 +670,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const events=must(await db.from('masar_events').select('*').eq('applicant_id',a.id).order('created_at',{ascending:false}).limit(50));
   const account=whatsapp.configured?whatsapp.snapshot(a.whatsapp_account_id):null;
   let office=null;try{if(a.office_id)office=must(await db.from('masar_offices').select('id,name,code,address,phone,manager_name').eq('id',a.office_id).maybeSingle());}catch(e){if(!schemaMissing(e)&&e.code!=='42703')throw e;}
-  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
+  const qualification=qualificationFor(a,cfg.questions,cfg.areas);
+  res.json({applicant:{...a,recruitment_stage:recruitmentStageOf(a),stage:computedStage(a,cfg.questions,cfg.areas),completion:completion(cfg.questions,a.answers,cfg.areas),qualification:{...qualification,reason_labels:qualificationReasonLabels(qualification.reasons)},office,whatsapp_account:account?{id:account.id,name:account.name,phone:account.phone}:null},messages:messages.reverse(),events,has_more,next_cursor:last?last.created_at+'|'+last.id:null});
  });
  permissionRoute('applicants','patch','/applicants/:id',async(req,res)=>{
   let resumedMessageId=null;
@@ -792,7 +829,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  permissionRoute('reports','get','/reports',async(req,res)=>{
   const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);
   const base=summaryFor(rows),stages=base.stages;
-  const zones=areas.map(z=>({name:z.name,count:rows.filter(a=>Object.values(a.answers||{}).some(v=>v?.kind==='area'&&v.value===z.id)).length}));
+  const residenceCounts=new Map();
+  for(const a of rows){const name=a.qualification?.geo_status==='outside'?'Outside Area':a.qualification?.residence_area||'لم يجب';residenceCounts.set(name,(residenceCounts.get(name)||0)+1);}
+  const zones=[...residenceCounts.entries()].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
   const days={};for(const a of rows){const day=new Date(a.created_at).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});days[day]=(days[day]||0)+1;}
   const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
   const adIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))],visibleAdIds=new Set(adIds);
@@ -811,17 +850,69 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const div=n=>n?Math.round(selectedSpend/n*100)/100:null;
   res.json({
    total:base.total,stages,recruitment_stages:Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,rows.filter(a=>recruitmentStageOf(a)===x).length])),areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:base.completed,
+   qualification:{qualified:rows.filter(a=>a.qualification?.qualified_candidate===true).length,not_qualified:rows.filter(a=>a.qualification?.qualified_candidate===false).length,pending:rows.filter(a=>a.qualification?.qualified_candidate==null).length,motorcycle_qualified:rows.filter(a=>a.qualification?.motorcycle_qualified===true).length,geo_qualified:rows.filter(a=>a.qualification?.geo_qualified===true).length},
    attributed:rows.filter(a=>Boolean(attributionOf(a)?.source_id)).length,unattributed:rows.filter(a=>!attributionOf(a)?.source_id).length,
    spend:selectedSpend,costs:{per_lead:div(base.total),per_complete:div(base.completed),per_lecture:div(stages.lecture),per_working:div(stages.working)},
    ad_breakdown,campaign_breakdown
   });
  });
+ permissionRoute('reports','get','/reports/recruitment-performance',async(req,res)=>{
+  const listReq={...req,query:{...req.query}};delete listReq.query.zone;
+  const {rows}=await applicantList(listReq),catalog=await discoverAds();
+  const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
+  const requestedZone=req.query.zone?String(req.query.zone).toUpperCase():'';
+  if(requestedZone&&!RECRUITMENT_ZONES.includes(requestedZone))throw bad('Zone غير صحيحة');
+  let scopedRows=rows;
+  if(requestedZone)scopedRows=scopedRows.filter(a=>(adById.get(String(attributionOf(a)?.source_id||''))?.zone||'UNKNOWN')===requestedZone);
+
+  const visibleIds=new Set(scopedRows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+  const officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||'');
+  let ads=catalog.ads.filter(ad=>!officeId||visibleIds.has(ad.ad_id)||(ad.campaign_id&&campaignById.get(ad.campaign_id)?.office_id===officeId));
+  if(req.query.campaign_id)ads=ads.filter(ad=>ad.campaign_id===String(req.query.campaign_id));
+  if(req.query.ad_id)ads=ads.filter(ad=>ad.ad_id===String(req.query.ad_id));
+  if(requestedZone)ads=ads.filter(ad=>(ad.zone||'UNKNOWN')===requestedZone);
+  const adIds=new Set(ads.map(x=>x.ad_id));
+  // Keep attributed applicants whose Ad ID was captured before the catalog row existed.
+  for(const id of visibleIds)if(!adIds.has(id)){const ad=adById.get(id);if(ad){ads.push(ad);adIds.add(id);}}
+
+  const ad_performance=ads.map(ad=>{
+   const subset=scopedRows.filter(a=>String(attributionOf(a)?.source_id||'')===ad.ad_id);
+   return {ad_id:ad.ad_id,ad_name:ad.name||ad.headline||'',campaign_id:ad.campaign_id||null,campaign_name:campaignById.get(ad.campaign_id)?.name||'غير مربوط بحملة',zone:ad.zone||'UNKNOWN',spend:Number(ad.spend||0),spend_source:ad.spend_source||'manual',spend_synced_at:ad.spend_synced_at||null,...funnelFor(subset,Number(ad.spend||0))};
+  }).sort((a,b)=>b.applicants-a.applicants||b.spend-a.spend);
+
+  const campaignIds=[...new Set(ads.map(x=>x.campaign_id).filter(Boolean))];
+  const campaign_performance=campaignIds.map(id=>{
+   const campaignAds=ads.filter(x=>x.campaign_id===id),ids=new Set(campaignAds.map(x=>x.ad_id));
+   const subset=scopedRows.filter(a=>ids.has(String(attributionOf(a)?.source_id||''))),spend=campaignAds.reduce((n,x)=>n+Number(x.spend||0),0);
+   return {campaign_id:id,campaign_name:campaignById.get(id)?.name||'حملة',spend,...funnelFor(subset,spend)};
+  }).sort((a,b)=>b.applicants-a.applicants);
+
+  const zone_performance=RECRUITMENT_ZONES.map(zone=>{
+   const zoneAds=ads.filter(x=>(x.zone||'UNKNOWN')===zone),ids=new Set(zoneAds.map(x=>x.ad_id)),subset=scopedRows.filter(a=>ids.has(String(attributionOf(a)?.source_id||''))),spend=zoneAds.reduce((n,x)=>n+Number(x.spend||0),0);
+   return {zone,spend,...funnelFor(subset,spend)};
+  });
+
+  const residenceMap=new Map();
+  for(const a of scopedRows){
+   const key=a.qualification?.geo_status==='outside'?'Outside Area':a.qualification?.residence_area||'لم يجب';
+   if(!residenceMap.has(key))residenceMap.set(key,[]);
+   residenceMap.get(key).push(a);
+  }
+  const residence_performance=[...residenceMap.entries()].map(([residence_area,subset])=>({residence_area,...funnelFor(subset,0)})).sort((a,b)=>b.applicants-a.applicants);
+  const spend=ads.reduce((n,x)=>n+Number(x.spend||0),0),unattributedRows=scopedRows.filter(a=>!attributionOf(a)?.source_id);
+  res.json({
+   generated_at:new Date().toISOString(),filters:{from:req.query.from||null,to:req.query.to||null,office_id:req.query.office_id||req.officeId||null,campaign_id:req.query.campaign_id||null,ad_id:req.query.ad_id||null,zone:requestedZone||null,recruitment_stage:req.query.recruitment_stage||null},
+   overall:{spend,...funnelFor(scopedRows,spend)},
+   attributed:scopedRows.length-unattributedRows.length,unattributed:unattributedRows.length,unattributed_funnel:funnelFor(unattributedRows,0),
+   ad_performance,campaign_performance,zone_performance,residence_performance
+  });
+ });
  permissionRoute('reports','get','/reports.csv',async(req,res)=>{
   const {rows}=await applicantList(req),catalog=await campaignCatalog(true),campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
   const accountById=new Map((await accountRows(req)).map(x=>[x.id,x]));
-  const lines=[['رقم واتساب المتقدم','حساب واتساب المستلم','رقم الحساب المستلم','الاسم','الحالة','المنطقة','اكتمال البيانات','الحملة','Ad ID','اسم الإعلان','CTWA Click ID','مصروف الإعلان المسجل','مصدر الإعلان','رابط الإعلان','تاريخ التسجيل'],...rows.map(a=>{
-   const ref=attributionOf(a)||{},ad=adById.get(String(ref.source_id||'')),campaign=campaignById.get(ad?.campaign_id),account=accountById.get(a.whatsapp_account_id);
-   return [a.phone||'غير متاح',account?.name||'',account?.phone||'',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,STAGES[a.stage],Object.values(a.answers||{}).find(v=>v?.kind==='area')?.display||'',a.completion.percent+'%',campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ref.ctwa_clid||'',Number(ad?.spend||0),ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];
+  const lines=[['رقم واتساب المتقدم','حساب واتساب المستلم','رقم الحساب المستلم','الاسم','مرحلة التوظيف','حالة التقديم','اكتمال البيانات','مكان السكن','Zone السكن','Motorcycle Qualified','Geo Qualified','Overall Qualification','أسباب عدم التأهيل','الحملة','Ad ID','اسم الإعلان','Ad Zone','CTWA Click ID','مصروف الإعلان المسجل','مصدر المصروف','مصدر الإعلان','رابط الإعلان','تاريخ التسجيل'],...rows.map(a=>{
+   const ref=attributionOf(a)||{},ad=adById.get(String(ref.source_id||'')),campaign=campaignById.get(ad?.campaign_id),account=accountById.get(a.whatsapp_account_id),q=a.qualification||{};
+   return [a.phone||'غير متاح',account?.name||'',account?.phone||'',Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name,RECRUITMENT_STAGES.includes(a.recruitment_stage)?a.recruitment_stage:recruitmentStageOf(a),STAGES[a.stage],a.completion.percent+'%',q.residence_area||'',q.zone||'UNKNOWN',q.motorcycle_qualified==null?'':q.motorcycle_qualified?'YES':'NO',q.geo_qualified==null?'':q.geo_qualified?'YES':'NO',q.overall_status||'pending',qualificationReasonLabels(q.reasons||[]).join(' | '),campaign?.name||'',ref.source_id||'',ad?.name||ad?.headline||ref.title||'',ad?.zone||'UNKNOWN',ref.ctwa_clid||'',Number(ad?.spend||0),ad?.spend_source||'manual',ref.source_app||ref.source_type||'',ref.source_url||'',a.created_at];
   })];res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="speed-delivery-campaign-report.csv"');res.send('\uFEFF'+lines.map(row=>row.map(csvCell).join(',')).join('\r\n'));
  });
  async function normalizedStaffAccountIds(value,officeId=null){
@@ -932,9 +1023,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   must(await db.from('masar_questions').insert([
    {field_key:'full_name',label:'اسمك بالكامل إيه؟',kind:'name'},
    {field_key:'age',label:'عندك كام سنة؟',kind:'number'},
-   {field_key:'area',label:'حابب تشتغل في أنهي منطقة؟',kind:'area'},
-   {field_key:'motorcycle',label:'معاك موتوسيكل؟',kind:'yes_no'},
-   {field_key:'license',label:'معاك رخصة موتوسيكل سارية؟',kind:'yes_no'},
+   {field_key:'residence_area',label:'ساكن فين حاليًا؟ اكتب اسم المنطقة أو الحي.',kind:'text'},
+   {field_key:'preferred_work_area',label:'حابب تشتغل في أنهي منطقة؟',kind:'area'},
+   {field_key:'has_motorcycle',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',kind:'yes_no'},
+   {field_key:'motorcycle_license',label:'معاك رخصة موتوسيكل سارية؟',kind:'yes_no'},
    {field_key:'document',label:'ابعت المستند المطلوب للتقديم بعد مراجعة مسؤول التوظيف لنوعه.',kind:'image',required:false,active:false}
   ].map((q,i)=>({...q,required:q.required!==false,active:q.active!==false,position:i+1,office_id:officeId}))));
  });res.json({ok:true});});

@@ -1627,3 +1627,47 @@ tbody tr:hover{background:#f7fbfa}
  .profile-grid{grid-template-columns:1fr}
  .profile-photo-card{position:static}
 }
+
+
+/* Recruitment performance / qualification */
+.qualification-badge{display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:900;white-space:nowrap;border:1px solid transparent}
+.qualification-qualified{background:#e9fbf3;color:#087b55;border-color:#b8eed8}
+.qualification-not_qualified{background:#fff0f0;color:#b42318;border-color:#ffc9c5}
+.qualification-pending{background:#fff8e7;color:#9a6700;border-color:#f8dea0}
+.qualification-zone{display:block;margin-top:5px;font:700 10px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;color:#0f766e}
+.qualification-card{margin:18px 0;padding:18px;border:1px solid #dce8e7;border-radius:18px;background:linear-gradient(135deg,#fbfffe,#f5fbfa)}
+.qualification-card h3{margin:3px 0 0}
+.qualification-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px}
+.qualification-grid>div{padding:13px;border:1px solid #e0ebea;border-radius:14px;background:#fff;display:flex;flex-direction:column;gap:5px}
+.qualification-grid small{color:#6f8386}
+.qualification-grid strong{font-size:14px}
+.qualification-reasons{margin-top:12px;padding:12px 14px;border-radius:12px;background:#fff3f2;color:#9d2520;display:flex;flex-direction:column;gap:4px}
+.qualification-reasons strong{margin-bottom:3px}
+.qualification-filters{align-items:end;flex-wrap:wrap}
+.qualification-filters select{min-width:155px}
+.zone-chip{display:inline-flex;padding:5px 9px;border-radius:999px;background:#e9f9f6;color:#047466;border:1px solid #bde9df;font:800 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+.recruitment-funnel-summary{overflow:hidden}
+.performance-funnel-cards{display:grid;grid-template-columns:repeat(8,minmax(100px,1fr));gap:9px;margin-top:14px}
+.performance-funnel-cards>div{border:1px solid #e0e9e9;border-radius:14px;background:#fbfdfd;padding:13px;display:flex;flex-direction:column;gap:5px}
+.performance-funnel-cards small{color:#6c7e81;font-size:11px}
+.performance-funnel-cards strong{font-size:23px}
+.performance-funnel-cards em{font-style:normal;color:#0a8c76;font-size:11px;font-weight:800}
+.funnel-rate-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.funnel-rate-row span{padding:8px 11px;border-radius:10px;background:#eef8f6;color:#53696b;font-size:12px}
+.funnel-rate-row b{color:#073b37}
+.performance-table-card{margin-top:18px}
+.performance-table-wrap{overflow:auto;max-width:100%}
+.performance-table{min-width:2500px}
+.performance-table th,.performance-table td{white-space:nowrap}
+.performance-table code{font-size:11px}
+.performance-breakdowns{align-items:start}
+.performance-breakdowns table{min-width:640px}
+@media(max-width:1100px){
+ .qualification-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .performance-funnel-cards{grid-template-columns:repeat(4,minmax(100px,1fr))}
+}
+@media(max-width:700px){
+ .qualification-grid{grid-template-columns:1fr 1fr}
+ .performance-funnel-cards{grid-template-columns:repeat(2,minmax(100px,1fr))}
+ .qualification-filters select{min-width:100%;width:100%}
+}

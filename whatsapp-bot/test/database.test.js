@@ -140,5 +140,29 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[targetArea]}=await db.query("select id from masar_areas where office_id=$1 and name='Test Area'",[targetOfficeForConfig.id]);
  assert.equal(String(remappedAnswer.value),String(targetArea.id));
  assert.equal((await db.query("select has_table_privilege('anon','masar_office_settings','SELECT') as allowed")).rows[0].allowed,false);
+
+ // Recruitment performance migration preserves existing data, adds editable zone rules,
+ // stable qualification keys, spend metadata and future-office cloning support.
+ await db.query("update masar_areas set name='أكتوبر' where id=$1",[targetArea.id]);
+ await db.query("insert into masar_questions(label,field_key,kind,position,office_id) values('معاك موتوسيكل؟','motorcycle','yes_no',90,$1)",[primaryOfficeForConfig.id]);
+ await db.query("insert into masar_ads(ad_id,name,spend) values('120240000000000001','Legacy Ad',700) on conflict(ad_id) do update set spend=excluded.spend");
+ const performanceSql=(await fs.readFile(new URL('../../supabase/013_recruitment_performance_funnel.sql',import.meta.url),'utf8')).replace('create extension if not exists pgcrypto;','');
+ await db.exec(performanceSql);await db.exec(performanceSql);
+
+ const {rows:[performanceAd]}=await db.query("select zone,spend_source,spend_synced_at,spend from masar_ads where ad_id='120240000000000001'");
+ assert.equal(performanceAd.zone,'UNKNOWN');assert.equal(performanceAd.spend_source,'manual');assert.equal(Number(performanceAd.spend),700);assert.equal(performanceAd.spend_synced_at,null);
+ const {rows:[eligibleArea]}=await db.query("select zone,recruitment_eligible from masar_areas where id=$1",[targetArea.id]);
+ assert.equal(eligibleArea.zone,'WEST');assert.equal(eligibleArea.recruitment_eligible,true);
+ const {rows:[renamedMoto]}=await db.query("select field_key from masar_questions where office_id=$1 and label='معاك موتوسيكل؟'",[primaryOfficeForConfig.id]);
+ assert.equal(renamedMoto.field_key,'has_motorcycle');
+ const {rows:residenceQuestions}=await db.query("select office_id,field_key,kind from masar_questions where field_key='residence_area' order by office_id");
+ assert.equal(residenceQuestions.length,2);assert.ok(residenceQuestions.every(x=>x.kind==='text'));
+
+ const {rows:[thirdOffice]}=await db.query("insert into masar_offices(name,code) values('Third Office','THIRD') returning id");
+ await db.query("select masar_clone_office_config($1,$2,false)",[targetOfficeForConfig.id,thirdOffice.id]);
+ const {rows:[clonedEligible]}=await db.query("select zone,recruitment_eligible from masar_areas where office_id=$1 and name='أكتوبر'",[thirdOffice.id]);
+ assert.equal(clonedEligible.zone,'WEST');assert.equal(clonedEligible.recruitment_eligible,true);
+ const {rows:[clonedResidence]}=await db.query("select field_key from masar_questions where office_id=$1 and field_key='residence_area'",[thirdOffice.id]);
+ assert.equal(clonedResidence.field_key,'residence_area');
  }finally{await db.close();}
 });

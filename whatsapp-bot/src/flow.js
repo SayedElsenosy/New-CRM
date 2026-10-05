@@ -1,6 +1,6 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
-import {qualificationFor,matchResidenceArea} from './qualification.js';
+import {qualificationFor} from './qualification.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -27,6 +27,7 @@ async function parseStructuredPendingAnswer({current,message,areas,settings,inte
 }
 function areaAction(body){
  const s=String(body||'');
+ if(s==='no_work_area')return {type:'no_work_area'};
  if(s.startsWith('area_preview:'))return {type:'preview',id:s.slice('area_preview:'.length)};
  if(s.startsWith('confirm_area:'))return {type:'confirm',id:s.slice('confirm_area:'.length)};
  if(s.startsWith('area_page:'))return {type:'page',page:Number(s.slice('area_page:'.length))};
@@ -59,9 +60,17 @@ function areaListReply(areas){
  if(!live.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
  return 'المناطق المتاحة موجودة في الأزرار تحت 👇\nاختار المنطقة من الأزرار علشان تشوف تفاصيلها.';
 }
+function noWorkAreaAnswer(text){
+ const n=norm(text);
+ return ['مفيش','لا يوجد','ولا منطقه','ولا منطقة','مفيش منطقه','مفيش منطقة','ولا واحده','ولا واحدة','ولا واحد','مش هقدر في اي منطقه','مش هقدر في اي منطقة'].includes(n)
+  || /(?:مفيش|لا يوجد|ولا)\s+(?:منطقه|منطقة|مكان)/.test(n);
+}
+function saveNoWorkArea(answers,current){
+ answers[current.id]={value:'__none__',display:'لا توجد منطقة مناسبة',label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString(),no_eligible_work_area:true,work_area_eligible:false};
+ return answers;
+}
 const NO_MOTORCYCLE_REPLY='شكرًا ليك 🙏\n\nالوظيفة المتاحة حاليًا في Breadfast بتشترط وجود موتوسيكل متاح للشغل يوميًا، لذلك مش هنقدر نكمل التقديم على الوظيفة دي حاليًا.\n\nلو توفر معاك موتوسيكل بعد كده تقدر ترجع تقدم من جديد.';
-const OUTSIDE_RESIDENCE_REPLY='تمام، سجلت منطقة سكنك.\n\nالتعيين الحالي متاح لسكان مناطق محددة في القاهرة والجيزة، ومنطقتك مش ضمن مناطق التعيين الحالية.\n\nلو اتفتح تعيين قريب منك ممكن يتم التواصل معاك.';
-const RESIDENCE_CLARIFY_REPLY='مش قادر أحدد منطقة سكنك بدقة. ممكن تكتب اسم المنطقة أو الحي فقط؟\nمثال: أكتوبر / مدينة نصر / الشروق';
+const NO_ELIGIBLE_WORK_AREA_REPLY='شكرًا ليك 🙏\n\nالتعيين الحالي متاح في مناطق تشغيل محددة، وبما إن مفيش منطقة متاحة تقدر تلتزم بالشغل فيها يوميًا، مش هنقدر نكمل التقديم على الوظيفة دي حاليًا.\n\nلو قدرت تلتزم بمنطقة تشغيل متاحة بعد كده تقدر ترجع تقدم من جديد.';
 const SHIFT_STOP_REPLY='تمام، سجلت إجابتك.\n\nنظام الشيفت الحالي شرط للتقديم على الوظيفة دي، لذلك مش هنكمل باقي خطوات التقديم حاليًا.';
 const QUALIFICATION_PENDING_REPLY='تمام، سجلت بياناتك الحالية. في شرط تأهيل لسه محتاج تأكيد قبل إنهاء التقديم، ومسؤول التوظيف يقدر يراجعه.';
 function stopQualification(answers,reason,extra={}){
@@ -85,7 +94,7 @@ function activeFlow(answers){
 }
 function stoppedReply(reason){
  if(reason==='no_motorcycle')return NO_MOTORCYCLE_REPLY;
- if(reason==='residence_outside_hiring_zones')return OUTSIDE_RESIDENCE_REPLY;
+ if(reason==='no_eligible_work_area')return NO_ELIGIBLE_WORK_AREA_REPLY;
  if(reason==='shift_not_accepted')return SHIFT_STOP_REPLY;
  return 'بياناتك متسجلة عندنا، والتقديم متوقف حاليًا لأن شروط الوظيفة الحالية مش مكتملة.';
 }
@@ -147,7 +156,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
- const qualificationFlowEnabled=qs.some(q=>q.field_key==='has_motorcycle')&&qs.some(q=>q.field_key==='residence_area');
+ const qualificationFlowEnabled=qs.some(q=>q.field_key==='has_motorcycle')&&qs.some(q=>q.field_key==='preferred_work_area');
 
  if(answers.__qualification_stop){
   if(areaListInquiry(m.body)){
@@ -165,9 +174,18 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||pending[0];
 
+ if(current?.field_key==='preferred_work_area'&&noWorkAreaAnswer(m.body)){
+  saveNoWorkArea(answers,current);
+  return {patch:stopQualification(answers,'no_eligible_work_area'),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
+ }
+
  const action=areaAction(m.body);
+ if(action?.type==='no_work_area'&&current?.field_key==='preferred_work_area'){
+  saveNoWorkArea(answers,current);
+  return {patch:stopQualification(answers,'no_eligible_work_area'),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
+ }
  if(action?.type==='page'){
-  const eligibilityOnly=answers.__area_page?.eligibility_only===true;
+  const eligibilityOnly=current?.field_key==='preferred_work_area'||answers.__area_page?.eligibility_only===true;
   const activeAreas=eligibilityOnly?recruitmentAreas(areas):areas.filter(z=>z.active),pages=Math.max(1,Math.ceil(activeAreas.length/7));
   const page=Math.max(0,Math.min(pages-1,Number.isInteger(action.page)?action.page:0));
   answers.__area_page={value:page,kind:'area_page',at:new Date().toISOString(),...(eligibilityOnly?{eligibility_only:true}:{})};
@@ -187,11 +205,17 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     if(answers.__area_preview?.value!==area.id)return {patch:{awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها أكد اختيارك النهائي.\n\n'+questionPrompt(current,areas)};
     delete answers.__area_preview;
     delete answers.__area_page;
-    answers[current.id]={value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+    answers[current.id]={value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString(),...(current.field_key==='preferred_work_area'?{work_area_eligible:area.recruitment_eligible===true,work_area_zone:area.zone||'UNKNOWN'}:{})};
+    if(current.field_key==='preferred_work_area'&&area.recruitment_eligible!==true){
+     return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:area.name}),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
+    }
     const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
     const comp=completion(questions,answers,areas);
-    const stage=comp.complete?'complete':realAnswerCount(answers)?'incomplete':'new';
-    return {patch:{answers,stage,awaiting_id:next?.id||null},reply:(`تم تثبيت منطقة التقديم: ${area.name} ✅\n\n`)+(next?questionPrompt(next,areas):settings.completion)};
+    const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
+    if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
+    const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
+    const finalReply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
+    return {patch:{answers,stage,awaiting_id:next?.id||null},reply:(`تم تثبيت منطقة التقديم: ${area.name} ✅\n\n`)+finalReply};
    }
   }
   if(action.type==='preview'){
@@ -292,7 +316,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
  }
 
- if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&current?.field_key!=='residence_area'){
+ if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
   const threshold=Number(settings.ai_confidence_threshold||0.62);
   const match=findKnowledgeAnswer(m.body,knowledge,threshold);
   if(match){
@@ -347,30 +371,15 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(!parsed.ok&&ai?.intent==='answer'&&!String(ai.answer).includes('محجوب')) parsed=validateAnswer(current,ai.answer,areas,null);
   if(!parsed.ok)return {patch:{},reply:(m.media_error?m.media_error+'\n':'محتاج أوضح إجابتك علشان أسجلها صح.\n')+questionPrompt(current,areas)};
 
-  if(current.field_key==='residence_area'){
-   const matched=matchResidenceArea(parsed.display||parsed.value,areas),at=new Date().toISOString();
-   if(matched?.recruitment_eligible===true){
-    delete answers.__residence_clarification;
-    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,matched_area_id:matched.id,matched_area_name:matched.name,zone:matched.zone||'UNKNOWN',geo_status:'qualified'};
-   }else if(matched){
-    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,matched_area_id:matched.id,matched_area_name:matched.name,zone:matched.zone||'UNKNOWN',geo_status:'outside',geo_confirmed_outside:true};
-    return {patch:stopQualification(answers,'residence_outside_hiring_zones',{residence:parsed.display}),reply:OUTSIDE_RESIDENCE_REPLY};
-   }else{
-    const attempt=Number(answers.__residence_clarification?.attempts||0);
-    if(attempt<1){
-     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,geo_status:'unknown'};
-     answers.__residence_clarification={attempts:1,first_value:parsed.display,at};
-     return {patch:{answers,stage:'incomplete',awaiting_id:current.id},reply:RESIDENCE_CLARIFY_REPLY};
-    }
-    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,geo_status:'outside',geo_confirmed_outside:true};
-    return {patch:stopQualification(answers,'residence_outside_hiring_zones',{residence:parsed.display,clarification_attempts:2}),reply:OUTSIDE_RESIDENCE_REPLY};
-   }
-  }else if(current.kind==='area'){
+  if(current.kind==='area'){
    const area=areas.find(z=>z.active&&z.id===parsed.value);
    if(area){
     if(answers.__area_preview?.value===area.id){
      delete answers.__area_preview;
-     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString(),...(current.field_key==='preferred_work_area'?{work_area_eligible:area.recruitment_eligible===true,work_area_zone:area.zone||'UNKNOWN'}:{})};
+     if(current.field_key==='preferred_work_area'&&area.recruitment_eligible!==true){
+      return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:area.name}),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
+     }
     }else{
      answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
      return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};

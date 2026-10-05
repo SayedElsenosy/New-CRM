@@ -31,11 +31,11 @@ export function validateAnswer(q,input,areas,media) {
  if(q.kind==='yes_no') {
   if(typeof input==='boolean') return {ok:true,value:input,display:input?'نعم':'لا'};
   const n=norm(s);
-  if(['لا','لاء','معنديش','ما عنديش','مش عندي','مش معايا','no'].includes(n)
-    ||/^(?:لا|لاء)(?:\s|$)/.test(n)
+  if(/^(?:لا|لاء|no)(?:\s|$)/.test(n))return {ok:true,value:false,display:'لا'};
+  if(/^(?:نعم|ايوه|ايوا|اه|تمام|موافق|yes)(?:\s|$)/.test(n))return {ok:true,value:true,display:'نعم'};
+  if(['معنديش','ما عنديش','مش عندي','مش معايا'].includes(n)
     ||/(?:^|\s)(?:معنديش|مش عندي|مش معايا|ما عنديش)(?:\s|$)/.test(n))return {ok:true,value:false,display:'لا'};
-  if(['نعم','ايوه','ايوا','اه','تمام','موافق','عندي','معايا','yes'].includes(n)
-    ||/^(?:نعم|ايوه|ايوا|اه|تمام|موافق|yes)(?:\s|$)/.test(n)
+  if(['عندي','معايا'].includes(n)
     ||/(?:^|\s)(?:عندي|معايا)(?:\s|$)/.test(n))return {ok:true,value:true,display:'نعم'};
   return {ok:false};
  }

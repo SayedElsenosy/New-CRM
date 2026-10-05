@@ -56,20 +56,34 @@ test('motorcycle=yes goes directly to preferred work area, not residence',async(
  assert.doesNotMatch(r.reply,/ساكن فين/);
 });
 
-test('eligible work area qualifies geo and continues the flow',async()=>{
+test('eligible work area button is saved immediately and continues the flow',async()=>{
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
-  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
-  __area_preview:{value:'tagamoa',display:'التجمع',kind:'area_preview'}
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}
  }};
- const r=await call(a,'confirm_area:tagamoa');
+ const r=await call(a,'area_preview:tagamoa');
  assert.equal(r.patch.answers.q2.value,'tagamoa');
  assert.equal(r.patch.answers.q2.work_area_eligible,true);
+ assert.equal(r.patch.answers.__area_preview,undefined);
  assert.equal(r.patch.awaiting_id,'q3');
+ assert.match(r.reply,/سجلت منطقة العمل: التجمع/);
  assert.match(r.reply,/اكتب اسمك بالكامل/);
+ assert.doesNotMatch(r.reply,/تفاصيل التجمع|تأكيد التجمع/);
  const q=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
  assert.equal(q.geo_qualified,true);
  assert.equal(q.geo_basis,'preferred_work_area');
  assert.equal(q.zone,'EAST');
+});
+
+test('typing an eligible area name directly saves it without preview or confirmation',async()=>{
+ const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}
+ }};
+ const r=await call(a,'مدينة نصر');
+ assert.equal(r.patch.answers.q2.value,'nasr');
+ assert.equal(r.patch.awaiting_id,'q3');
+ assert.match(r.reply,/سجلت منطقة العمل: مدينة نصر/);
+ assert.match(r.reply,/اكتب اسمك بالكامل/);
+ assert.doesNotMatch(r.reply,/تفاصيل مدينة نصر|تأكيد مدينة نصر/);
 });
 
 test('explicit no available work area stops as not qualified',async()=>{

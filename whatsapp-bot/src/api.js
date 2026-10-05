@@ -647,7 +647,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
     const aliases=Array.isArray(b.aliases)?b.aliases:String(b.aliases||'').split(/[,،\n]/);
     const cleanAliases=[...new Set(aliases.map(x=>String(x||'').trim()).filter(Boolean).slice(0,30).map(x=>x.slice(0,100)))];
-    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible!==false,aliases:cleanAliases};
+    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible===true,aliases:cleanAliases};
    }else{
     if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع السؤال ونوعه ومفتاح حفظ البيانات');
     row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};

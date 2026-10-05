@@ -19,6 +19,10 @@ export function shouldBrowseAreaButtons(question,body){
   ||(question?.field_key==='preferred_work_area'&&text.includes(String(question.label||'')));
 }
 
+export function botAreaChoices(areas){
+ return (areas||[]).filter(area=>area?.active===true);
+}
+
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
   Object.assign(this,{db,connection,connections,serial,speech});
@@ -320,9 +324,7 @@ export class Worker {
      const body=String(m.body||'');
      const browseAreas=shouldBrowseAreaButtons(q,body);
      if(browseAreas){
-      const eligibilityOnly=q?.field_key==='preferred_work_area'||body.includes('المناطق المتاحة موجودة في الأزرار')||a.answers?.__area_page?.eligibility_only===true;
-      const liveAreas=sendConfig.areas.filter(area=>area.active),eligibilityConfigured=liveAreas.some(area=>area.recruitment_eligible!==undefined);
-      const activeAreas=eligibilityOnly&&eligibilityConfigured?liveAreas.filter(area=>area.recruitment_eligible===true):liveAreas;
+      const activeAreas=botAreaChoices(sendConfig.areas);
       const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
       const rawPage=Number(a.answers?.__area_page?.value||0);
       const page=Math.max(0,Math.min(pages-1,Number.isInteger(rawPage)?rawPage:0));

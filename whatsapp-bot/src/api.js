@@ -391,8 +391,12 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const campaigns=must(await db.from('masar_campaigns').select('id').eq('office_id',office.id)),campaignIds=campaigns.map(x=>x.id);
   const mediaPaths=[];
   for(let i=0;i<applicantIds.length;i+=100){
-   const rows=must(await db.from('masar_messages').select('media_path').in('applicant_id',applicantIds.slice(i,i+100)));
-   mediaPaths.push(...rows.map(x=>x.media_path).filter(Boolean));
+   const ids=applicantIds.slice(i,i+100);
+   for(let page=0;;page++){
+    const rows=must(await db.from('masar_messages').select('media_path').in('applicant_id',ids).order('id').range(page*500,page*500+499));
+    mediaPaths.push(...rows.map(x=>x.media_path).filter(Boolean));
+    if(rows.length<500)break;
+   }
   }
   const whatsappWarnings=[];
   for(const account of accounts){
@@ -418,6 +422,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     for(let i=0;i<removableStaff.length;i+=100){
      const ids=removableStaff.slice(i,i+100);
      must(await db.from('masar_events').update({staff_id:null}).in('staff_id',ids));
+     try{must(await db.from('masar_alert_reads').delete().in('user_id',ids));}catch(e){if(!schemaMissing(e))throw e;}
+     try{must(await db.from('masar_push_tokens').delete().in('user_id',ids));}catch(e){if(!schemaMissing(e))throw e;}
+     try{must(await db.from('masar_staff_whatsapp_access').delete().in('user_id',ids));}catch(e){if(!schemaMissing(e))throw e;}
      must(await db.from('masar_staff').delete().in('user_id',ids));
     }
    }

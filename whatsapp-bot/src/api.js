@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
+import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,createLearningSuggestion} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
@@ -39,6 +40,35 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  app.use(cors({origin(origin,cb){cb(null,!origin||origins.includes(origin));}}));
  app.use(express.json({limit:'64kb'}));
  app.get('/health',(_req,res)=>res.json({ok:true}));
+ app.use('/integrations/meta',rateLimit({windowMs:60000,limit:30,standardHeaders:'draft-8',legacyHeaders:false}));
+ app.post('/integrations/meta/ads-sync',async(req,res,next)=>{try{
+  const expected=String(process.env.META_ADS_SYNC_SECRET||''),provided=String(req.headers['x-integration-key']||'');
+  if(!expected)throw bad('تكامل مزامنة المصروف غير مفعّل على الخادم',503);
+  const a=Buffer.from(expected),b=Buffer.from(provided);
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))throw bad('مفتاح التكامل غير صحيح',401);
+  const items=Array.isArray(req.body?.ads)?req.body.ads:[req.body];
+  if(!items.length||items.length>500)throw bad('أرسل من 1 إلى 500 إعلان في الطلب الواحد');
+  const now=new Date().toISOString(),saved=[];
+  for(const item of items){
+   const adId=String(item?.ad_id||item?.meta_ad_id||'').trim(),spend=Number(item?.spend);
+   if(!/^\d{5,40}$/.test(adId))throw bad('Ad ID غير صحيح');
+   if(!Number.isFinite(spend)||spend<0||spend>1000000000)throw bad('قيمة المصروف غير صحيحة');
+   const zone=String(item?.zone||'UNKNOWN').toUpperCase();
+   if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
+   const current=must(await db.from('masar_ads').select('*').eq('ad_id',adId).maybeSingle());
+   const patch={spend:Math.round(spend*100)/100,spend_source:'meta',spend_synced_at:now,updated_at:now};
+   if(item?.zone!==undefined)patch.zone=zone;
+   if(item?.name!==undefined)patch.name=String(item.name||'').trim().slice(0,200);
+   let row;
+   if(current)row=must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single());
+   else row=must(await db.from('masar_ads').insert({ad_id:adId,name:patch.name||'',zone,spend:patch.spend,spend_source:'meta',spend_synced_at:now,first_seen_at:now,last_seen_at:now}).select().single());
+   saved.push(row);
+  }
+  res.json({ok:true,count:saved.length,ads:saved.map(x=>({ad_id:x.ad_id,spend:Number(x.spend||0),zone:x.zone,spend_source:x.spend_source,spend_synced_at:x.spend_synced_at}))});
+ }catch(e){
+  if(schemaMissing(e)||['42703','PGRST204'].includes(e.code||''))return next(bad('شغّل migration 013_recruitment_performance_funnel.sql أولاً',503));
+  next(e);
+ }});
  app.use('/api',rateLimit({windowMs:60000,limit:240,standardHeaders:'draft-8',legacyHeaders:false}));
  app.use('/api',async(req,res,next)=>{try{
   if(req.headers.origin&&!origins.includes(req.headers.origin))throw bad('هذا العنوان غير مسموح',403);

@@ -647,7 +647,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
     const aliases=Array.isArray(b.aliases)?b.aliases:String(b.aliases||'').split(/[,،\n]/);
     const cleanAliases=[...new Set(aliases.map(x=>String(x||'').trim()).filter(Boolean).slice(0,30).map(x=>x.slice(0,100)))];
-    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible===true,aliases:cleanAliases};
+    const active=b.active!==false;
+    row={name:b.name.trim(),details:b.details,active,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:active,aliases:cleanAliases};
    }else{
     if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع السؤال ونوعه ومفتاح حفظ البيانات');
     row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
@@ -672,7 +673,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     let changed=false;const answers={...(applicant.answers||{})};
     for(const [key,value] of Object.entries(answers)){
      if(value&&typeof value==='object'&&String(value.value||'')===area.id&&['area','area_preview'].includes(value.kind)){
-      answers[key]={...value,archived_area:true,archived_area_id:area.id,archived_area_name:area.name,archived_area_zone:area.zone||'UNKNOWN',archived_area_recruitment_eligible:area.recruitment_eligible===true};
+      answers[key]={...value,archived_area:true,archived_area_id:area.id,archived_area_name:area.name,archived_area_zone:area.zone||'UNKNOWN',archived_area_recruitment_eligible:area.active!==false};
       changed=true;archivedAnswers++;
      }
     }

@@ -312,7 +312,8 @@ export class Worker {
      const browseAreas=body.includes('اختار المنطقة من الأزرار')||body.includes('اختار منطقة تانية من الأزرار')||body.includes('المناطق المتاحة موجودة في الأزرار');
      if(browseAreas){
       const eligibilityOnly=body.includes('المناطق المتاحة موجودة في الأزرار')||a.answers?.__area_page?.eligibility_only===true;
-      const activeAreas=sendConfig.areas.filter(area=>area.active&&(!eligibilityOnly||area.recruitment_eligible===true));
+      const liveAreas=sendConfig.areas.filter(area=>area.active),eligibilityConfigured=liveAreas.some(area=>area.recruitment_eligible!==undefined);
+      const activeAreas=eligibilityOnly&&eligibilityConfigured?liveAreas.filter(area=>area.recruitment_eligible===true):liveAreas;
       const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
       const rawPage=Number(a.answers?.__area_page?.value||0);
       const page=Math.max(0,Math.min(pages-1,Number.isInteger(rawPage)?rawPage:0));

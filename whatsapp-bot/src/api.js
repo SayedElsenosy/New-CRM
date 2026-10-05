@@ -120,7 +120,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   must(await db.from('masar_meta_ad_accounts').delete().eq('office_id',oauthState.office_id));
   if(accounts.length)must(await db.from('masar_meta_ad_accounts').insert(accounts.map(x=>({...x,office_id:oauthState.office_id,updated_at:now}))));
   if(selected){try{await metaSyncOffice(oauthState.office_id);}catch(e){console.warn('Meta initial sync failed:',e.message);}}
-  const origin=String(process.env.DASHBOARD_ORIGIN||'').split(',').map(x=>x.trim()).find(Boolean)||'/';
+  const origin=String(process.env.DASHBOARD_ORIGIN||'').split(',').map(x=>x.trim()).find(Boolean)||(process.env.RAILWAY_PUBLIC_DOMAIN?'https://'+process.env.RAILWAY_PUBLIC_DOMAIN:'http://localhost:5173');
   const target=new URL(origin);target.searchParams.set('meta',selected?'connected':'choose-account');target.searchParams.set('office_id',oauthState.office_id);
   res.redirect(302,target.toString());
  }catch(e){next(e);}});
@@ -728,9 +728,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   try{
    const connection=must(await db.from('masar_meta_connections').select('office_id,meta_user_id,meta_user_name,token_expires_at,selected_ad_account_id,selected_ad_account_name,currency,timezone_name,status,last_sync_at,last_sync_error,updated_at').eq('office_id',officeId).maybeSingle());
    const accounts=must(await db.from('masar_meta_ad_accounts').select('account_id,name,account_status,currency,timezone_name,business_name,updated_at').eq('office_id',officeId).order('name',{ascending:true}));
-   res.json({configured:true,env_configured:cfg.configured,missing_env:cfg.missing,connected:Boolean(connection),connection,accounts});
+   res.json({configured:true,env_configured:cfg.configured,missing_env:cfg.missing,redirect_uri:cfg.redirectUri||null,required_permissions:['ads_read','business_management'],connected:Boolean(connection),connection,accounts});
   }catch(e){
-   if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))return res.json({configured:false,env_configured:cfg.configured,missing_env:cfg.missing,connected:false,connection:null,accounts:[]});
+   if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))return res.json({configured:false,env_configured:cfg.configured,missing_env:cfg.missing,redirect_uri:cfg.redirectUri||null,required_permissions:['ads_read','business_management'],connected:false,connection:null,accounts:[]});
    throw e;
   }
  });

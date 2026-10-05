@@ -88,7 +88,7 @@ function residenceInfo(applicant,questions,areas){
 function configuredBooleanCondition(applicant,questions,key,reason,enabled){
  if(enabled!==true)return {required:false,value:true,reason:null,pending:false};
  const active=questionCandidates(questions,key).find(q=>q.active);
- if(!active)return {required:true,value:null,reason:null,pending:true};
+ if(!active)return {required:false,value:true,reason:null,pending:false};
  const answer=applicant?.answers?.[active.id],value=booleanValue(answer);
  if(value===null)return {required:true,value:null,reason:null,pending:true};
  if(value===false)return {required:true,value:false,reason,pending:false};

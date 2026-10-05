@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {shouldBrowseAreaButtons,botAreaChoices} from '../src/worker.js';
+import {normalizeWorkAreas} from '../src/db.js';
 
 test('work-area qualification prompt renders area buttons',()=>{
  const q={field_key:'preferred_work_area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.'};
@@ -35,4 +36,15 @@ test('deleted area disappears from bot choices because it is no longer in Areas 
  const after=before.filter(x=>x.id!=='nasr');
  assert.deepEqual(botAreaChoices(before).map(x=>x.id),['oct','nasr']);
  assert.deepEqual(botAreaChoices(after).map(x=>x.id),['oct']);
+});
+
+
+test('active legacy areas are normalized as recruitment eligible before bot use',()=>{
+ const normalized=normalizeWorkAreas([
+  {id:'hadayek-market',name:'حدائق الأهرام ماركت',active:true,recruitment_eligible:false},
+  {id:'paused',name:'منطقة متوقفة',active:false,recruitment_eligible:false}
+ ]);
+ assert.equal(normalized[0].recruitment_eligible,true);
+ assert.equal(normalized[1].recruitment_eligible,false);
+ assert.deepEqual(botAreaChoices(normalized).map(x=>x.id),['hadayek-market']);
 });

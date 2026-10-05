@@ -1701,3 +1701,7 @@ tbody tr:hover{background:#f7fbfa}
  .meta-account-tools{grid-template-columns:1fr}
  .meta-account-tools label{grid-column:auto}
 }
+
+.meta-redirect{display:flex;flex-direction:column;gap:6px;margin:10px 0;padding:12px 14px;border:1px solid #dce8e6;border-radius:12px;background:#fff}
+.meta-redirect small{color:#687b7e}
+.meta-redirect code{direction:ltr;text-align:left;overflow:auto;white-space:nowrap;font-size:12px}

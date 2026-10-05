@@ -1,5 +1,6 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
+import {qualificationFor,matchResidenceArea} from './qualification.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -49,9 +50,38 @@ function areaListInquiry(text){
   || ['المناطق','مناطق الشغل','اماكن الشغل','الاماكن المتاحه'].includes(n);
 }
 function areaListReply(areas){
- const live=areas.filter(z=>z.active);
- if(!live.length)return 'مفيش مناطق عمل متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
+ const live=areas.filter(z=>z.active&&z.recruitment_eligible===true);
+ if(!live.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
  return 'المناطق المتاحة موجودة في الأزرار تحت 👇\nاختار المنطقة من الأزرار علشان تشوف تفاصيلها.';
+}
+const NO_MOTORCYCLE_REPLY='شكرًا ليك 🙏\n\nالوظيفة المتاحة حاليًا في Breadfast بتشترط وجود موتوسيكل متاح للشغل يوميًا، لذلك مش هنقدر نكمل التقديم على الوظيفة دي حاليًا.\n\nلو توفر معاك موتوسيكل بعد كده تقدر ترجع تقدم من جديد.';
+const OUTSIDE_RESIDENCE_REPLY='تمام، سجلت منطقة سكنك.\n\nالتعيين الحالي متاح لسكان مناطق محددة في القاهرة والجيزة، ومنطقتك مش ضمن مناطق التعيين الحالية.\n\nلو اتفتح تعيين قريب منك ممكن يتم التواصل معاك.';
+const RESIDENCE_CLARIFY_REPLY='مش قادر أحدد منطقة سكنك بدقة. ممكن تكتب اسم المنطقة أو الحي فقط؟\nمثال: أكتوبر / مدينة نصر / الشروق';
+const SHIFT_STOP_REPLY='تمام، سجلت إجابتك.\n\nنظام الشيفت الحالي شرط للتقديم على الوظيفة دي، لذلك مش هنكمل باقي خطوات التقديم حاليًا.';
+function stopQualification(answers,reason,extra={}){
+ const at=new Date().toISOString();
+ answers.__qualification_stop={reason,at,...extra};
+ answers.__application_flow_status={value:'stopped_not_qualified',reason,at,kind:'flow_status'};
+ delete answers.__residence_clarification;
+ return {answers,stage:realAnswerCount(answers)?'incomplete':'new',awaiting_id:null};
+}
+function completeFlow(answers){
+ answers.__application_flow_status={value:'completed',at:new Date().toISOString(),kind:'flow_status'};
+ delete answers.__qualification_stop;
+ delete answers.__residence_clarification;
+ return answers;
+}
+function activeFlow(answers){
+ if(!answers.__application_flow_status||answers.__application_flow_status.value!=='active'){
+  answers.__application_flow_status={value:'active',at:new Date().toISOString(),kind:'flow_status'};
+ }
+ return answers;
+}
+function stoppedReply(reason){
+ if(reason==='no_motorcycle')return NO_MOTORCYCLE_REPLY;
+ if(reason==='residence_outside_hiring_zones')return OUTSIDE_RESIDENCE_REPLY;
+ if(reason==='shift_not_accepted')return SHIFT_STOP_REPLY;
+ return 'بياناتك متسجلة عندنا، والتقديم متوقف حاليًا لأن شروط الوظيفة الحالية مش مكتملة.';
 }
 function postCompletionReply(){
  return 'بياناتك متسجلة عندنا بالفعل ✅\nلو عندك سؤال عن الشغل، المرتب، المواعيد أو المناطق ابعته وأنا أساعدك.';
@@ -111,6 +141,20 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
+
+ if(answers.__qualification_stop){
+  if(areaListInquiry(m.body)){
+   answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
+   return {patch:{answers,awaiting_id:null},reply:areaListReply(areas)};
+  }
+  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+   const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
+   if(match)return {patch:{awaiting_id:null},reply:String(match.answer||'').trim(),knowledge_id:match.id,knowledge_confidence:match.confidence};
+  }
+  return {patch:{awaiting_id:null},reply:stoppedReply(answers.__qualification_stop.reason)};
+ }
+
+ activeFlow(answers);
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||pending[0];
 
@@ -164,7 +208,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  if(areaListInquiry(m.body)){
-  answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString()};
+  answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
   const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
   return {patch:current?{answers,awaiting_id:current.id}:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas)+continueFlow};
  }
@@ -194,9 +238,21 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const parsed=await parseStructuredPendingAnswer({current,message:m,areas,settings,interpret});
   if(parsed){
    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
+   if(current.field_key==='has_motorcycle'&&parsed.value===false){
+    return {patch:stopQualification(answers,'no_motorcycle'),reply:NO_MOTORCYCLE_REPLY};
+   }
+   if(current.field_key==='shift_acceptance'&&parsed.value===false&&settings.qualification_require_shift===true){
+    return {patch:stopQualification(answers,'shift_not_accepted'),reply:SHIFT_STOP_REPLY};
+   }
    const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
    const comp=completion(questions,answers,areas);
-   const stage=comp.complete?'complete':realAnswerCount(answers)?'incomplete':'new';
+   const qualification=qualificationFor({...a,answers},questions,areas,settings);
+   if(comp.complete&&qualification.qualified_candidate===false){
+    const reason=qualification.reasons[0]||'not_qualified';
+    return {patch:stopQualification(answers,reason),reply:stoppedReply(reason)};
+   }
+   if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
+   const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
    let match=null;
    if(settings.ai_enabled&&settings.ai_knowledge_enabled===true){
     const threshold=Number(settings.ai_confidence_threshold||0.62);
@@ -277,7 +333,25 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(!parsed.ok&&ai?.intent==='answer'&&!String(ai.answer).includes('محجوب')) parsed=validateAnswer(current,ai.answer,areas,null);
   if(!parsed.ok)return {patch:{},reply:(m.media_error?m.media_error+'\n':'محتاج أوضح إجابتك علشان أسجلها صح.\n')+questionPrompt(current,areas)};
 
-  if(current.kind==='area'){
+  if(current.field_key==='residence_area'){
+   const matched=matchResidenceArea(parsed.display||parsed.value,areas),at=new Date().toISOString();
+   if(matched?.recruitment_eligible===true){
+    delete answers.__residence_clarification;
+    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,matched_area_id:matched.id,matched_area_name:matched.name,zone:matched.zone||'UNKNOWN',geo_status:'qualified'};
+   }else if(matched){
+    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,matched_area_id:matched.id,matched_area_name:matched.name,zone:matched.zone||'UNKNOWN',geo_status:'outside',geo_confirmed_outside:true};
+    return {patch:stopQualification(answers,'residence_outside_hiring_zones',{residence:parsed.display}),reply:OUTSIDE_RESIDENCE_REPLY};
+   }else{
+    const attempt=Number(answers.__residence_clarification?.attempts||0);
+    if(attempt<1){
+     answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,geo_status:'unknown'};
+     answers.__residence_clarification={attempts:1,first_value:parsed.display,at};
+     return {patch:{answers,stage:'incomplete',awaiting_id:current.id},reply:RESIDENCE_CLARIFY_REPLY};
+    }
+    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at,geo_status:'outside',geo_confirmed_outside:true};
+    return {patch:stopQualification(answers,'residence_outside_hiring_zones',{residence:parsed.display,clarification_attempts:2}),reply:OUTSIDE_RESIDENCE_REPLY};
+   }
+  }else if(current.kind==='area'){
    const area=areas.find(z=>z.active&&z.id===parsed.value);
    if(area){
     if(answers.__area_preview?.value===area.id){
@@ -293,9 +367,21 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
  }
 
+ if(current.field_key==='has_motorcycle'&&answers[current.id]?.value===false){
+  return {patch:stopQualification(answers,'no_motorcycle'),reply:NO_MOTORCYCLE_REPLY};
+ }
+ if(current.field_key==='shift_acceptance'&&answers[current.id]?.value===false&&settings.qualification_require_shift===true){
+  return {patch:stopQualification(answers,'shift_not_accepted'),reply:SHIFT_STOP_REPLY};
+ }
  const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const comp=completion(questions,answers,areas);
- const stage=comp.complete?'complete':realAnswerCount(answers)?'incomplete':'new';
+ const qualification=qualificationFor({...a,answers},questions,areas,settings);
+ if(comp.complete&&qualification.qualified_candidate===false){
+  const reason=qualification.reasons[0]||'not_qualified';
+  return {patch:stopQualification(answers,reason),reply:stoppedReply(reason)};
+ }
+ if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
+ const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
  let reply=next?questionPrompt(next,areas):settings.completion;
  if(current.kind==='area'&&answers[current.id]?.value){
   const area=areas.find(z=>z.id===answers[current.id].value);

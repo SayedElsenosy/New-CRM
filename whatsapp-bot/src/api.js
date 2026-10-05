@@ -829,7 +829,9 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  permissionRoute('reports','get','/reports',async(req,res)=>{
   const {rows,areas}=await applicantList(req),catalog=await campaignCatalog(true);
   const base=summaryFor(rows),stages=base.stages;
-  const zones=areas.map(z=>({name:z.name,count:rows.filter(a=>Object.values(a.answers||{}).some(v=>v?.kind==='area'&&v.value===z.id)).length}));
+  const residenceCounts=new Map();
+  for(const a of rows){const name=a.qualification?.geo_status==='outside'?'Outside Area':a.qualification?.residence_area||'لم يجب';residenceCounts.set(name,(residenceCounts.get(name)||0)+1);}
+  const zones=[...residenceCounts.entries()].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
   const days={};for(const a of rows){const day=new Date(a.created_at).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});days[day]=(days[day]||0)+1;}
   const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
   const adIds=[...new Set(rows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean))],visibleAdIds=new Set(adIds);
@@ -848,9 +850,61 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const div=n=>n?Math.round(selectedSpend/n*100)/100:null;
   res.json({
    total:base.total,stages,recruitment_stages:Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,rows.filter(a=>recruitmentStageOf(a)===x).length])),areas:zones,days:Object.entries(days).sort().map(([date,count])=>({date,count})),completed:base.completed,
+   qualification:{qualified:rows.filter(a=>a.qualification?.qualified_candidate===true).length,not_qualified:rows.filter(a=>a.qualification?.qualified_candidate===false).length,pending:rows.filter(a=>a.qualification?.qualified_candidate==null).length,motorcycle_qualified:rows.filter(a=>a.qualification?.motorcycle_qualified===true).length,geo_qualified:rows.filter(a=>a.qualification?.geo_qualified===true).length},
    attributed:rows.filter(a=>Boolean(attributionOf(a)?.source_id)).length,unattributed:rows.filter(a=>!attributionOf(a)?.source_id).length,
    spend:selectedSpend,costs:{per_lead:div(base.total),per_complete:div(base.completed),per_lecture:div(stages.lecture),per_working:div(stages.working)},
    ad_breakdown,campaign_breakdown
+  });
+ });
+ permissionRoute('reports','get','/reports/recruitment-performance',async(req,res)=>{
+  const listReq={...req,query:{...req.query}};delete listReq.query.zone;
+  const {rows}=await applicantList(listReq),catalog=await discoverAds();
+  const campaignById=new Map(catalog.campaigns.map(x=>[x.id,x])),adById=new Map(catalog.ads.map(x=>[x.ad_id,x]));
+  const requestedZone=req.query.zone?String(req.query.zone).toUpperCase():'';
+  if(requestedZone&&!RECRUITMENT_ZONES.includes(requestedZone))throw bad('Zone غير صحيحة');
+  let scopedRows=rows;
+  if(requestedZone)scopedRows=scopedRows.filter(a=>(adById.get(String(attributionOf(a)?.source_id||''))?.zone||'UNKNOWN')===requestedZone);
+
+  const visibleIds=new Set(scopedRows.map(a=>String(attributionOf(a)?.source_id||'')).filter(Boolean));
+  const officeId=req.role==='admin'?String(req.query.office_id||''):String(req.officeId||'');
+  let ads=catalog.ads.filter(ad=>!officeId||visibleIds.has(ad.ad_id)||(ad.campaign_id&&campaignById.get(ad.campaign_id)?.office_id===officeId));
+  if(req.query.campaign_id)ads=ads.filter(ad=>ad.campaign_id===String(req.query.campaign_id));
+  if(req.query.ad_id)ads=ads.filter(ad=>ad.ad_id===String(req.query.ad_id));
+  if(requestedZone)ads=ads.filter(ad=>(ad.zone||'UNKNOWN')===requestedZone);
+  const adIds=new Set(ads.map(x=>x.ad_id));
+  // Keep attributed applicants whose Ad ID was captured before the catalog row existed.
+  for(const id of visibleIds)if(!adIds.has(id)){const ad=adById.get(id);if(ad){ads.push(ad);adIds.add(id);}}
+
+  const ad_performance=ads.map(ad=>{
+   const subset=scopedRows.filter(a=>String(attributionOf(a)?.source_id||'')===ad.ad_id);
+   return {ad_id:ad.ad_id,ad_name:ad.name||ad.headline||'',campaign_id:ad.campaign_id||null,campaign_name:campaignById.get(ad.campaign_id)?.name||'غير مربوط بحملة',zone:ad.zone||'UNKNOWN',spend:Number(ad.spend||0),spend_source:ad.spend_source||'manual',spend_synced_at:ad.spend_synced_at||null,...funnelFor(subset,Number(ad.spend||0))};
+  }).sort((a,b)=>b.applicants-a.applicants||b.spend-a.spend);
+
+  const campaignIds=[...new Set(ads.map(x=>x.campaign_id).filter(Boolean))];
+  const campaign_performance=campaignIds.map(id=>{
+   const campaignAds=ads.filter(x=>x.campaign_id===id),ids=new Set(campaignAds.map(x=>x.ad_id));
+   const subset=scopedRows.filter(a=>ids.has(String(attributionOf(a)?.source_id||''))),spend=campaignAds.reduce((n,x)=>n+Number(x.spend||0),0);
+   return {campaign_id:id,campaign_name:campaignById.get(id)?.name||'حملة',spend,...funnelFor(subset,spend)};
+  }).sort((a,b)=>b.applicants-a.applicants);
+
+  const zone_performance=RECRUITMENT_ZONES.map(zone=>{
+   const zoneAds=ads.filter(x=>(x.zone||'UNKNOWN')===zone),ids=new Set(zoneAds.map(x=>x.ad_id)),subset=scopedRows.filter(a=>ids.has(String(attributionOf(a)?.source_id||''))),spend=zoneAds.reduce((n,x)=>n+Number(x.spend||0),0);
+   return {zone,spend,...funnelFor(subset,spend)};
+  });
+
+  const residenceMap=new Map();
+  for(const a of scopedRows){
+   const key=a.qualification?.geo_status==='outside'?'Outside Area':a.qualification?.residence_area||'لم يجب';
+   if(!residenceMap.has(key))residenceMap.set(key,[]);
+   residenceMap.get(key).push(a);
+  }
+  const residence_performance=[...residenceMap.entries()].map(([residence_area,subset])=>({residence_area,...funnelFor(subset,0)})).sort((a,b)=>b.applicants-a.applicants);
+  const spend=ads.reduce((n,x)=>n+Number(x.spend||0),0),unattributedRows=scopedRows.filter(a=>!attributionOf(a)?.source_id);
+  res.json({
+   generated_at:new Date().toISOString(),filters:{from:req.query.from||null,to:req.query.to||null,office_id:req.query.office_id||req.officeId||null,campaign_id:req.query.campaign_id||null,ad_id:req.query.ad_id||null,zone:requestedZone||null,recruitment_stage:req.query.recruitment_stage||null},
+   overall:{spend,...funnelFor(scopedRows,spend)},
+   attributed:scopedRows.length-unattributedRows.length,unattributed:unattributedRows.length,unattributed_funnel:funnelFor(unattributedRows,0),
+   ad_performance,campaign_performance,zone_performance,residence_performance
   });
  });
  permissionRoute('reports','get','/reports.csv',async(req,res)=>{

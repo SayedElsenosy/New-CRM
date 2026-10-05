@@ -483,7 +483,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const b=req.body,officeId=await scopedOfficeId(req);let row;
    if(type==='areas'){
     if(typeof b.name!=='string'||!b.name.trim()||b.name.length>100||typeof b.details!=='string'||b.details.length>4000)throw bad('راجع اسم المنطقة وتفاصيلها');
-    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
+    const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
+    row={name:b.name.trim(),details:b.details,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:b.recruitment_eligible===true};
    }else{
     if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع السؤال ونوعه ومفتاح حفظ البيانات');
     row={label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,position:Number.isInteger(b.position)?b.position:0,office_id:officeId};
@@ -551,7 +552,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const scopedAds=scopeActive?ads.filter(ad=>visibleIds.has(ad.ad_id)):ads;
   const scopedCampaignIds=new Set(scopedAds.map(ad=>ad.campaign_id).filter(Boolean));
   const scopedCampaigns=campaigns.filter(x=>(!scopeActive||x.office_id===officeId||scopedCampaignIds.has(x.id)));
-  const stats=Object.fromEntries(scopedAds.map(ad=>[ad.ad_id,summaryFor(applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id))]));
+  const stats=Object.fromEntries(scopedAds.map(ad=>{const subset=applicants.filter(a=>attributionOf(a)?.source_id===ad.ad_id);return [ad.ad_id,{...summaryFor(subset),...funnelFor(subset,Number(ad.spend||0))}];}));
   res.json({campaigns:scopedCampaigns,ads:scopedAds.map(ad=>({...ad,stats:stats[ad.ad_id]}))});
  });
  permissionRoute('campaigns','post','/campaigns',async(req,res)=>{await serial(async()=>{
@@ -962,9 +963,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   must(await db.from('masar_questions').insert([
    {field_key:'full_name',label:'اسمك بالكامل إيه؟',kind:'name'},
    {field_key:'age',label:'عندك كام سنة؟',kind:'number'},
-   {field_key:'area',label:'حابب تشتغل في أنهي منطقة؟',kind:'area'},
-   {field_key:'motorcycle',label:'معاك موتوسيكل؟',kind:'yes_no'},
-   {field_key:'license',label:'معاك رخصة موتوسيكل سارية؟',kind:'yes_no'},
+   {field_key:'residence_area',label:'ساكن فين حاليًا؟ اكتب اسم المنطقة أو الحي.',kind:'text'},
+   {field_key:'preferred_work_area',label:'حابب تشتغل في أنهي منطقة؟',kind:'area'},
+   {field_key:'has_motorcycle',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',kind:'yes_no'},
+   {field_key:'motorcycle_license',label:'معاك رخصة موتوسيكل سارية؟',kind:'yes_no'},
    {field_key:'document',label:'ابعت المستند المطلوب للتقديم بعد مراجعة مسؤول التوظيف لنوعه.',kind:'image',required:false,active:false}
   ].map((q,i)=>({...q,required:q.required!==false,active:q.active!==false,position:i+1,office_id:officeId}))));
  });res.json({ok:true});});

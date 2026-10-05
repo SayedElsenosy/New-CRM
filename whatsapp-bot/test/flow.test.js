@@ -105,17 +105,16 @@ test('knowledge matcher understands Egyptian wording variants',()=>{
  assert.equal(match.id,'k1');assert.ok(match.confidence>=.5);
 });
 
-test('compound answer is saved once, learned side info is answered, and the same application question is not repeated',async()=>{
+test('compound statement answer is saved without injecting learned side-info replies',async()=>{
  const kb=[{id:'k-license',question:'مش معايا رخصة',answer:'تقصد رخصة الموتوسيكل ولا الرخصة الشخصية؟',keywords:['رخصة'],active:true}];
  const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد',kind:'name'},area:{value:'oct',kind:'area'}}};
  const r=await planTurn({applicant:a,message:{body:'اه بس مش معايا رخصة'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6},interpret,knowledge:kb});
  assert.equal(r.patch.answers.bike.value,true);
  assert.equal(r.patch.awaiting_id,null);
- assert.equal(r.knowledge_id,'k-license');
- assert.match(r.reply,/رخصة الموتوسيكل/);
- assert.doesNotMatch(r.reply,/معاك موتوسيكل/);
- assert.doesNotMatch(r.reply,/تم الاستلام/);
- assert.equal(r.followup_reply,'تم الاستلام');
+ assert.equal(r.knowledge_id,undefined);
+ assert.doesNotMatch(r.reply,/رخصة الموتوسيكل|الرخصة الشخصية/);
+ assert.match(r.reply,/تم الاستلام/);
+ assert.equal(r.followup_reply,undefined);
 });
 
 test('learned entry for the same structured question does not create a second answer',async()=>{

@@ -62,7 +62,7 @@ test('complete application can still be not qualified',()=>{
 test('required active license and shift checks participate in qualification',()=>{
  const questions=[q('m','has_motorcycle','yes_no'),q('r','residence_area','text'),q('l','motorcycle_license','yes_no'),q('s','shift_acceptance','yes_no')];
  let applicant={answers:{m:answer(true,'yes_no'),r:answer('زايد'),l:answer(true,'yes_no')}};
- assert.equal(qualificationFor(applicant,questions,areas).overall_status,'pending');
+ assert.equal(qualificationFor(applicant,questions,areas,{qualification_require_motorcycle_license:true,qualification_require_shift:true}).overall_status,'pending');
  applicant.answers.s=answer(false,'yes_no','لا');
  const result=qualificationFor(applicant,questions,areas,{qualification_require_motorcycle_license:true,qualification_require_shift:true});
  assert.equal(result.overall_status,'not_qualified');

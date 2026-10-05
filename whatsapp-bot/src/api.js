@@ -580,7 +580,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(campaignId){const campaign=must(await db.from('masar_campaigns').select('office_id').eq('id',campaignId).single()),officeId=req.role==='admin'?(String(req.query.office_id||b.office_id||campaign.office_id)):req.officeId;if(campaign.office_id!==officeId)throw bad('الحملة تابعة لمكتب آخر',403);}
   const spend=Number(b.spend);if(!Number.isFinite(spend)||spend<0||spend>1000000000)throw bad('راجع تكلفة الإعلان');
   const name=String(b.name||'').trim();if(name.length>200)throw bad('اسم الإعلان طويل');
-  const patch={campaign_id:campaignId,name,spend:Math.round(spend*100)/100,updated_at:new Date().toISOString()};
+  const zone=String(b.zone||'UNKNOWN').toUpperCase();if(!RECRUITMENT_ZONES.includes(zone))throw bad('Zone غير صحيحة');
+  const patch={campaign_id:campaignId,name,zone,spend:Math.round(spend*100)/100,spend_source:'manual',spend_synced_at:null,updated_at:new Date().toISOString()};
   res.json(must(await db.from('masar_ads').update(patch).eq('ad_id',adId).select().single()));
  });});
  permissionRoute('reports','get','/reports/options',async(req,res)=>{

@@ -133,9 +133,7 @@ completion='تمام ✅ بياناتك اتسجلت بنجاح.
 
 📞 خليك متابع واتساب والمكالمات علشان مسؤول التوظيف يقدر يتواصل معاك.
 
-التقديم مجاني 100% ومفيش أي رسوم للتعيين.',
-qualification_require_shift=false,
-qualification_require_motorcycle_license=false
+التقديم مجاني 100% ومفيش أي رسوم للتعيين.'
 where id=true;
 
 update public.masar_office_settings
@@ -165,8 +163,6 @@ completion='تمام ✅ بياناتك اتسجلت بنجاح.
 📞 خليك متابع واتساب والمكالمات علشان مسؤول التوظيف يقدر يتواصل معاك.
 
 التقديم مجاني 100% ومفيش أي رسوم للتعيين.',
-qualification_require_shift=false,
-qualification_require_motorcycle_license=false,
 updated_at=now();
 
 insert into public.masar_knowledge(question,answer,keywords,active,source)

@@ -53,13 +53,13 @@ function contextualSignal(messages,index){
  if(!applicant)return null;
  const applicantText=bodyOf(applicant),confirm=includesAny(staffText,confirmation);
  if(includesAny(applicantText,interviewTopic)&&(confirm||hasSchedule(staffText))){
-  return {stage:'interview',confidence:hasSchedule(staffText)?.9:.86,message_id:staff.id||null,evidence:(String(applicant.body||'')+' ⇢ '+String(staff.body||'')).slice(0,240),reason:'conversation_context'};
+  return {stage:'interview',confidence:hasSchedule(staffText)?0.9:0.86,message_id:staff.id||null,evidence:(String(applicant.body||'')+' ⇢ '+String(staff.body||'')).slice(0,240),reason:'conversation_context'};
  }
  if(includesAny(applicantText,acceptedTopic)&&confirm){
   return {stage:'accepted',confidence:.88,message_id:staff.id||null,evidence:(String(applicant.body||'')+' ⇢ '+String(staff.body||'')).slice(0,240),reason:'conversation_context'};
  }
  if(includesAny(applicantText,hiredTopic)&&(confirm||hasSchedule(staffText))){
-  return {stage:'hired',confidence:hasSchedule(staffText)?.91:.87,message_id:staff.id||null,evidence:(String(applicant.body||'')+' ⇢ '+String(staff.body||'')).slice(0,240),reason:'conversation_context'};
+  return {stage:'hired',confidence:hasSchedule(staffText)?0.91:0.87,message_id:staff.id||null,evidence:(String(applicant.body||'')+' ⇢ '+String(staff.body||'')).slice(0,240),reason:'conversation_context'};
  }
  return null;
 }

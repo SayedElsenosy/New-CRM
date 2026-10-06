@@ -107,8 +107,31 @@ function isFreshApplicationStart(applicant,message){
   &&(!applicant?.stage||applicant.stage==='new')
   &&(hasMetaAdAttribution(applicant?.answers)||isApplicationStartMessage(message?.body));
 }
+function yesNoTopicMentioned(question,text){
+ const n=norm(text);
+ if(question?.field_key==='has_motorcycle')return /(?:موتوسيكل|موتوسكل|موتسيكل|مكنه|مكنة|موتور)/.test(n);
+ if(question?.field_key==='shift_acceptance')return /(?:شيفت|شفت|ورديه|وردية|ساعات الشغل|ساعات العمل)/.test(n);
+ if(question?.field_key==='ready_to_start')return /(?:ابدا|ابدأ|بدايه|بداية|جاهز|انزل الشغل|استلم الشغل)/.test(n);
+ if(question?.field_key==='motorcycle_license')return /(?:رخصه|رخصة|الرخصه|الرخصة)/.test(n);
+ return false;
+}
+function ambiguousNegativeSideQuestion(question,text){
+ if(question?.kind!=='yes_no')return false;
+ const n=norm(text);
+ const startsNegative=/^(?:لا|لاء|لأ)(?:\s|$)/.test(n);
+ const asksSomething=/(?:ايه|إيه|فين|كام|امتى|إمتى|ازاي|إزاي|المتاح|متاح|تفاصيل|معلومات|ليه|لماذا)/.test(n)||/[?؟]/.test(String(text||''));
+ return startsNegative&&asksSomething&&!yesNoTopicMentioned(question,text);
+}
+function residenceOnlyWhileChoosingWorkArea(question,text){
+ if(question?.field_key!=='preferred_work_area')return false;
+ const n=norm(text);
+ const residence=/(?:ساكن|سكني|السكن|انا من|أنا من)/.test(n);
+ const workIntent=/(?:عايز|عاوز|حابب|هشتغل|اشتغل|اقدر اشتغل|أقدر اشتغل|التزم|ينفعلي|مناسبه ليا|مناسبة ليا).*(?:شغل|اشتغل|منطقه|منطقة|زون|فرع)/.test(n);
+ return residence&&!workIntent;
+}
 async function parseStructuredPendingAnswer({current,message,areas,settings,interpret}){
  if(!current||!['yes_no','number','name'].includes(current.kind))return null;
+ if(ambiguousNegativeSideQuestion(current,message.body))return null;
  let parsed=validateAnswer(current,message.body,areas,message.media_path?{path:message.media_path}:null);
  if(parsed.ok)return parsed;
  if(!settings.ai_enabled)return null;
@@ -371,6 +394,14 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
 
+ if(residenceOnlyWhileChoosingWorkArea(current,m.body)){
+  clearAgentState(answers);
+  return {
+   patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
+   reply:'تمام، فهمت إن ده مكان سكنك. بس اللي محتاج أعرفه هنا هو منطقة الشغل اللي حابب تنزل فيها، مش السكن.\n\n'+questionPrompt(current,areas),
+   agent_action:'clarify_work_area_vs_residence'
+  };
+ }
  const decision=settings.ai_enabled?decideConversationAction(m.body,current,areas):null;
  if(decision?.action==='handoff'){
   return handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:decision.reason});

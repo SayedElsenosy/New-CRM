@@ -147,6 +147,23 @@ function topicMentioned(question,text){
  const n=clean(text);
  return qWords.some(w=>n.includes(w));
 }
+function optionHit(question,text){
+ const options=Array.isArray(question?.options)?question.options:[];
+ const n=clean(text);
+ const hits=options.filter(option=>{
+  const values=typeof option==='string'?[option]:[option?.label,option?.value,...(Array.isArray(option?.aliases)?option.aliases:[])];
+  return values.filter(Boolean).some(value=>{
+   const v=clean(value);
+   return v&&(n===v||(' '+n+' ').includes(' '+v+' '));
+  });
+ });
+ if(hits.length!==1)return null;
+ const option=hits[0];
+ return {
+  value:typeof option==='string'?option:(option.value??option.label),
+  display:typeof option==='string'?option:(option.label??String(option.value??''))
+ };
+}
 function explicitAge(text){
  const n=clean(text);
  const patterns=[
@@ -260,6 +277,9 @@ export function extractConversationFacts(text,questions=[],areas=[]){
   if(q.kind==='yes_no'){
    const yn=indirectYesNo(raw);
    if(yn)add(q,yn==='yes',yn==='yes'?'نعم':'لا',.91,'topic_explicit');
+  }else if(q.kind==='choice'){
+   const hit=optionHit(q,raw);
+   if(hit)add(q,hit.value,hit.display,.94,'choice_explicit');
   }else if(q.kind==='number'){
    const value=numberAnswer(raw);
    if(value!==null)add(q,Number(value),String(value),.9,'topic_explicit');

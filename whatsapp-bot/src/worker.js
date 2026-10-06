@@ -330,7 +330,7 @@ export class Worker {
       const pageAreas=activeAreas.slice(page*pageSize,(page+1)*pageSize);
       const previewId=q?.kind==='area'?a.answers?.__area_preview?.value:null;
       const preview=activeAreas.find(area=>area.id===previewId);
-      if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ تأكيد '+preview.name});
+      if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ مناسبة وكمل'});
       buttons.push(...pageAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
       if(q?.field_key==='preferred_work_area')buttons.push({id:'no_work_area',text:'❌ ولا منطقة مناسبة'});
       if(page>0)buttons.push({id:'area_page:'+(page-1),text:'⬅️ السابق'});

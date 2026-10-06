@@ -536,3 +536,24 @@ test('ready_to_start remains priority data only',()=>{
  assert.equal(q.qualified_candidate,true);
  assert.deepEqual(q.reasons,[]);
 });
+
+
+test('LLM next-best action only drives flow in live mode above confidence threshold',async()=>{
+ const a={...applicant,awaiting_id:'q1',answers:{
+  q2:{value:'oct',display:'أكتوبر',kind:'area',key:'preferred_work_area',work_area_eligible:true,work_area_zone:'WEST'}
+ }};
+ const liveSettings={...settings,agent_llm_enabled:true,agent_llm_mode:'live',agent_next_best_action_enabled:true,agent_planner_confidence_threshold:.72};
+ const live=await planTurn({
+  applicant:a,message:{body:'تمام كمل'},questions,areas,settings:liveSettings,interpret:noAi,knowledge:[],
+  llmPlan:{action:'resume_flow',confidence:.95,facts:[]}
+ });
+ assert.equal(live.agent_action,'llm_resume_flow');
+ assert.match(live.reply,/موتوسيكل/);
+
+ const shadowSettings={...liveSettings,agent_llm_mode:'shadow'};
+ const shadow=await planTurn({
+  applicant:a,message:{body:'رسالة غامضة جدا'},questions,areas,settings:shadowSettings,interpret:noAi,knowledge:[],
+  llmPlan:{action:'resume_flow',confidence:.99,facts:[]}
+ });
+ assert.notEqual(shadow.agent_action,'llm_resume_flow');
+});

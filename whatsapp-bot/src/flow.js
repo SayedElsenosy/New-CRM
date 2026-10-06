@@ -317,7 +317,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  activeFlow(answers);
- const agentFacts=settings.ai_enabled?extractConversationFacts(m.body,qs,areas):[];
+ // Interactive button payloads are protocol actions, not natural-language turns.
+ // Never feed IDs like area_preview:tagamoa into the Egyptian fact extractor.
+ const buttonAction=areaAction(m.body);
+ const agentFacts=settings.ai_enabled&&!buttonAction?extractConversationFacts(m.body,qs,areas):[];
  const savedAgentFacts=applyAgentFacts({facts:agentFacts,questions:qs,areas,answers});
  if(savedAgentFacts.length){
   const motorcycleQuestion=qs.find(q=>q.field_key==='has_motorcycle');
@@ -375,7 +378,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:stopQualification(answers,'no_eligible_work_area'),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
  }
 
- const action=areaAction(m.body);
+ const action=buttonAction;
  if(action?.type==='no_work_area'&&current?.field_key==='preferred_work_area'){
   saveNoWorkArea(answers,current);
   return {patch:stopQualification(answers,'no_eligible_work_area'),reply:NO_ELIGIBLE_WORK_AREA_REPLY};

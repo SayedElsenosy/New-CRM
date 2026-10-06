@@ -207,10 +207,13 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
  const rows=knowledgeResult.data||[];
  const officeRows=officeId?rows.filter(row=>String(row.office_id||'')===String(officeId)):[];
  const officeMatch=findKnowledgeAnswer(candidate.question,officeRows,.84,{allowStatement:true});
- const globalMatch=findKnowledgeAnswer(candidate.question,rows.filter(row=>!row.office_id),.84,{allowStatement:true});
- // Office memory always wins. A global manual fact is a safe fallback, not a lock:
- // if office staff teaches a different local rule we create a scoped override.
- const match=officeMatch||(globalMatch?.source==='manual'&&officeId?null:globalMatch);
+ // Automatically learned staff knowledge must never be global once offices exist.
+ // Only manually curated global knowledge may be reused across offices.
+ const globalRows=rows.filter(row=>!row.office_id&&row.source==='manual');
+ const globalMatch=findKnowledgeAnswer(candidate.question,globalRows,.84,{allowStatement:true});
+ // Office memory always wins. A global manual fact is a safe fallback for answering,
+ // but office staff teaching a local rule creates an office-scoped override.
+ const match=officeMatch||(officeId?null:globalMatch);
  const now=new Date().toISOString();
  if(match){
   if(match.source==='manual'){
@@ -389,10 +392,12 @@ export async function loadKnowledge(db,officeId=null){
   const result=await query.order('updated_at',{ascending:false});
   if(result.error)throw result.error;
   const rows=result.data||[];
-  return officeId?rows.sort((a,b)=>{
+  if(!officeId)return rows;
+  const safeRows=rows.filter(row=>String(row.office_id||'')===String(officeId)||(!row.office_id&&row.source==='manual'));
+  return safeRows.sort((a,b)=>{
    const as=String(a.office_id||'')===String(officeId)?1:0,bs=String(b.office_id||'')===String(officeId)?1:0;
    return bs-as||String(b.updated_at||'').localeCompare(String(a.updated_at||''));
-  }):rows;
+  });
  }catch(e){
   if(['42703','PGRST204'].includes(e?.code||'')){
    const legacy=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});

@@ -69,7 +69,7 @@ test('yes-no recruitment question gets quick reply buttons only when its prompt 
 
 
 test('choice question renders configured WhatsApp buttons',()=>{
- const q={id:'shift-type',field_key:'shift_type',kind:'choice',label:'أنهي شيفت مناسب ليك؟',options:[
+ const q={id:'shift-type',field_key:'shift_type',kind:'choice',label:'أنهي شيفت مناسب ليك؟',required:true,options:[
   {label:'صباحي',value:'morning'},
   {label:'مسائي',value:'evening'},
   {label:'أي شيفت',value:'any'}

@@ -3,6 +3,7 @@ import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowle
 import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,nextAgentQuestion} from './ai.js';
 import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
+import {plannerFactsForQuestions} from './agent-runtime.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -346,7 +347,7 @@ function areaComparisonReply(items){
  return 'دي مقارنة من التفاصيل المسجلة عندنا فقط 👇\n\n'+blocks.join('\n\n────────\n\n')+'\n\nلو عايز تقارن نقطة محددة زي المرتب أو الشيفت أو مكان الاستلام قولّي.';
 }
 
-export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[]}) {
+export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null}) {
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
@@ -394,7 +395,15 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const buttonAction=areaAction(m.body);
  const choiceButton=choiceAction(m.body);
  const protocolAction=buttonAction||choiceButton;
- const agentFacts=settings.ai_enabled&&!protocolAction?extractConversationFacts(m.body,qs,areas):[];
+ const deterministicFacts=settings.ai_enabled&&!protocolAction?extractConversationFacts(m.body,qs,areas):[];
+ const llmFacts=settings.agent_llm_enabled===true&&['assist','live'].includes(settings.agent_llm_mode)
+  ?plannerFactsForQuestions(llmPlan,qs,areas,settings):[];
+ const factsByQuestion=new Map();
+ for(const fact of [...deterministicFacts,...llmFacts]){
+  const current=factsByQuestion.get(fact.question_id);
+  if(!current||Number(fact.confidence||0)>Number(current.confidence||0))factsByQuestion.set(fact.question_id,fact);
+ }
+ const agentFacts=[...factsByQuestion.values()];
  const savedAgentFacts=applyAgentFacts({facts:agentFacts,questions:qs,areas,answers});
  if(savedAgentFacts.length){
   const motorcycleQuestion=qs.find(q=>q.field_key==='has_motorcycle');
@@ -711,6 +720,27 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true){
   const query=knowledgeQueryText(answers,m.body);
   const threshold=Number(settings.ai_confidence_threshold||0.62);
+  const liveThreshold=Number(settings.agent_planner_confidence_threshold||0.72);
+  if(settings.agent_llm_enabled===true&&settings.agent_llm_mode==='live'
+    &&Number(llmPlan?.confidence||0)>=liveThreshold
+    &&llmPlan?.action==='answer_question'&&llmPlan?.knowledge_id){
+   const selected=(knowledge||[]).find(row=>String(row.id)===String(llmPlan.knowledge_id)
+    &&row.active!==false&&!['conflict','stale'].includes(String(row.memory_status||'')));
+   if(selected){
+    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
+    clearAgentState(answers);
+    const persistAnswers=hadAgentState||savedAgentFacts.length>0;
+    return {
+     patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
+     reply:String(selected.answer||'').trim(),
+     followup_reply:sideAnswerFollowup(a,current,areas),
+     knowledge_id:selected.id,
+     knowledge_confidence:Number(llmPlan.confidence||0),
+     agent_action:'llm_knowledge_answer',
+     agent_confidence:Number(llmPlan.confidence||0)
+    };
+   }
+  }
   const match=findKnowledgeAnswer(query,knowledge,threshold,{allowStatement:true});
   if(match){
    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);

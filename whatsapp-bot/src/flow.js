@@ -38,6 +38,11 @@ function applyAgentFacts({facts,questions,areas,answers}){
  return saved;
 }
 function nextMissing(qs,answers,areas){return nextAgentQuestion(qs,answers,areas,answered);}
+function sideAnswerFollowup(applicant,current,areas){
+ if(!current)return null;
+ if(String(applicant?.awaiting_id||'')===String(current.id||''))return null;
+ return questionPrompt(current,areas);
+}
 function knowledgeQueryText(answers,text){
  const current=String(text||'').trim();
  const previous=answers?.__agent_state?.kind==='clarification'?String(answers.__agent_state.last_message||'').trim():'';
@@ -489,7 +494,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    return {
     patch:{answers,awaiting_id:current?.id||null},
     reply:String(match.answer||'').trim(),
-    followup_reply:current?questionPrompt(current,areas):null,
+    followup_reply:sideAnswerFollowup(a,current,areas),
     knowledge_id:match.id,
     knowledge_confidence:match.confidence
    };
@@ -631,7 +636,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
    clearAgentState(answers);
    const persistAnswers=hadAgentState||savedAgentFacts.length>0;
-   return {patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence,agent_action:savedAgentFacts.length?'multi_fact_extract':undefined};
+   return {patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:sideAnswerFollowup(a,current,areas),knowledge_id:match.id,knowledge_confidence:match.confidence,agent_action:savedAgentFacts.length?'multi_fact_extract':undefined};
   }
  }
  if(areaQuestion&&!compoundStructuredQuestion&&!committedAreaInTurn){
@@ -714,7 +719,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    return {
     patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:String(match.answer||'').trim(),
-    followup_reply:current?questionPrompt(current,areas):null,
+    followup_reply:sideAnswerFollowup(a,current,areas),
     knowledge_id:match.id,
     knowledge_confidence:match.confidence
    };

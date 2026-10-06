@@ -395,7 +395,20 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const area=areas.find(z=>z.active&&String(z.id)===String(decision.area_id));
   if(area){
    answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
-   return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas),agent_action:'preview_work_area',agent_confidence:decision.confidence};
+   let sideMatch=null;
+   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+    const threshold=Number(settings.ai_confidence_threshold||0.62);
+    const candidate=findKnowledgeAnswer(m.body,knowledge,threshold);
+    if(candidate&&!/(منطقة|المناطق|عنوان|مكان)/.test(norm(candidate.question||'')))sideMatch=candidate;
+   }
+   const preview=areaPreviewReply(area,areas);
+   return {
+    patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
+    reply:sideMatch?String(sideMatch.answer||'').trim()+'\n\n'+preview:preview,
+    agent_action:sideMatch?'preview_work_area_with_answer':'preview_work_area',
+    agent_confidence:decision.confidence,
+    ...(sideMatch?{knowledge_id:sideMatch.id,knowledge_confidence:sideMatch.confidence}:{})
+   };
   }
  }
 

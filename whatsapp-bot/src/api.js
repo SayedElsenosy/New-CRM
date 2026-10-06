@@ -550,12 +550,22 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  async function intelligenceState(){
   try{
    await promotePendingLearning(db);
-   const [settings,knowledge,suggestions]=await Promise.all([
+   const since=new Date(Date.now()-30*24*60*60*1000).toISOString();
+   let eventQuery=db.from('masar_events').select('kind,detail,created_at').gte('created_at',since).in('kind',['agent_turn','ai_handoff']).order('created_at',{ascending:false}).limit(5000);
+   const [settings,knowledge,suggestions,eventResult]=await Promise.all([
     db.from('masar_settings').select('*').eq('id',true).single(),
     db.from('masar_knowledge').select('*').order('updated_at',{ascending:false}),
-    db.from('masar_learning_suggestions').select('*').order('created_at',{ascending:false}).limit(500)
+    db.from('masar_learning_suggestions').select('*').order('created_at',{ascending:false}).limit(500),
+    eventQuery
    ]);
    const s=must(settings),k=must(knowledge),sg=must(suggestions);
+   const events=eventResult.error&&schemaMissing(eventResult.error)?[]:must(eventResult);
+   const turns=events.filter(x=>x.kind==='agent_turn'),handoffTurns=turns.filter(x=>x.detail?.handoff===true);
+   const handoffReasons={};
+   for(const event of events.filter(x=>x.kind==='ai_handoff')){
+    const reason=String(event.detail?.reason||'unknown');handoffReasons[reason]=(handoffReasons[reason]||0)+1;
+   }
+   const autonomyRate=turns.length?Math.round((turns.length-handoffTurns.length)/turns.length*1000)/10:null;
    if(s.ai_learning_enabled===false){
     try{must(await db.from('masar_settings').update({ai_learning_enabled:true,ai_run_mode:'live',ai_training_started_at:null,ai_training_until:null}).eq('id',true));}
     catch(e){if(!['42703','PGRST204'].includes(e?.code||''))throw e;}
@@ -568,7 +578,11 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    },knowledge:k,suggestions:sg,stats:{
     active:k.filter(x=>x.active).length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
     approved:sg.filter(x=>x.status==='approved').length,skipped:sg.filter(x=>x.status==='rejected').length,
-    learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0)
+    learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0),
+    turns_30d:turns.length,handoffs_30d:handoffTurns.length,autonomy_rate_30d:autonomyRate,
+    knowledge_turns_30d:turns.filter(x=>x.detail?.knowledge_id).length,
+    extracted_fact_turns_30d:turns.filter(x=>Number(x.detail?.extracted_facts||0)>0).length,
+    handoff_reasons_30d:handoffReasons
    }};
   }catch(e){
    if(schemaMissing(e))return {configured:false,learning_mode:'continuous',voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:null,knowledge:[],suggestions:[],stats:{active:0,total:0,pending:0,approved:0,skipped:0,learned:0,usage:0}};

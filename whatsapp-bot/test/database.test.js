@@ -227,5 +227,25 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(reopenedApplicant.answers.__application_flow_status.value,'active');
  assert.notEqual(reopenedApplicant.recruitment_stage,'rejected');
  assert.equal((await db.query("select count(*)::int as n from masar_ads where ad_id='120240000000000001'")).rows[0].n,1);
+
+ // Autonomous agent migration: continuous learning, per-office runtime control,
+ // office-scoped memory, and dynamic information requirements.
+ const autonomousSql=await fs.readFile(new URL('../../supabase/017_autonomous_office_agent.sql',import.meta.url),'utf8');
+ await db.exec(autonomousSql);await db.exec(autonomousSql);
+ const {rows:[autonomousSettings]}=await db.query("select ai_learning_enabled,ai_run_mode,ai_training_started_at,ai_training_until from masar_settings where id=true");
+ assert.equal(autonomousSettings.ai_learning_enabled,true);
+ assert.equal(autonomousSettings.ai_run_mode,'live');
+ assert.equal(autonomousSettings.ai_training_started_at,null);
+ assert.equal(autonomousSettings.ai_training_until,null);
+ const {rows:agentOfficeSettings}=await db.query("select office_id,agent_enabled from masar_office_settings order by office_id");
+ assert.ok(agentOfficeSettings.length>=2);assert.ok(agentOfficeSettings.every(x=>x.agent_enabled===true));
+ const {rows:[agentQuestion]}=await db.query("select priority,allow_inference,confirmation_required,agent_instruction from masar_questions where office_id=$1 and field_key='has_motorcycle'",[primaryOfficeForConfig.id]);
+ assert.equal(agentQuestion.priority,100);assert.equal(agentQuestion.allow_inference,true);assert.equal(agentQuestion.confirmation_required,false);
+ const {rows:[preferredPriority]}=await db.query("select priority from masar_questions where office_id=$1 and field_key='preferred_work_area'",[primaryOfficeForConfig.id]);
+ assert.equal(preferredPriority.priority,95);
+ const {rows:[namePriority]}=await db.query("select priority from masar_questions where office_id=$1 and field_key='full_name'",[primaryOfficeForConfig.id]);
+ assert.equal(namePriority.priority,90);
+ const {rows:knowledgeScopes}=await db.query("select office_id from masar_knowledge limit 1");
+ assert.equal(Object.prototype.hasOwnProperty.call(knowledgeScopes[0],'office_id'),true);
  }finally{await db.close();}
 });

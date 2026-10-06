@@ -11,9 +11,9 @@ const PERMISSION_OPTIONS=[
  ['whatsapp','ربط واتساب'],
  ['settings','الإعدادات']
 ];
-const PRIMARY_NAV=[['overview','الرئيسية',LayoutDashboard,null],['applicants','المرشحون',Users,'applicants'],['interviews','المقابلات',CalendarDays,'applicants'],['offices','مكاتب التوظيف',Building2,'applicants'],['hiring','التعيين',BriefcaseBusiness,'applicants'],['reports','التقارير',BarChart3,'reports']];
+const PRIMARY_NAV=[['overview','الرئيسية',LayoutDashboard,null],['agent','AI Agent',BrainCircuit,'admin'],['applicants','المرشحون',Users,'applicants'],['interviews','المقابلات',CalendarDays,'applicants'],['offices','مكاتب التوظيف',Building2,'applicants'],['hiring','التعيين',BriefcaseBusiness,'applicants'],['reports','التقارير',BarChart3,'reports']];
 const UTILITY_NAV=[['profile','حسابي',UserPlus,null],['settings','الإعدادات',Settings,'settings'],['staff','المستخدمون',Users,'manager'],['support','الدعم والمساعدة',LifeBuoy,null]];
-const TOOL_NAV=[['questions','معلومات الـAgent',GitBranch,'questions'],['areas','مناطق العمل',MapPin,'areas'],['whatsapp','ربط واتساب',MessageCircle,'whatsapp'],['campaigns','الحملات الإعلانية',BarChart3,'campaigns'],['agent','AI Agent',BrainCircuit,'admin']];
+const TOOL_NAV=[['questions','معلومات الـAgent',GitBranch,'questions'],['areas','مناطق العمل',MapPin,'areas'],['whatsapp','ربط واتساب',MessageCircle,'whatsapp'],['campaigns','الحملات الإعلانية',BarChart3,'campaigns']];
 const NAV=[...PRIMARY_NAV,...UTILITY_NAV,...TOOL_NAV];
 const RECRUITMENT_ZONES=['WEST','EAST','NORTH_CENTRAL','UNKNOWN'];
 const ZONE_LABELS={WEST:'WEST · غرب',EAST:'EAST · شرق',NORTH_CENTRAL:'NORTH/CENTRAL · شمال/وسط',UNKNOWN:'UNKNOWN'};

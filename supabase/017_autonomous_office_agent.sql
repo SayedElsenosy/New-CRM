@@ -15,8 +15,8 @@ update public.masar_questions
 set priority=case field_key
  when 'has_motorcycle' then 100
  when 'preferred_work_area' then 95
- when 'shift_acceptance' then 85
- when 'full_name' then 80
+ when 'shift_acceptance' then 80
+ when 'full_name' then 90
  when 'ready_to_start' then 70
  else priority
 end

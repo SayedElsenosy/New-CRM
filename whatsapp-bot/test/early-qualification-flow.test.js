@@ -204,7 +204,9 @@ test('dynamic agent saves facts and answers a side question in the same turn',as
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.knowledge_id,'salary');
  assert.match(r.reply,/6200/);
- assert.match(r.followup_reply,/اسمك بالكامل/);
+ assert.match(r.reply,/تفاصيل أكتوبر/);
+ assert.match(r.reply,/مناسبة وكمل/);
+ assert.equal(r.followup_reply,undefined);
 });
 
 test('agent understands common Egyptian Franco and mixed Arabic-English replies',async()=>{
@@ -245,7 +247,7 @@ test('motorcycle=yes goes directly to preferred work area, not residence',async(
  const r=await call(a,'أيوه');
  assert.equal(r.patch.answers.q1.value,true);
  assert.equal(r.patch.awaiting_id,'q2');
- assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة/);
  assert.doesNotMatch(r.reply,/ساكن فين/);
 });
 
@@ -262,7 +264,7 @@ test('natural motorcycle answer does not trigger an unrelated knowledge reply',a
  assert.equal(r.patch.answers.q1.value,true);
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.knowledge_id,undefined);
- assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة/);
  assert.doesNotMatch(r.reply,/رخصة شخصية|رخصة موتوسيكل/);
 });
 
@@ -280,7 +282,7 @@ test('answer plus a real question still uses knowledge then resumes the flow',as
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.knowledge_id,'salary');
  assert.match(r.reply,/6200/);
- assert.match(r.followup_reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.match(r.followup_reply,/حابب تنزل شغل في أنهي منطقة/);
 });
 
 test('eligible work area is previewed and becomes qualifying only after confirmation',async()=>{
@@ -295,6 +297,7 @@ test('eligible work area is previewed and becomes qualifying only after confirma
  assert.match(preview.reply,/مناسبة وكمل/);
 
  const r=await call({...a,awaiting_id:'q2',answers:preview.patch.answers},'confirm_area:tagamoa');
+ assert.ok(r.patch.answers?.q2,'confirm turn: '+JSON.stringify(r));
  assert.equal(r.patch.answers.q2.value,'tagamoa');
  assert.equal(r.patch.answers.q2.work_area_eligible,true);
  assert.equal(r.patch.answers.__area_preview,undefined);
@@ -352,7 +355,7 @@ test('agent can reopen work-area answer without changing qualification rules',as
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.patch.answers.q2,undefined);
  assert.equal(r.patch.answers.q1.value,true);
- assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة/);
 });
 
 test('agent can recover from no-work-area stop when applicant wants to choose again',async()=>{
@@ -368,7 +371,7 @@ test('agent can recover from no-work-area stop when applicant wants to choose ag
  assert.equal(r.patch.answers.q2,undefined);
  assert.equal(r.patch.answers.__qualification_stop,undefined);
  assert.equal(r.patch.answers.__application_flow_status.value,'active');
- assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة/);
 });
 
 test('explicit no available work area stops as not qualified',async()=>{
@@ -436,7 +439,7 @@ test('salary question during work-area step answers from knowledge then resumes 
  assert.equal(r.knowledge_id,'salary');
  assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/6200/);
- assert.match(r.followup_reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+ assert.match(r.followup_reply,/حابب تنزل شغل في أنهي منطقة/);
 });
 
 test('ready_to_start remains priority data only',()=>{

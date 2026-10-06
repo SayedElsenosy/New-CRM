@@ -103,7 +103,7 @@ export class AgentRuntime{
     body:JSON.stringify({
      model:state.model,
      temperature:Number(settings.agent_llm_temperature??0.2),
-     max_tokens:Math.max(250,Math.min(700,Number(settings.agent_llm_max_tokens||500))),
+     max_tokens:Math.max(220,Math.min(500,Number(settings.agent_llm_max_tokens||420))),
      response_format:{type:'json_object'},
      messages
     }),
@@ -120,20 +120,20 @@ export class AgentRuntime{
   const currentText=String(message?.body||'');
   const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,24).map(q=>({
    field_key:q.field_key,kind:q.kind,required:q.required!==false,priority:Number(q.priority||50),
-   label:trim(q.label,100),instruction:trim(q.agent_instruction,100),confirmation_required:q.confirmation_required===true,
+   label:trim(q.label,80),instruction:trim(q.agent_instruction,60),confirmation_required:q.confirmation_required===true,
    options:Array.isArray(q.options)?q.options.slice(0,8).map(o=>typeof o==='string'?trim(o,80):{label:trim(o?.label,80),value:trim(o?.value??o?.label,80)}):[]
   }));
-  const safeAreas=compactAreas(areas,currentText,18).map(a=>({
-   id:a.id,name:trim(a.name,90),aliases:(a.aliases||[]).slice(0,2).map(x=>trim(x,55)),zone:a.zone||'UNKNOWN'
+  const safeAreas=compactAreas(areas,currentText,12).map(a=>({
+   id:a.id,name:trim(a.name,70),aliases:(a.aliases||[]).slice(0,1).map(x=>trim(x,45)),zone:a.zone||'UNKNOWN'
   }));
-  const safeKnowledge=compactKnowledge(knowledge,currentText,6).map(k=>({
-   id:k.id,question:trim(k.question,160),answer:trim(k.answer,300),scope:k.knowledge_scope||'office',
-   confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,2).map(x=>trim(x,80))
+  const safeKnowledge=compactKnowledge(knowledge,currentText,5).map(k=>({
+   id:k.id,question:trim(k.question,130),answer:trim(k.answer,220),scope:k.knowledge_scope||'office',
+   confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,1).map(x=>trim(x,65))
   }));
-  const contextLimit=Math.max(4,Math.min(6,Number(settings.agent_context_messages||6)));
+  const contextLimit=4;
   const conversation=(recentMessages||[]).slice(-contextLimit).map(x=>({
    role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
-   text:String(x.body||'').slice(0,420)
+   text:String(x.body||'').slice(0,300)
   }));
   const system=[
    'أنت Decision Planner لمساعد توظيف Breadfast في مصر.',
@@ -145,12 +145,12 @@ export class AgentRuntime{
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
    'لو السؤال غير موثوق استخدم clarify أو handoff بدل التخمين.',
-   trim(settings.agent_system_instructions||'',600)
+   trim(settings.agent_system_instructions||'',320)
   ].filter(Boolean).join('\n');
   const payload={
-   current_message:currentText.slice(0,1200),
+   current_message:currentText.slice(0,900),
    awaiting_field:(questions||[]).find(q=>String(q.id)===String(applicant?.awaiting_id||''))?.field_key||null,
-   known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,12).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,80)})),
+   known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,10).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,60)})),
    questions:safeQuestions,areas:safeAreas,knowledge:safeKnowledge,conversation
   };
   return [

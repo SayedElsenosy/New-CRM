@@ -53,7 +53,7 @@ export function questionPrompt(q,areas) {
  let text=raw;
  if(!alreadyQuestion){
   if(q.field_key==='has_motorcycle')text='معاك موتوسيكل متاح للشغل يوميًا؟';
-  else if(q.field_key==='preferred_work_area')text='أنهي منطقة تقدر تشتغل فيها يوميًا وتلتزم بيها بشكل مستمر؟';
+  else if(q.field_key==='preferred_work_area')text='حابب تنزل شغل في أنهي منطقة؟';
   else if(q.field_key==='full_name')text='اسمك بالكامل إيه؟';
   else if(q.field_key==='shift_acceptance')text='نظام الشيفت الحالي مناسب ليك وتقدر تلتزم بيه؟';
   else if(q.field_key==='ready_to_start')text='لو تم قبولك، تقدر تبدأ الشغل قريب؟';
@@ -63,7 +63,7 @@ export function questionPrompt(q,areas) {
   else text='محتاج أعرف '+raw+'.';
  }
  if(q.kind==='area'){
-  if(q.field_key==='preferred_work_area') text+='\nاختار منطقة العمل من الأزرار تحت. أول ما تختارها هنسجلها ونكمل التقديم. ولو مفيش أي منطقة تقدر تلتزم بيها اختار «❌ ولا منطقة مناسبة».';
+  if(q.field_key==='preferred_work_area') text+='\nاختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم. ولو مفيش أي منطقة مناسبة اختار «❌ ولا منطقة مناسبة».';
   else text+='\nاختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها. تقدر تقارن بين أكتر من منطقة، ومش هنسجل اختيارك النهائي غير لما تأكده.';
  }
  if(!q.required)text+='\n(اختياري؛ اكتب «تخطي» لو مش حابب تجاوب)';

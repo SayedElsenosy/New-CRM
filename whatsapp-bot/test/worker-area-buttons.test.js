@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shouldBrowseAreaButtons,botAreaChoices,recommendedAreaChoices,shouldOfferYesNoButtons} from '../src/worker.js';
+import {shouldBrowseAreaButtons,botAreaChoices,recommendedAreaChoices,shouldOfferYesNoButtons,shouldOfferChoiceButtons,choiceButtons} from '../src/worker.js';
 import {normalizeWorkAreas} from '../src/db.js';
 
 test('work-area qualification prompt renders area buttons',()=>{
@@ -65,4 +65,17 @@ test('yes-no recruitment question gets quick reply buttons only when its prompt 
  const q={id:'bike',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',active:true,required:true};
  assert.equal(shouldOfferYesNoButtons(q,'هل معاك موتوسيكل متاح للشغل يوميًا؟',[]),true);
  assert.equal(shouldOfferYesNoButtons(q,'المرتب الثابت 6200 جنيه.',[]),false);
+});
+
+
+test('choice question renders configured WhatsApp buttons',()=>{
+ const q={id:'shift-type',field_key:'shift_type',kind:'choice',label:'أنهي شيفت مناسب ليك؟',options:[
+  {label:'صباحي',value:'morning'},
+  {label:'مسائي',value:'evening'},
+  {label:'أي شيفت',value:'any'}
+ ]};
+ const body='أنهي شيفت مناسب ليك؟\nاختار الإجابة من الأزرار تحت.';
+ assert.equal(shouldOfferChoiceButtons(q,body,[]),true);
+ assert.deepEqual(choiceButtons(q).map(x=>x.text),['صباحي','مسائي','أي شيفت']);
+ assert.deepEqual(choiceButtons(q).map(x=>x.id),['choice:shift-type:0','choice:shift-type:1','choice:shift-type:2']);
 });

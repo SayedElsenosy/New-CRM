@@ -356,10 +356,28 @@ export function sameKnowledgeTopic(left,right){
 }
 export function findKnowledgeAnswer(text,rows,threshold=.62,{allowStatement=false}={}){
  if(!allowStatement&&!looksLikeQuestion(text))return null;
- const active=(rows||[]).filter(r=>r.active!==false);
+ const now=Date.now();
+ const active=(rows||[]).filter(r=>{
+  if(r.active===false)return false;
+  if(['conflict','stale'].includes(String(r.memory_status||'')))return false;
+  if(r.valid_from&&Date.parse(r.valid_from)>now)return false;
+  if(r.valid_until&&Date.parse(r.valid_until)<=now)return false;
+  return true;
+ });
  let best=null;
  for(const row of active){
-  const confidence=scoreEntry(text,row);
+  let confidence=scoreEntry(text,row);
+  const sourceConfidence=row.confidence==null?1:Math.max(.5,Math.min(1,Number(row.confidence)));
+  confidence*=.85+.15*sourceConfidence;
+  if(row.last_verified_at){
+   const ageDays=Math.max(0,(now-Date.parse(row.last_verified_at))/86400000);
+   if(Number.isFinite(ageDays)){
+    if(ageDays>365)confidence*=.78;
+    else if(ageDays>180)confidence*=.86;
+    else if(ageDays>90)confidence*=.93;
+    else if(ageDays>30)confidence*=.98;
+   }
+  }
   if(!best||confidence>best.confidence)best={...row,confidence};
  }
  return best&&best.confidence>=threshold?best:null;

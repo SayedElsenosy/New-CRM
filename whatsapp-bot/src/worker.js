@@ -39,6 +39,21 @@ export function shouldOfferYesNoButtons(question,body,areas=[]){
  return Boolean(prompt)&&(text===prompt||text.endsWith(prompt));
 }
 
+export function shouldOfferChoiceButtons(question,body,areas=[]){
+ if(question?.kind!=='choice'||!Array.isArray(question.options)||!question.options.length)return false;
+ const text=String(body||'').trim();
+ const prompt=questionPrompt(question,areas).trim();
+ return Boolean(prompt)&&(text===prompt||text.endsWith(prompt));
+}
+
+export function choiceButtons(question){
+ if(question?.kind!=='choice'||!Array.isArray(question.options))return [];
+ return question.options.slice(0,10).map((option,index)=>{
+  const label=typeof option==='string'?option:(option?.label??String(option?.value??''));
+  return {id:'choice:'+question.id+':'+index,text:String(label).slice(0,80)};
+ }).filter(x=>x.text);
+}
+
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null}){
   Object.assign(this,{db,connection,connections,serial,speech});
@@ -360,6 +375,8 @@ export class Worker {
       }
      }else if(shouldOfferYesNoButtons(q,body,sendConfig.areas)){
       buttons.push({id:'yes',text:'✅ نعم'},{id:'no',text:'❌ لا'});
+     }else if(shouldOfferChoiceButtons(q,body,sendConfig.areas)){
+      buttons.push(...choiceButtons(q));
      }
     }
     must(await this.db.from('masar_messages').update({status:'sending'}).eq('id',m.id));

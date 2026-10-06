@@ -1305,10 +1305,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  permissionRoute('questions','post','/questions/defaults',async(req,res)=>{await serial(async()=>{
   const officeId=await scopedOfficeId(req),existing=must(await db.from('masar_questions').select('id').eq('office_id',officeId).limit(1));if(existing.length)throw bad('الأسئلة موجودة بالفعل؛ استخدم صفحة الأسئلة لتعديلها');
   must(await db.from('masar_questions').insert([
-   {field_key:'has_motorcycle',label:'وجود موتوسيكل متاح للشغل يوميًا',kind:'yes_no',priority:100,agent_instruction:'اتأكد إن الموتوسيكل متاح للشغل بشكل مستمر، مش مجرد موجود أحيانًا.'},
-   {field_key:'preferred_work_area',label:'منطقة العمل اللي يقدر يلتزم بيها يوميًا',kind:'area',priority:95,agent_instruction:'المقصود مكان الشغل وليس السكن. اختار من مناطق العمل المفعلة فقط.'},
-   {field_key:'motorcycle_license',label:'حالة رخصة الموتوسيكل',kind:'yes_no',priority:88,agent_instruction:'اعرف هل الرخصة سارية حسب متطلبات الوظيفة الحالية.'},
-   {field_key:'full_name',label:'الاسم بالكامل',kind:'name',priority:90,agent_instruction:'اجمع الاسم الكامل بشكل طبيعي من المحادثة.'},
+   {field_key:'preferred_work_area',label:'منطقة العمل اللي حابب ينزل فيها',kind:'area',priority:100,confirmation_required:true,agent_instruction:'اسأل عن منطقة العمل أولًا. اعرض تفاصيل المنطقة قبل تسجيلها، ولا تعتبر مكان السكن اختيارًا لمنطقة العمل. لا تسجلها إلا بعد تأكيد أن التفاصيل مناسبة.'},
+   {field_key:'has_motorcycle',label:'وجود موتوسيكل متاح للشغل يوميًا',kind:'yes_no',priority:90,agent_instruction:'بعد تأكيد منطقة العمل، اتأكد إن الموتوسيكل متاح للشغل بشكل مستمر، مش مجرد موجود أحيانًا.'},
+   {field_key:'motorcycle_license',label:'حالة رخصة الموتوسيكل',kind:'yes_no',priority:85,agent_instruction:'اعرف هل الرخصة سارية حسب متطلبات الوظيفة الحالية.'},
+   {field_key:'full_name',label:'الاسم بالكامل',kind:'name',priority:80,agent_instruction:'اجمع الاسم الكامل بشكل طبيعي من المحادثة.'},
    {field_key:'age',label:'العمر',kind:'number',priority:60,agent_instruction:'لو العمر اتقال طبيعيًا سجله، وإلا اسأل عنه وقت ما يكون مناسب.'},
    {field_key:'residence_area',label:'منطقة السكن الحالية',kind:'text',priority:40,agent_instruction:'للمعلومة والتحليل فقط؛ لا تستخدم السكن في Geo Qualification.'},
    {field_key:'document',label:'المستند المطلوب للتقديم',kind:'image',priority:20,required:false,active:false,confirmation_required:true}

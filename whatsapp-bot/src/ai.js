@@ -56,6 +56,53 @@ function nameAnswer(text){
  return stripped;
 }
 
+const CHANGE_WORDS=/(?:غيرت رايي|غيرت رأيي|عايز اغير|عاوز اغير|ممكن اغير|عايز اعدل|عاوز اعدل|ممكن اعدل|اصحح|صحح|تعديل)/;
+const HUMAN_WORDS=/(?:عايز|عاوز|محتاج|ممكن|اريد|أريد|حولني|حوّلني|وصلني|كلمني).*?(?:موظف|مسؤول توظيف|مسئول توظيف|خدمه العملاء|خدمة العملاء|حد من التوظيف)/;
+const CLARIFY_WORDS=/(?:مش فاهم|مش واضح|وضحلي|وضح لي|ممكن توضح|يعني ايه|يعني اي|السؤال ده معناه|السؤال دا معناه)/;
+const RESUME_WORDS=/^(?:(?:تمام|ماشي|اوكي|أوكي)\s+)?(?:كمل|نكمل|كمل التقديم|نكمل التقديم|نرجع نكمل|يلا نكمل)$/;
+
+function changeTarget(n){
+ if(/(?:منطقه|منطقة|مكان الشغل|مكان العمل)/.test(n))return 'preferred_work_area';
+ if(/(?:موتوسيكل|موتسيكل|موتور)/.test(n))return 'has_motorcycle';
+ if(/(?:اسمي|الاسم|اسم)/.test(n))return 'full_name';
+ if(/(?:شيفت|شفت|ساعات العمل)/.test(n))return 'shift_acceptance';
+ if(/(?:ابدا|ابدأ|البدايه|البداية|جاهز ابدا|جاهز أبدأ)/.test(n))return 'ready_to_start';
+ return null;
+}
+
+/**
+ * Conversation-level decision layer.
+ * It handles safe navigation/control intents before the flow escalates to a human.
+ * It never changes qualification rules; it only decides how to continue the chat.
+ */
+export function decideConversationAction(text,question,areas=[]){
+ const n=clean(text);
+ if(!n)return {action:'unknown',confidence:0};
+
+ if(HUMAN_WORDS.test(n)&&!/(?:مش|ما)\s+(?:عايز|عاوز|محتاج)/.test(n)){
+  return {action:'handoff',reason:'user_requested_human',confidence:0.99};
+ }
+ if(CLARIFY_WORDS.test(n)){
+  return {action:'clarify_current',confidence:0.98};
+ }
+ if(RESUME_WORDS.test(n)){
+  return {action:'resume_flow',confidence:0.98};
+ }
+ if(CHANGE_WORDS.test(n)){
+  const field_key=changeTarget(n);
+  return field_key
+   ?{action:'change_answer',field_key,confidence:0.97}
+   :{action:'clarify_change_target',confidence:0.9};
+ }
+
+ const mentioned=areaHits(text,areas);
+ if(question?.field_key==='preferred_work_area'&&mentioned.length===1){
+  return {action:'answer_current',field_key:'preferred_work_area',area_id:mentioned[0].id,confidence:0.97};
+ }
+
+ return {action:'unknown',confidence:0.5};
+}
+
 /**
  * Local Egyptian-Arabic interpreter.
  * It intentionally handles only the structured intents the recruitment flow needs.

@@ -411,12 +411,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(jobOverviewIntent(m.body)&&settings.ai_enabled&&settings.ai_knowledge_enabled===true){
   const overview=jobOverviewReply(knowledge);
   if(overview){
-   const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
+   const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff),persistAnswers=hadAgentState||savedAgentFacts.length>0;
    clearAgentState(answers);
    return {
-    patch:current?{...(hadAgentState?{answers}:{}),awaiting_id:current.id}:{...(hadAgentState?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
+    patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:overview,
-    agent_action:'job_overview'
+    agent_action:savedAgentFacts.length?'job_overview_with_facts':'job_overview'
    };
   }
  }

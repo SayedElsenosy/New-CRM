@@ -88,6 +88,27 @@ test('clear application openers start the flow even when Meta referral is missin
  }
 });
 
+test('job details are answered as a trusted overview without asking residence or repeating the pending question',async()=>{
+ const kb=[
+  {id:'bad-old',question:'عايز اعرف تفاصيل الشغل',answer:'طيب قولي ساكن فين وانا اقولك اقرب منطقة ليك',source:'staff',active:true,memory_status:'verified'},
+  {id:'shift',question:'الشيفت كام ساعة؟',answer:'الشيفت 9 ساعات.',source:'manual',active:true,memory_status:'verified'},
+  {id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه، بالإضافة للحوافز.',source:'manual',active:true,memory_status:'verified'},
+  {id:'income',question:'الدخل كام؟',answer:'إجمالي الدخل بيتحدد حسب الشغل والأوردرات والحوافز.',source:'manual',active:true,memory_status:'verified'},
+  {id:'insurance',question:'في تأمين؟',answer:'أيوه، الوظيفة فيها تأمين طبي.',source:'manual',active:true,memory_status:'verified'},
+  {id:'bike',question:'لازم موتوسيكل؟',answer:'أيوه، وجود موتوسيكل متاح للشغل يوميًا شرط أساسي.',source:'manual',active:true,memory_status:'verified'},
+  {id:'free',question:'التقديم بفلوس؟',answer:'لا، التقديم والتعيين مجانيين.',source:'manual',active:true,memory_status:'verified'}
+ ];
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'عايز اعرف تفاصيل الشغل'},questions,areas,settings,interpret:noAi,knowledge:kb});
+ assert.equal(r.patch.awaiting_id,'q1');
+ assert.equal(r.agent_action,'job_overview');
+ assert.match(r.reply,/الشيفت 9 ساعات/);
+ assert.match(r.reply,/6200/);
+ assert.match(r.reply,/تأمين/);
+ assert.doesNotMatch(r.reply,/ساكن فين|اقرب منطقة/);
+ assert.equal(r.followup_reply,undefined);
+});
+
 test('dynamic agent extracts several facts from one Egyptian message and skips duplicate questions',async()=>{
  const a={...applicant,awaiting_id:'q1',answers:{}};
  const r=await call(a,'اه معايا موتوسيكل واسمي محمد احمد وعايز أكتوبر');

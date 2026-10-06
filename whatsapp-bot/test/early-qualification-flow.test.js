@@ -366,7 +366,7 @@ test('answer plus a real question still uses knowledge then resumes the flow',as
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.knowledge_id,'salary');
  assert.match(r.reply,/6200/);
- assert.match(r.followup_reply,/حابب تنزل شغل في أنهي منطقة/);
+ assert.equal(r.followup_reply,null);
 });
 
 test('eligible work area is previewed and becomes qualifying only after confirmation',async()=>{
@@ -516,7 +516,7 @@ test('qualified applicant reaches completion after work-area qualification',asyn
  assert.doesNotMatch(r.reply,/تم قبولك|تم تعيينك/);
 });
 
-test('salary question during work-area step answers from knowledge then resumes it',async()=>{
+test('salary question during work-area step answers without repeating the same pending area question',async()=>{
  const kb=[{id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه، بالإضافة لنظام القبض الأسبوعي والحوافز حسب نظام التشغيل.',keywords:['مرتب','6200'],active:true}];
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}}};
  const r=await planTurn({applicant:a,message:{body:'المرتب كام؟'},questions,areas,settings,interpret:noAi,knowledge:kb});

@@ -580,7 +580,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     active:k.filter(x=>x.active&&x.memory_status!=='conflict'&&x.memory_status!=='stale').length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
     conflicts:k.filter(x=>x.memory_status==='conflict').length,stale:k.filter(x=>x.memory_status==='stale').length,
     approved:sg.filter(x=>x.status==='approved').length,skipped:sg.filter(x=>x.status==='rejected').length,
-    learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0),
+    learned:k.filter(x=>x.source==='staff').length,
+    shared_breadfast:k.filter(x=>x.knowledge_scope==='breadfast'&&x.source==='staff'&&x.active&&x.memory_status!=='conflict'&&x.memory_status!=='stale').length,
+    shared_conflicts:k.filter(x=>x.knowledge_scope==='breadfast'&&x.memory_status==='conflict').length,
+    usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0),
     turns_30d:turns.length,handoffs_30d:handoffTurns.length,autonomy_rate_30d:autonomyRate,
     knowledge_turns_30d:turns.filter(x=>x.detail?.knowledge_id).length,
     extracted_fact_turns_30d:turns.filter(x=>Number(x.detail?.extracted_facts||0)>0).length,
@@ -619,7 +622,11 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
   const current=must(await db.from('masar_knowledge').select('*').eq('id',req.params.id).single());
   await snapshotKnowledgeVersion(db,current,{staffId:req.user.id,reason:'manual_edit'});
-  const patch={question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),active:req.body.active!==false,updated_at:new Date().toISOString()};
+  const patch={
+   question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),
+   examples:[...new Set([...(Array.isArray(current.examples)?current.examples:[]),current.question,question].map(x=>String(x||'').trim()).filter(Boolean))].slice(0,30),
+   active:req.body.active!==false,updated_at:new Date().toISOString()
+  };
   if(Object.prototype.hasOwnProperty.call(current,'memory_status')){
    patch.memory_status='verified';patch.last_verified_at=new Date().toISOString();patch.confidence=1;
    patch.version=Number(current.version||1)+1;
@@ -664,7 +671,12 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(suggestion.status!=='pending')throw bad('تمت مراجعة الاقتراح بالفعل');
   const question=String(req.body.question||suggestion.question||'').trim(),answer=String(req.body.answer||suggestion.answer||'').trim();
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
-  const knowledge=must(await db.from('masar_knowledge').insert({question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),active:true,source:'staff',source_suggestion_id:suggestion.id,created_by:req.user.id}).select().single());
+  const knowledge=must(await db.from('masar_knowledge').insert({
+   question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),
+   examples:[question],active:true,source:'staff',office_id:suggestion.office_id||null,
+   knowledge_scope:suggestion.office_id?'office':'legacy',
+   source_suggestion_id:suggestion.id,created_by:req.user.id
+  }).select().single());
   must(await db.from('masar_learning_suggestions').update({status:'approved',reviewed_by:req.user.id,reviewed_at:new Date().toISOString()}).eq('id',suggestion.id));
   res.json(knowledge);
  });});

@@ -118,15 +118,60 @@ export function extractConversationMemory(messages,staffMessageId,{force=false}=
   context:context.slice(0,4000)
  };
 }
-function shouldReplaceKnowledgeAnswer(previous,next){
+function answerNumbers(value){
+ return new Set((canonical(value).match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>x.replace(',','.')));
+}
+function negativePolarity(value){
+ const n=canonical(value);
+ return /(?:^|\s)(?:لا|لاء|مش|مفيش|معنديش|ماعنديش|بدون|من غير|مافيش)(?:\s|$)/.test(n);
+}
+function answerRelation(previous,next){
  const oldText=String(previous||'').trim(),newText=String(next||'').trim();
- if(!oldText)return true;
- const oldCanonical=canonical(oldText),newCanonical=canonical(newText);
- if(oldCanonical===newCanonical)return false;
- if(oldCanonical.includes(newCanonical)&&oldText.length>=newText.length)return false;
- if(newCanonical.includes(oldCanonical)&&newText.length>oldText.length)return true;
- if(CORRECTION_WORDS.test(newCanonical))return true;
- return newText.length>=Math.max(20,Math.round(oldText.length*.8));
+ if(!oldText)return 'updated';
+ const a=canonical(oldText),b=canonical(newText);
+ if(a===b)return 'reinforced';
+ if(CORRECTION_WORDS.test(b))return 'corrected';
+ if(a.includes(b)&&oldText.length>=newText.length)return 'reinforced';
+ if(b.includes(a)&&newText.length>oldText.length)return 'updated';
+
+ const an=answerNumbers(a),bn=answerNumbers(b);
+ if(an.size&&bn.size&&([...an].some(x=>!bn.has(x))||[...bn].some(x=>!an.has(x))))return 'conflict';
+ if(negativePolarity(a)!==negativePolarity(b))return 'conflict';
+
+ const at=new Set(tokens(a)),bt=new Set(tokens(b)),common=overlap(at,bt);
+ const coverage=Math.min(at.size,bt.size)?common/Math.min(at.size,bt.size):0;
+ if(coverage>=.6)return newText.length>oldText.length*1.08?'updated':'reinforced';
+ // When phrasing is very different and there is no explicit correction, preserve
+ // the current truth and flag uncertainty instead of silently replacing it.
+ return 'conflict';
+}
+export async function snapshotKnowledgeVersion(db,row,{staffId=null,reason='update'}={}){
+ if(!row||row.version===undefined)return false;
+ try{
+  const result=await db.from('masar_knowledge_versions').insert({
+   knowledge_id:row.id,version:Number(row.version||1),office_id:row.office_id||null,
+   question:row.question,answer:row.answer,keywords:row.keywords||[],active:row.active!==false,
+   memory_status:row.memory_status||'verified',confidence:Number(row.confidence??.8),
+   evidence_count:Number(row.evidence_count||0),conflict_count:Number(row.conflict_count||0),
+   changed_by:staffId||null,change_reason:String(reason||'update').slice(0,120)
+  });
+  if(result.error&&result.error.code!=='23505')throw result.error;
+  return true;
+ }catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))return false;throw e;}
+}
+export async function recordKnowledgeEvidence(db,{knowledgeId,officeId=null,applicantId=null,candidate,kind='learned',confidence=.9}){
+ try{
+  const result=await db.from('masar_knowledge_evidence').insert({
+   knowledge_id:knowledgeId,office_id:officeId||null,applicant_id:applicantId||null,
+   source_message_id:candidate?.source_message_id||null,staff_message_id:candidate?.staff_message_id||null,
+   kind,question_excerpt:String(candidate?.question||'').slice(0,2000),
+   answer_excerpt:String(candidate?.answer||'').slice(0,4000),
+   context_excerpt:String(candidate?.context||'').slice(0,4000),
+   confidence:Math.max(0,Math.min(1,Number(confidence)||0))
+  });
+  if(result.error)throw result.error;
+  return true;
+ }catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))return false;throw e;}
 }
 async function insertAuditSuggestion(db,{applicantId,officeId=null,candidate,staffId,status='approved'}){
  const row={
@@ -172,14 +217,44 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
    await recordMemoryEvent(db,{applicantId,kind:'ai_memory_manual_preserved',detail:{knowledge_id:match.id,question:candidate.question,source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,office_id:officeId}});
    return {learned:false,action:'manual_preserved',knowledge_id:match.id,question:candidate.question};
   }
-  const replace=shouldReplaceKnowledgeAnswer(match.answer,candidate.answer);
+  const relation=answerRelation(match.answer,candidate.answer);
+  const reliable=Object.prototype.hasOwnProperty.call(match,'memory_status');
   const keywords=[...new Set([...(match.keywords||[]),...autoKeywords(candidate.question)])].slice(0,20);
+
+  if(relation==='conflict'){
+   if(reliable){
+    await snapshotKnowledgeVersion(db,match,{staffId,reason:'conflict_detected'});
+    const patch={
+     keywords,updated_at:now,active:true,memory_status:'conflict',
+     conflict_count:Number(match.conflict_count||0)+1,
+     version:Number(match.version||1)+1
+    };
+    const update=await db.from('masar_knowledge').update(patch).eq('id',match.id);
+    if(update.error)throw update.error;
+   }
+   await recordKnowledgeEvidence(db,{knowledgeId:match.id,officeId,applicantId,candidate,kind:'conflict',confidence:.95});
+   await recordMemoryEvent(db,{applicantId,kind:'ai_memory_conflict',detail:{knowledge_id:match.id,question:candidate.question,current_answer:match.answer,new_answer:candidate.answer,source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,office_id:officeId}});
+   return {learned:false,action:'conflict',knowledge_id:match.id,question:candidate.question};
+  }
+
+  const replace=relation==='updated'||relation==='corrected';
+  if(replace&&reliable)await snapshotKnowledgeVersion(db,match,{staffId,reason:relation});
+  const nextEvidence=Number(match.evidence_count||1)+1,nextConflicts=Number(match.conflict_count||0);
+  const resolvedByConsensus=reliable&&match.memory_status==='conflict'&&nextEvidence>=nextConflicts+2;
   const patch={keywords,updated_at:now,active:true};
   if(replace)patch.answer=candidate.answer;
+  if(reliable){
+   patch.evidence_count=nextEvidence;
+   patch.last_verified_at=now;
+   patch.confidence=Math.min(.99,Math.max(Number(match.confidence||.8),.8)+Math.min(.15,nextEvidence*.01));
+   patch.memory_status=resolvedByConsensus?'verified':(match.memory_status||'verified');
+   if(replace)patch.version=Number(match.version||1)+1;
+  }
   const update=await db.from('masar_knowledge').update(patch).eq('id',match.id);
   if(update.error)throw update.error;
-  await recordMemoryEvent(db,{applicantId,kind:replace?'ai_memory_updated':'ai_memory_reinforced',detail:{knowledge_id:match.id,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id}});
-  return {learned:true,action:replace?'updated':'reinforced',knowledge_id:match.id,question:candidate.question};
+  await recordKnowledgeEvidence(db,{knowledgeId:match.id,officeId,applicantId,candidate,kind:relation==='corrected'?'corrected':replace?'updated':'reinforced',confidence:.94});
+  await recordMemoryEvent(db,{applicantId,kind:replace?'ai_memory_updated':'ai_memory_reinforced',detail:{knowledge_id:match.id,relation,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,consensus_resolved:resolvedByConsensus}});
+  return {learned:true,action:relation,knowledge_id:match.id,question:candidate.question};
  }
  const row={
   question:candidate.question,
@@ -193,7 +268,8 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
  };
  const inserted=await db.from('masar_knowledge').insert(row).select().single();
  if(inserted.error)throw inserted.error;
- await recordMemoryEvent(db,{applicantId,kind:'ai_memory_learned',detail:{knowledge_id:inserted.data.id,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id}});
+ await recordKnowledgeEvidence(db,{knowledgeId:inserted.data.id,officeId,applicantId,candidate,kind:'learned',confidence:.94});
+ await recordMemoryEvent(db,{applicantId,kind:'ai_memory_learned',detail:{knowledge_id:inserted.data.id,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,office_id:officeId}});
  return {learned:true,action:'created',knowledge_id:inserted.data.id,question:candidate.question};
 }
 export async function learnFromConversation(db,{applicantId,officeId=null,staffMessageId,staffId=null,force=false}){

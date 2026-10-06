@@ -329,8 +329,7 @@ export async function promotePendingLearning(db,{limit=500}={}){
   return {promoted,skipped};
  }catch(e){if(schemaMissing(e))return {promoted:0,skipped:0};throw e;}
 }
-function scoreEntry(text,row){
- const q=canonical(text),target=canonical(row.question);
+function scoreTextAgainstTarget(q,target){
  if(!q||!target)return 0;
  if(q===target)return 1;
  if(q.length>=6&&target.length>=6&&(q.includes(target)||target.includes(q)))return .94;
@@ -338,7 +337,14 @@ function scoreEntry(text,row){
  const union=new Set([...qa,...ta]).size;
  const jaccard=union?inter/union:0,coverage=Math.min(qa.size,ta.size)?inter/Math.min(qa.size,ta.size):0;
  const char=dice(trigrams(q),trigrams(target));
- let score=jaccard*.48+coverage*.32+char*.20;
+ return jaccard*.48+coverage*.32+char*.20;
+}
+function scoreEntry(text,row){
+ const q=canonical(text);
+ const targets=[row.question,...(Array.isArray(row.examples)?row.examples:[])].map(canonical).filter(Boolean);
+ if(!q||!targets.length)return 0;
+ let score=0;
+ for(const target of targets)score=Math.max(score,scoreTextAgainstTarget(q,target));
  const keywordList=[...(row.keywords||[]),...autoKeywords(row.question)].map(canonical).filter(Boolean);
  let keywordHits=0;
  for(const keyword of new Set(keywordList)){
@@ -346,6 +352,8 @@ function scoreEntry(text,row){
  }
  if(keywordHits>=2)score+=.12;
  else if(keywordHits===1)score+=.06;
+ const rank=Number(row._scope_rank||0);
+ if(rank)score+=Math.min(.04,rank*.01);
  return Math.min(1,score);
 }
 const TOPIC_GENERIC=new Set(['معاك','معايا','عندك','عندي','عنده','عندها','موجود','موجوده','متاح','مطلوب','لازم','عايز','عاوز','اه','ايوه','ايوا','نعم','لا','لاء']);
@@ -385,15 +393,24 @@ export function findKnowledgeAnswer(text,rows,threshold=.62,{allowStatement=fals
  }
  return best&&best.confidence>=threshold?best:null;
 }
+function scopeRank(row,officeId){
+ if(officeId&&String(row.office_id||'')===String(officeId))return row.source==='manual'?4:3;
+ if(row.knowledge_scope==='breadfast')return row.source==='manual'?3.5:2.5;
+ if(row.knowledge_scope==='system')return 2;
+ if(!row.office_id&&row.source==='manual'&&!row.knowledge_scope)return 2.5;
+ return 0;
+}
 export function scopeKnowledgeRows(rows,officeId=null){
  const list=Array.isArray(rows)?rows:[];
  if(!officeId)return list;
  return list
-  .filter(row=>String(row.office_id||'')===String(officeId)||(!row.office_id&&row.source==='manual'))
-  .sort((a,b)=>{
-   const as=String(a.office_id||'')===String(officeId)?1:0,bs=String(b.office_id||'')===String(officeId)?1:0;
-   return bs-as||String(b.updated_at||'').localeCompare(String(a.updated_at||''));
-  });
+  .filter(row=>{
+   if(String(row.office_id||'')===String(officeId))return true;
+   if(['breadfast','system'].includes(String(row.knowledge_scope||'')))return true;
+   return !row.office_id&&row.source==='manual'&&!row.knowledge_scope;
+  })
+  .map(row=>({...row,_scope_rank:scopeRank(row,officeId)}))
+  .sort((a,b)=>Number(b._scope_rank||0)-Number(a._scope_rank||0)||String(b.updated_at||'').localeCompare(String(a.updated_at||'')));
 }
 export async function loadKnowledge(db,officeId=null){
  try{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shouldBrowseAreaButtons,botAreaChoices} from '../src/worker.js';
+import {shouldBrowseAreaButtons,botAreaChoices,recommendedAreaChoices,shouldOfferYesNoButtons} from '../src/worker.js';
 import {normalizeWorkAreas} from '../src/db.js';
 
 test('work-area qualification prompt renders area buttons',()=>{
@@ -47,4 +47,22 @@ test('active legacy areas are normalized as recruitment eligible before bot use'
  assert.equal(normalized[0].recruitment_eligible,true);
  assert.equal(normalized[1].recruitment_eligible,false);
  assert.deepEqual(botAreaChoices(normalized).map(x=>x.id),['hadayek-market']);
+});
+
+
+test('nearest-area recommendation renders only recommended work-area buttons first',()=>{
+ const areas=[
+  {id:'moh',name:'المهندسين مطاعم',active:true},
+  {id:'haram',name:'الهرم مطاعم',active:true},
+  {id:'tag',name:'التجمع مطاعم',active:true}
+ ];
+ const answers={__area_recommendations:{values:['moh','haram']}};
+ const body='تمام، أقرب اختيارات الشغل المتاحة عندي تقريبًا هي:\nاختار المنطقة من الأزرار';
+ assert.deepEqual(recommendedAreaChoices(areas,answers,body).map(x=>x.id),['moh','haram']);
+});
+
+test('yes-no recruitment question gets quick reply buttons only when its prompt is being sent',()=>{
+ const q={id:'bike',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',active:true,required:true};
+ assert.equal(shouldOfferYesNoButtons(q,'هل معاك موتوسيكل متاح للشغل يوميًا؟',[]),true);
+ assert.equal(shouldOfferYesNoButtons(q,'المرتب الثابت 6200 جنيه.',[]),false);
 });

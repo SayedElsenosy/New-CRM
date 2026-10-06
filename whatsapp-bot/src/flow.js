@@ -440,7 +440,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const compoundStructuredQuestion=current?.kind==='yes_no'
   &&looksLikeQuestion(m.body)
   &&validateAnswer(current,m.body,areas,null).ok;
- if(areaQuestion&&!compoundStructuredQuestion&&settings.ai_enabled&&settings.ai_knowledge_enabled===true&&explicitAreaHits(m.body,areas).length===0){
+ if(areaQuestion&&!compoundStructuredQuestion&&settings.ai_enabled&&settings.ai_knowledge_enabled===true&&(explicitAreaHits(m.body,areas).length===0||committedAreaInTurn)){
   const query=knowledgeQueryText(answers,m.body);
   const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(query,knowledge,threshold,{allowStatement:true});
   if(match){
@@ -450,7 +450,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    return {patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence,agent_action:savedAgentFacts.length?'multi_fact_extract':undefined};
   }
  }
- if(areaQuestion&&!compoundStructuredQuestion){
+ if(areaQuestion&&!compoundStructuredQuestion&&!committedAreaInTurn){
   let area=null,intent=null;
   if(settings.ai_enabled){intent=await interpret(m.body,current,areas);if(intent?.intent==='area_info')area=areas.find(z=>z.active&&z.id===intent.area_id);}
   if(intent?.intent==='area_reject'){

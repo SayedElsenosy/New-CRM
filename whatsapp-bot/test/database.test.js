@@ -260,5 +260,18 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(futureQuestion.priority,100);assert.equal(futureQuestion.allow_inference,true);assert.equal(futureQuestion.confirmation_required,false);
  const {rows:[futureAgent]}=await db.query("select agent_enabled from masar_office_settings where office_id=$1",[futureOffice.id]);
  assert.equal(futureAgent.agent_enabled,true);
+
+ const reliabilitySql=await fs.readFile(new URL('../../supabase/018_agent_memory_reliability.sql',import.meta.url),'utf8');
+ await db.exec(reliabilitySql);await db.exec(reliabilitySql);
+ const {rows:[reliableKnowledge]}=await db.query("select memory_status,evidence_count,conflict_count,confidence,last_verified_at,version from masar_knowledge order by created_at limit 1");
+ assert.equal(reliableKnowledge.memory_status,'verified');
+ assert.ok(reliableKnowledge.evidence_count>=1);
+ assert.equal(reliableKnowledge.conflict_count,0);
+ assert.ok(Number(reliableKnowledge.confidence)>0);
+ assert.ok(reliableKnowledge.last_verified_at);
+ assert.equal(reliableKnowledge.version,1);
+ const {rows:[versionCount]}=await db.query("select count(*)::int as n from masar_knowledge_versions");
+ const {rows:[knowledgeCount]}=await db.query("select count(*)::int as n from masar_knowledge");
+ assert.equal(versionCount.n,knowledgeCount.n);
  }finally{await db.close();}
 });

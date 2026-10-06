@@ -9,6 +9,7 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
+import {questionPrompt} from './domain.js';
 
 export function shouldBrowseAreaButtons(question,body){
  const text=String(body||'');
@@ -21,6 +22,21 @@ export function shouldBrowseAreaButtons(question,body){
 
 export function botAreaChoices(areas){
  return (areas||[]).filter(area=>area?.active===true);
+}
+
+export function recommendedAreaChoices(areas,answers,body=''){
+ const text=String(body||'');
+ if(!text.includes('أقرب اختيارات الشغل المتاحة'))return [];
+ const ids=Array.isArray(answers?.__area_recommendations?.values)?answers.__area_recommendations.values:[];
+ const active=botAreaChoices(areas);
+ return ids.map(id=>active.find(area=>String(area.id)===String(id))).filter(Boolean);
+}
+
+export function shouldOfferYesNoButtons(question,body,areas=[]){
+ if(question?.kind!=='yes_no')return false;
+ const text=String(body||'').trim();
+ const prompt=questionPrompt(question,areas).trim();
+ return Boolean(prompt)&&(text===prompt||text.endsWith(prompt));
 }
 
 export class Worker {
@@ -324,17 +340,26 @@ export class Worker {
      const browseAreas=shouldBrowseAreaButtons(q,body);
      if(browseAreas){
       const activeAreas=botAreaChoices(sendConfig.areas);
-      const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
-      const rawPage=Number(a.answers?.__area_page?.value||0);
-      const page=Math.max(0,Math.min(pages-1,Number.isInteger(rawPage)?rawPage:0));
-      const pageAreas=activeAreas.slice(page*pageSize,(page+1)*pageSize);
-      const previewId=q?.kind==='area'?a.answers?.__area_preview?.value:null;
-      const preview=activeAreas.find(area=>area.id===previewId);
-      if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ مناسبة وكمل'});
-      buttons.push(...pageAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
-      if(q?.field_key==='preferred_work_area')buttons.push({id:'no_work_area',text:'❌ ولا منطقة مناسبة'});
-      if(page>0)buttons.push({id:'area_page:'+(page-1),text:'⬅️ السابق'});
-      if(page<pages-1)buttons.push({id:'area_page:'+(page+1),text:'التالي ➡️'});
+      const recommended=recommendedAreaChoices(activeAreas,a.answers,body);
+      if(recommended.length){
+       buttons.push(...recommended.map(area=>({id:'area_preview:'+area.id,text:area.name})));
+       buttons.push({id:'area_page:0',text:'📍 كل المناطق'});
+       if(q?.field_key==='preferred_work_area')buttons.push({id:'no_work_area',text:'❌ ولا منطقة مناسبة'});
+      }else{
+       const pageSize=7,pages=Math.max(1,Math.ceil(activeAreas.length/pageSize));
+       const rawPage=Number(a.answers?.__area_page?.value||0);
+       const page=Math.max(0,Math.min(pages-1,Number.isInteger(rawPage)?rawPage:0));
+       const pageAreas=activeAreas.slice(page*pageSize,(page+1)*pageSize);
+       const previewId=q?.kind==='area'?a.answers?.__area_preview?.value:null;
+       const preview=activeAreas.find(area=>area.id===previewId);
+       if(preview)buttons.push({id:'confirm_area:'+preview.id,text:'✅ مناسبة وكمل'});
+       buttons.push(...pageAreas.map(area=>({id:'area_preview:'+area.id,text:area.name})));
+       if(q?.field_key==='preferred_work_area')buttons.push({id:'no_work_area',text:'❌ ولا منطقة مناسبة'});
+       if(page>0)buttons.push({id:'area_page:'+(page-1),text:'⬅️ السابق'});
+       if(page<pages-1)buttons.push({id:'area_page:'+(page+1),text:'التالي ➡️'});
+      }
+     }else if(shouldOfferYesNoButtons(q,body,sendConfig.areas)){
+      buttons.push({id:'yes',text:'✅ نعم'},{id:'no',text:'❌ لا'});
      }
     }
     must(await this.db.from('masar_messages').update({status:'sending'}).eq('id',m.id));

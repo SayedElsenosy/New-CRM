@@ -26,4 +26,19 @@ where field_key in (
  'full_name','shift_acceptance','ready_to_start'
 );
 
+-- Move only untouched applicants from the old first question to the new first
+-- work-area step. Existing real answers are never rewritten.
+update public.masar_applicants a
+set awaiting_id=area_q.id,
+    updated_at=now()
+from public.masar_questions area_q,
+     public.masar_questions moto_q
+where area_q.office_id=a.office_id
+  and moto_q.office_id=a.office_id
+  and area_q.field_key='preferred_work_area'
+  and moto_q.field_key='has_motorcycle'
+  and a.awaiting_id=moto_q.id
+  and not coalesce(a.answers,'{}'::jsonb) ? area_q.id::text
+  and not coalesce(a.answers,'{}'::jsonb) ? moto_q.id::text;
+
 commit;

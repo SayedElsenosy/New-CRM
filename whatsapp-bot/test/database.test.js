@@ -271,7 +271,7 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.ok(reliableKnowledge.last_verified_at);
  assert.equal(reliableKnowledge.version,1);
  const {rows:[versionCount]}=await db.query("select count(*)::int as n from masar_knowledge_versions");
- const {rows:[knowledgeCount]}=await db.query("select count(*)::int as n from masar_knowledge");
- assert.equal(versionCount.n,knowledgeCount.n);
+ const {rows:[reliableKnowledgeCount]}=await db.query("select count(*)::int as n from masar_knowledge");
+ assert.equal(versionCount.n,reliableKnowledgeCount.n);
  }finally{await db.close();}
 });

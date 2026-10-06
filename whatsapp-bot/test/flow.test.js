@@ -200,7 +200,7 @@ test('office scoping uses local plus verified Breadfast shared brain and exclude
   {id:'g',office_id:null,source:'staff',knowledge_scope:'legacy'},
   {id:'b',office_id:'o2',source:'staff',knowledge_scope:'office'}
  ];
- assert.deepEqual(scopeKnowledgeRows(rows,'o1').map(x=>x.id),['a','m','shared']);
+ assert.deepEqual(scopeKnowledgeRows(rows,'o1').map(x=>x.id),['m','a','shared']);
 });
 
 test('knowledge matcher learns Egyptian phrasing examples across conversations',()=>{

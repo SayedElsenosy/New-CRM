@@ -29,9 +29,14 @@ export async function config(db,officeId=null){
   else if(!['PGRST205','42P01','42703','PGRST204'].includes(r.error.code))throw r.error;
  }
  const areas=normalizeWorkAreas(must(ar));
- return {
-  questions:must(qr),
-  areas,
-  settings:officeSettings?{...baseSettings,...officeSettings,id:true,office_id:officeId}:baseSettings
- };
+ const settings=officeSettings?{...baseSettings,...officeSettings,id:true,office_id:officeId}:baseSettings;
+ // Intelligence policy is global and controlled only by the system owner.
+ // Office settings may control office runtime/qualification/messages, but never
+ // disable or retune the shared intelligence engine.
+ settings.ai_enabled=baseSettings.ai_enabled!==false;
+ settings.ai_knowledge_enabled=baseSettings.ai_knowledge_enabled!==false;
+ settings.ai_learning_enabled=true;
+ settings.ai_confidence_threshold=Number(baseSettings.ai_confidence_threshold||0.62);
+ settings.ai_fallback=baseSettings.ai_fallback;
+ return {questions:must(qr),areas,settings};
 }

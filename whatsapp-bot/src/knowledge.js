@@ -216,6 +216,10 @@ async function recordMemoryEvent(db,{applicantId,kind,detail}){
   if(result.error)throw result.error;
  }catch(e){if(!schemaMissing(e))throw e;}
 }
+function topicMatchIncludingUnsafe(text,row,threshold=.78){
+ const safe={...row,active:true,memory_status:'verified',valid_from:null,valid_until:null};
+ return Boolean(findKnowledgeAnswer(text,[safe],threshold,{allowStatement:true}));
+}
 function sharedAnswerRelation(previous,next){
  const an=answerNumbers(previous),bn=answerNumbers(next);
  if(an.size&&bn.size&&([...an].some(x=>!bn.has(x))||[...bn].some(x=>!an.has(x))))return 'conflict';
@@ -230,12 +234,12 @@ async function refreshBreadfastSharedMemory(db,{candidate,officeId,applicantId=n
    .eq('active',true).eq('source','staff').not('office_id','is',null)
    .order('updated_at',{ascending:false}).limit(1000);
   if(localsResult.error)throw localsResult.error;
-  const topicRows=(localsResult.data||[]).filter(row=>{
-   if(['conflict','stale'].includes(String(row.memory_status||'')))return false;
-   return Boolean(findKnowledgeAnswer(candidate.question,[row],.78,{allowStatement:true}));
-  });
+  const topicRows=(localsResult.data||[]).filter(row=>topicMatchIncludingUnsafe(candidate.question,row,.78));
   const supportive=[],conflicting=[];
   for(const row of topicRows){
+   if(['conflict','stale'].includes(String(row.memory_status||''))){
+    conflicting.push(row);continue;
+   }
    const relation=sharedAnswerRelation(row.answer,candidate.answer);
    (relation==='conflict'?conflicting:supportive).push(row);
   }
@@ -246,7 +250,7 @@ async function refreshBreadfastSharedMemory(db,{candidate,officeId,applicantId=n
    .is('office_id',null).eq('source','staff').eq('knowledge_scope','breadfast')
    .order('updated_at',{ascending:false}).limit(500);
   if(sharedResult.error)throw sharedResult.error;
-  const existing=findKnowledgeAnswer(candidate.question,sharedResult.data||[],.78,{allowStatement:true});
+  const existing=(sharedResult.data||[]).find(row=>topicMatchIncludingUnsafe(candidate.question,row,.78))||null;
 
   if(conflictOffices.size){
    if(existing){

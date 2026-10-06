@@ -313,6 +313,22 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:{answers,awaiting_id:current?.id||null},reply:current?questionPrompt(current,areas):postCompletionReply(),agent_action:'resume_flow',agent_confidence:decision.confidence};
  }
 
+ if(answers.__agent_state?.kind==='clarification'&&settings.ai_enabled&&settings.ai_knowledge_enabled===true){
+  const query=knowledgeQueryText(answers,m.body);
+  const threshold=Number(settings.ai_confidence_threshold||0.62);
+  const match=findKnowledgeAnswer(query,knowledge,threshold,{allowStatement:true});
+  if(match){
+   clearAgentState(answers);
+   return {
+    patch:{answers,awaiting_id:current?.id||null},
+    reply:String(match.answer||'').trim(),
+    followup_reply:current?questionPrompt(current,areas):null,
+    knowledge_id:match.id,
+    knowledge_confidence:match.confidence
+   };
+  }
+ }
+
  if(current?.field_key==='preferred_work_area'&&noWorkAreaAnswer(m.body)){
   saveNoWorkArea(answers,current);
   return {patch:stopQualification(answers,'no_eligible_work_area'),reply:NO_ELIGIBLE_WORK_AREA_REPLY};

@@ -94,7 +94,7 @@ test('area button previews details without saving the final area',async()=>{
  assert.equal(r.patch.answers.area,undefined);
  assert.equal(r.patch.answers.__area_preview.value,'zayed');
  assert.match(r.reply,/تفاصيل الشيخ زايد/);
- assert.match(r.reply,/تأكيد الشيخ زايد/);
+ assert.match(r.reply,/مناسبة وكمل/);
 });
 
 test('applicant can preview multiple areas before confirming one',async()=>{

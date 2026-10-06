@@ -10,6 +10,12 @@ function areaPreviewReply(area,areas){
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
 function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
+function knowledgeQueryText(answers,text){
+ const current=String(text||'').trim();
+ const previous=answers?.__agent_state?.kind==='clarification'?String(answers.__agent_state.last_message||'').trim():'';
+ if(!previous||norm(previous)===norm(current))return current;
+ return (previous+' '+current).trim().slice(0,2000);
+}
 function explainCurrentQuestion(question,areas){
  if(!question)return 'مفيش سؤال ناقص حاليًا. لو عندك سؤال عن الشغل ابعته بشكل مباشر.';
  if(question.field_key==='has_motorcycle')return 'قصدي: هل عندك موتوسيكل تقدر تستخدمه للشغل يوميًا؟ رد «نعم» أو «لا».';
@@ -274,8 +280,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
    return {patch:{answers,awaiting_id:null},reply:areaListReply(areas)};
   }
-  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
-   const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
+  if(settings.ai_enabled&&settings.ai_knowledge_enabled===true){
+   const query=knowledgeQueryText(answers,m.body);
+   const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(query,knowledge,threshold,{allowStatement:true});
    if(match){const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);clearAgentState(answers);return {patch:{...(hadAgentState?{answers}:{}),awaiting_id:null},reply:String(match.answer||'').trim(),knowledge_id:match.id,knowledge_confidence:match.confidence};}
   }
   return {patch:{awaiting_id:null},reply:stoppedReply(answers.__qualification_stop.reason)};
@@ -375,8 +382,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const compoundStructuredQuestion=current?.kind==='yes_no'
   &&looksLikeQuestion(m.body)
   &&validateAnswer(current,m.body,areas,null).ok;
- if(areaQuestion&&!compoundStructuredQuestion&&settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&explicitAreaHits(m.body,areas).length===0){
-  const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
+ if(areaQuestion&&!compoundStructuredQuestion&&settings.ai_enabled&&settings.ai_knowledge_enabled===true&&explicitAreaHits(m.body,areas).length===0){
+  const query=knowledgeQueryText(answers,m.body);
+  const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(query,knowledge,threshold,{allowStatement:true});
   if(match){
    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
    clearAgentState(answers);
@@ -445,9 +453,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
  }
 
- if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+ if(settings.ai_enabled&&settings.ai_knowledge_enabled===true){
+  const query=knowledgeQueryText(answers,m.body);
   const threshold=Number(settings.ai_confidence_threshold||0.62);
-  const match=findKnowledgeAnswer(m.body,knowledge,threshold);
+  const match=findKnowledgeAnswer(query,knowledge,threshold,{allowStatement:true});
   if(match){
    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
    clearAgentState(answers);
@@ -459,9 +468,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     knowledge_confidence:match.confidence
    };
   }
-  const clarification=agentClarificationTurn({answers,current,applicant:a,questions,areas,message:m});
-  if(clarification)return clarification;
-  return handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:'repeated_unknown_question'});
+  if(looksLikeQuestion(m.body)||answers.__agent_state?.kind==='clarification'){
+   const clarification=agentClarificationTurn({answers,current,applicant:a,questions,areas,message:m});
+   if(clarification)return clarification;
+   return handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:'repeated_unknown_question'});
+  }
  }
 
  if(!current){

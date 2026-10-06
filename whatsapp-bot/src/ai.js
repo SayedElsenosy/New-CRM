@@ -119,7 +119,9 @@ export function decideConversationAction(text,question,areas=[]){
 
  const mentioned=areaHits(text,areas);
  if(question?.field_key==='preferred_work_area'&&mentioned.length===1){
-  return {action:'answer_current',field_key:'preferred_work_area',area_id:mentioned[0].id,confidence:0.97};
+  const residenceOnly=/(?:ساكن|سكني|السكن|انا من|أنا من)/.test(n)
+   &&!/(?:عايز|عاوز|حابب|هشتغل|اشتغل|اقدر اشتغل|أقدر اشتغل|التزم|ينفعلي|مناسبه ليا|مناسبة ليا)/.test(n);
+  if(!residenceOnly)return {action:'answer_current',field_key:'preferred_work_area',area_id:mentioned[0].id,confidence:0.97};
  }
 
  return {action:'unknown',confidence:0.5};

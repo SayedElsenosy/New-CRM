@@ -160,11 +160,16 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
  const knowledgeResult=await knowledgeQuery.order('updated_at',{ascending:false});
  if(knowledgeResult.error)throw knowledgeResult.error;
  const rows=knowledgeResult.data||[];
- const match=findKnowledgeAnswer(candidate.question,rows,.84,{allowStatement:true});
+ const officeRows=officeId?rows.filter(row=>String(row.office_id||'')===String(officeId)):[];
+ const officeMatch=findKnowledgeAnswer(candidate.question,officeRows,.84,{allowStatement:true});
+ const globalMatch=findKnowledgeAnswer(candidate.question,rows.filter(row=>!row.office_id),.84,{allowStatement:true});
+ // Office memory always wins. A global manual fact is a safe fallback, not a lock:
+ // if office staff teaches a different local rule we create a scoped override.
+ const match=officeMatch||(globalMatch?.source==='manual'&&officeId?null:globalMatch);
  const now=new Date().toISOString();
  if(match){
   if(match.source==='manual'){
-   await recordMemoryEvent(db,{applicantId,kind:'ai_memory_manual_preserved',detail:{knowledge_id:match.id,question:candidate.question,source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id}});
+   await recordMemoryEvent(db,{applicantId,kind:'ai_memory_manual_preserved',detail:{knowledge_id:match.id,question:candidate.question,source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,office_id:officeId}});
    return {learned:false,action:'manual_preserved',knowledge_id:match.id,question:candidate.question};
   }
   const replace=shouldReplaceKnowledgeAnswer(match.answer,candidate.answer);
@@ -289,7 +294,11 @@ export async function loadKnowledge(db,officeId=null){
   if(officeId)query=query.or('office_id.is.null,office_id.eq.'+officeId);
   const result=await query.order('updated_at',{ascending:false});
   if(result.error)throw result.error;
-  return result.data||[];
+  const rows=result.data||[];
+  return officeId?rows.sort((a,b)=>{
+   const as=String(a.office_id||'')===String(officeId)?1:0,bs=String(b.office_id||'')===String(officeId)?1:0;
+   return bs-as||String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+  }):rows;
  }catch(e){
   if(['42703','PGRST204'].includes(e?.code||'')){
    const legacy=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});

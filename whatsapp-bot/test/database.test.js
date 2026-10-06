@@ -293,5 +293,19 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(Number(sharedSalaryFact.confidence),1);
  assert.ok(Number(sharedSalaryFact.shared_office_count)>=2);
  assert.ok(sharedSalaryFact.examples.includes('المرتب كام؟'));
+
+ const agentControlSql=await fs.readFile(new URL('../../supabase/023_ai_agent_control_plane.sql',import.meta.url),'utf8');
+ await db.exec(agentControlSql);await db.exec(agentControlSql);
+ const {rows:[agentControl]}=await db.query("select agent_llm_enabled,agent_llm_mode,agent_hybrid_memory_enabled,agent_fact_extraction_enabled,agent_next_best_action_enabled,agent_context_messages from masar_settings where id=true");
+ assert.equal(agentControl.agent_llm_enabled,false);
+ assert.equal(agentControl.agent_llm_mode,'shadow');
+ assert.equal(agentControl.agent_hybrid_memory_enabled,true);
+ assert.equal(agentControl.agent_fact_extraction_enabled,true);
+ assert.equal(agentControl.agent_next_best_action_enabled,true);
+ assert.equal(agentControl.agent_context_messages,12);
+ const {rows:[decisionTable]}=await db.query("select to_regclass('masar_agent_decisions') is not null as ok");
+ const {rows:[caseTable]}=await db.query("select to_regclass('masar_agent_eval_cases') is not null as ok");
+ const {rows:[runTable]}=await db.query("select to_regclass('masar_agent_eval_runs') is not null as ok");
+ assert.equal(decisionTable.ok,true);assert.equal(caseTable.ok,true);assert.equal(runTable.ok,true);
  }finally{await db.close();}
 });

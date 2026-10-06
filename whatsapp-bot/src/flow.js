@@ -1,6 +1,7 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
+import {decideConversationAction} from './ai.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -8,6 +9,48 @@ function areaPreviewReply(area,areas){
  return areaDetails(area)+`\n\nلو ${area.name} هي المنطقة اللي هتنزل فيها اضغط «✅ تأكيد ${area.name}».`+choices;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
+function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
+function explainCurrentQuestion(question,areas){
+ if(!question)return 'مفيش سؤال ناقص حاليًا. لو عندك سؤال عن الشغل ابعته بشكل مباشر.';
+ if(question.field_key==='has_motorcycle')return 'قصدي: هل عندك موتوسيكل تقدر تستخدمه للشغل يوميًا؟ رد «نعم» أو «لا».';
+ if(question.field_key==='preferred_work_area')return 'قصدي منطقة الشغل اللي تقدر تروحها وتلتزم بيها يوميًا، مش مكان سكنك. اختار منطقة من الأزرار، ولو مفيش منطقة مناسبة اختار «❌ ولا منطقة مناسبة».';
+ if(question.field_key==='full_name')return 'قصدي اكتب اسمك بالكامل علشان يتسجل في طلب التقديم، ويفضل اسمين أو أكتر.';
+ if(question.field_key==='shift_acceptance')return 'قصدي هل نظام الشيفت المذكور في السؤال مناسب ليك وتقدر تلتزم بيه؟ رد «نعم» أو «لا».';
+ if(question.field_key==='ready_to_start')return 'قصدي لو تم قبولك، هل تقدر تبدأ الشغل قريب؟ رد «نعم» أو «لا».';
+ if(question.kind==='yes_no')return question.label+'\nرد «نعم» أو «لا».';
+ if(question.kind==='area')return questionPrompt(question,areas);
+ if(question.kind==='number')return question.label+'\nاكتب الرقم فقط أو اكتبه في جملة قصيرة.';
+ return questionPrompt(question,areas);
+}
+function handoffTurn({answers,current,applicant,questions,areas,settings,message,reason='low_confidence'}){
+ const handoffAnswers={...answers,__ai_handoff:{question:String(message?.body||'').slice(0,1000),at:new Date().toISOString(),reason}};
+ delete handoffAnswers.__agent_state;
+ const fallback=reason==='user_requested_human'
+  ?'تمام، هحوّل المحادثة لمسؤول التوظيف علشان يكمل معاك.'
+  :String(settings.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.').trim();
+ return {patch:{answers:handoffAnswers,awaiting_id:current?.id||null,bot_enabled:false,stage:computedStage({...applicant,answers:handoffAnswers},questions,areas)},reply:fallback,handoff:true,handoff_reason:reason};
+}
+function agentClarificationTurn({answers,current,applicant,questions,areas,message}){
+ const previous=answers.__agent_state;
+ const sameContext=previous?.kind==='clarification'&&String(previous.awaiting_id||'')===String(current?.id||'');
+ const attempts=(sameContext?Number(previous.attempts||0):0)+1;
+ if(attempts>2)return null;
+ answers.__agent_state={kind:'clarification',attempts,awaiting_id:current?.id||null,last_message:String(message?.body||'').slice(0,500),at:new Date().toISOString()};
+ const first='مش عندي إجابة مؤكدة للسؤال ده بالشكل الحالي، ومش هخمن عليك أو أوقف التقديم. اكتب سؤالك بتفصيل أكتر، أو اكتب النقطة اللي تقصدها زي «المرتب»، «الشيفت»، «المناطق» أو «شروط التقديم».';
+ const second='لسه مش قادر أحدد معلومة مؤكدة للسؤال ده. تقدر تعيد صياغته مرة أخيرة، أو تكتب «كمل» علشان نكمل التقديم، ولو محتاج شخص من الفريق اكتب «عايز موظف».';
+ return {patch:{answers,awaiting_id:current?.id||null,stage:computedStage({...applicant,answers},questions,areas)},reply:attempts===1?first:second,agent_action:'clarify_unknown',agent_confidence:0.5};
+}
+function reopenAnswer({decision,answers,questions,areas,applicant}){
+ const q=activeQuestions(questions).find(item=>item.field_key===decision.field_key);
+ if(!q)return null;
+ delete answers[q.id];
+ delete answers.__qualification_stop;
+ delete answers.__area_preview;
+ delete answers.__area_page;
+ clearAgentState(answers);
+ activeFlow(answers);
+ return {patch:{answers,awaiting_id:q.id,stage:computedStage({...applicant,answers},questions,areas)},reply:'تمام، نعدّل الإجابة دي.\n\n'+questionPrompt(q,areas),agent_action:'change_answer',agent_confidence:decision.confidence};
+}
 function startText(text){
  return norm(String(text||'').replace(/[’']/g,'')).replace(/[!?؟.,،؛:"“”‘’…]/g,' ').replace(/\s+/g,' ').trim();
 }
@@ -212,6 +255,18 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    :{patch:{awaiting_id:first.id,stage:'new'},reply:firstQuestion};
  }
 
+ const earlyDecision=settings.ai_enabled?decideConversationAction(m.body,null,areas):null;
+ if(earlyDecision?.action==='handoff'){
+  return handoffTurn({answers,current:null,applicant:a,questions,areas,settings,message:m,reason:earlyDecision.reason});
+ }
+ if(earlyDecision?.action==='change_answer'){
+  const reopened=reopenAnswer({decision:earlyDecision,answers,questions,areas,applicant:a});
+  if(reopened)return reopened;
+ }
+ if(earlyDecision?.action==='clarify_change_target'){
+  return {patch:{answers,awaiting_id:a.awaiting_id||null},reply:'تمام، تقدر تعدّل إجابة سابقة. عايز تغيّر إيه: الموتوسيكل، منطقة العمل، الاسم، الشيفت، ولا جاهزية البداية؟',agent_action:'clarify_change_target',agent_confidence:earlyDecision.confidence};
+ }
+
  if(answers.__qualification_stop){
   if(areaListInquiry(m.body)){
    answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
@@ -227,6 +282,27 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  activeFlow(answers);
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||pending[0];
+
+ const decision=settings.ai_enabled?decideConversationAction(m.body,current,areas):null;
+ if(decision?.action==='handoff'){
+  return handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:decision.reason});
+ }
+ if(decision?.action==='change_answer'){
+  const reopened=reopenAnswer({decision,answers,questions,areas,applicant:a});
+  if(reopened)return reopened;
+ }
+ if(decision?.action==='clarify_change_target'){
+  clearAgentState(answers);
+  return {patch:{answers,awaiting_id:current?.id||null},reply:'تمام، عايز تغيّر إجابة أنهي جزء: الموتوسيكل، منطقة العمل، الاسم، الشيفت، ولا جاهزية البداية؟',agent_action:'clarify_change_target',agent_confidence:decision.confidence};
+ }
+ if(decision?.action==='clarify_current'){
+  clearAgentState(answers);
+  return {patch:{answers,awaiting_id:current?.id||null},reply:explainCurrentQuestion(current,areas),agent_action:'clarify_current',agent_confidence:decision.confidence};
+ }
+ if(decision?.action==='resume_flow'){
+  clearAgentState(answers);
+  return {patch:{answers,awaiting_id:current?.id||null},reply:current?questionPrompt(current,areas):postCompletionReply(),agent_action:'resume_flow',agent_confidence:decision.confidence};
+ }
 
  if(current?.field_key==='preferred_work_area'&&noWorkAreaAnswer(m.body)){
   saveNoWorkArea(answers,current);
@@ -326,6 +402,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(current&&a.awaiting_id===current.id&&norm(m.body)!=='تخطي'){
   const parsed=await parseStructuredPendingAnswer({current,message:m,areas,settings,interpret});
   if(parsed){
+   clearAgentState(answers);
    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
    if(current.field_key==='has_motorcycle'&&parsed.value===false){
     return {patch:stopQualification(answers,'no_motorcycle'),reply:NO_MOTORCYCLE_REPLY};
@@ -376,9 +453,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     knowledge_confidence:match.confidence
    };
   }
-  const answersWithHandoff={...answers,__ai_handoff:{question:String(m.body||'').slice(0,1000),at:new Date().toISOString(),reason:'low_confidence'}};
-  const fallback=String(settings.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.').trim();
-  return {patch:{answers:answersWithHandoff,awaiting_id:current?.id||null,bot_enabled:false,stage:computedStage({...a,answers:answersWithHandoff},questions,areas)},reply:fallback,handoff:true};
+  const clarification=agentClarificationTurn({answers,current,applicant:a,questions,areas,message:m});
+  if(clarification)return clarification;
+  return handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:'repeated_unknown_question'});
  }
 
  if(!current){
@@ -444,6 +521,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     }
    }
   }else{
+   clearAgentState(answers);
    answers[current.id]={value:parsed.value,display:parsed.display,label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString()};
   }
  }

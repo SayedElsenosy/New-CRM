@@ -30,13 +30,21 @@ function lexicalScore(query,row){
  if(row?.knowledge_scope==='breadfast')score+=.08;
  return score;
 }
-function compactKnowledge(rows,message,limit=8){
+function compactKnowledge(rows,message,limit=6){
  const safe=(rows||[]).filter(k=>k?.active!==false&&!['conflict','stale'].includes(String(k.memory_status||'')));
  return safe
   .map((row,index)=>({row,index,score:lexicalScore(message,row)}))
   .sort((a,b)=>b.score-a.score||a.index-b.index)
-  .slice(0,Math.max(4,Math.min(10,limit)))
+  .slice(0,Math.max(4,Math.min(8,limit)))
   .map(({row})=>row);
+}
+function compactAreas(rows,message,limit=18){
+ const text=String(message||'').toLowerCase();
+ const ranked=(rows||[]).filter(a=>a?.active===true).map((area,index)=>{
+  const names=[area?.name,...(area?.aliases||[])].map(x=>String(x||'').toLowerCase()).filter(Boolean);
+  return {area,index,score:names.some(name=>name&&text.includes(name))?1:0};
+ });
+ return ranked.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,limit).map(x=>x.area);
 }
 function safePlan(value){
  const p=value&&typeof value==='object'?value:{};
@@ -112,20 +120,20 @@ export class AgentRuntime{
   const currentText=String(message?.body||'');
   const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,24).map(q=>({
    field_key:q.field_key,kind:q.kind,required:q.required!==false,priority:Number(q.priority||50),
-   label:trim(q.label,180),instruction:trim(q.agent_instruction,220),confirmation_required:q.confirmation_required===true,
+   label:trim(q.label,100),instruction:trim(q.agent_instruction,100),confirmation_required:q.confirmation_required===true,
    options:Array.isArray(q.options)?q.options.slice(0,8).map(o=>typeof o==='string'?trim(o,80):{label:trim(o?.label,80),value:trim(o?.value??o?.label,80)}):[]
   }));
-  const safeAreas=(areas||[]).filter(a=>a?.active===true).slice(0,35).map(a=>({
-   id:a.id,name:trim(a.name,120),aliases:(a.aliases||[]).slice(0,4).map(x=>trim(x,80)),zone:a.zone||'UNKNOWN'
+  const safeAreas=compactAreas(areas,currentText,18).map(a=>({
+   id:a.id,name:trim(a.name,90),aliases:(a.aliases||[]).slice(0,2).map(x=>trim(x,55)),zone:a.zone||'UNKNOWN'
   }));
-  const safeKnowledge=compactKnowledge(knowledge,currentText,8).map(k=>({
-   id:k.id,question:trim(k.question,220),answer:trim(k.answer,450),scope:k.knowledge_scope||'office',
-   confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,3).map(x=>trim(x,120))
+  const safeKnowledge=compactKnowledge(knowledge,currentText,6).map(k=>({
+   id:k.id,question:trim(k.question,160),answer:trim(k.answer,300),scope:k.knowledge_scope||'office',
+   confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,2).map(x=>trim(x,80))
   }));
-  const contextLimit=Math.max(4,Math.min(8,Number(settings.agent_context_messages||6)));
+  const contextLimit=Math.max(4,Math.min(6,Number(settings.agent_context_messages||6)));
   const conversation=(recentMessages||[]).slice(-contextLimit).map(x=>({
    role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
-   text:String(x.body||'').slice(0,700)
+   text:String(x.body||'').slice(0,420)
   }));
   const system=[
    'أنت Decision Planner لمساعد توظيف Breadfast في مصر.',
@@ -137,12 +145,12 @@ export class AgentRuntime{
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
    'لو السؤال غير موثوق استخدم clarify أو handoff بدل التخمين.',
-   trim(settings.agent_system_instructions||'',1200)
+   trim(settings.agent_system_instructions||'',600)
   ].filter(Boolean).join('\n');
   const payload={
-   current_message:currentText.slice(0,1800),
+   current_message:currentText.slice(0,1200),
    awaiting_field:(questions||[]).find(q=>String(q.id)===String(applicant?.awaiting_id||''))?.field_key||null,
-   known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,16).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,120)})),
+   known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,12).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,80)})),
    questions:safeQuestions,areas:safeAreas,knowledge:safeKnowledge,conversation
   };
   return [

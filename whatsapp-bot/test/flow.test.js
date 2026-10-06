@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion} from '../src/knowledge.js';
+import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion,extractConversationMemory,isOperationalMemoryCandidate} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -202,6 +202,47 @@ test('only useful staff answers become learning candidates',()=>{
 test('training mode can collect useful staff answers even when the applicant phrased a statement',()=>{
  assert.equal(isLearnableExchange('معايا رخصة بس منتهية','ينفع تكمل التقديم ومسؤول التوظيف هيراجع حالة الرخصة.',{force:true}),true);
  assert.equal(isLearnableExchange('معايا رخصة بس منتهية','تمام',{force:true}),false);
+});
+
+test('conversation memory learns the nearest stable work rule from the full context',()=>{
+ const messages=[
+  {id:'m1',direction:'in',sender:'applicant',body:'المرتب كام؟'},
+  {id:'m2',direction:'out',sender:'staff',body:'المرتب 6200 جنيه.'},
+  {id:'m3',direction:'in',sender:'applicant',body:'تمام'},
+  {id:'m4',direction:'in',sender:'applicant',body:'معايا رخصة بس منتهية'},
+  {id:'m5',direction:'out',sender:'staff',body:'ينفع تكمل التقديم، ومسؤول التوظيف هيراجع حالة الرخصة.'}
+ ];
+ const memory=extractConversationMemory(messages,'m5',{force:true});
+ assert.ok(memory);
+ assert.equal(memory.question,'معايا رخصة بس منتهية');
+ assert.match(memory.answer,/ينفع تكمل التقديم/);
+ assert.match(memory.context,/المرتب|الرخصة/);
+});
+
+test('conversation memory does not turn a personal appointment into a global rule',()=>{
+ assert.equal(isOperationalMemoryCandidate('الانترفيو امتى؟','ميعادك بكرة الساعة 3',{force:true}),false);
+ const memory=extractConversationMemory([
+  {id:'a1',direction:'in',sender:'applicant',body:'الانترفيو امتى؟'},
+  {id:'s1',direction:'out',sender:'staff',body:'ميعادك بكرة الساعة 3'}
+ ],'s1',{force:true});
+ assert.equal(memory,null);
+});
+
+test('agent combines a clarification turn with previous context when recalling memory',async()=>{
+ const kb=[{id:'insurance',question:'التأمين الطبي بيبدأ امتى؟',answer:'التأمين الطبي يبدأ بعد استكمال إجراءات التعيين.',keywords:['تأمين','طبي'],active:true}];
+ const a={...applicant,awaiting_id:'name',answers:{__agent_state:{kind:'clarification',attempts:1,awaiting_id:'name',last_message:'طب بالنسبة للتأمين؟'}}};
+ const r=await planTurn({
+  applicant:a,message:{body:'قصدي التأمين الطبي'},
+  questions,areas,
+  settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.45},
+  interpret,knowledge:kb
+ });
+ assert.equal(r.handoff,undefined);
+ assert.equal(r.knowledge_id,'insurance');
+ assert.equal(r.patch.awaiting_id,'name');
+ assert.equal(r.patch.answers.__agent_state,undefined);
+ assert.match(r.reply,/التأمين الطبي يبدأ/);
+ assert.equal(r.followup_reply,'اسمك بالكامل؟');
 });
 
 

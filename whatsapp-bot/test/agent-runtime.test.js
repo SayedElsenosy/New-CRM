@@ -46,3 +46,20 @@ test('planner facts reject low confidence and confirmation-required fields',()=>
  });
  assert.deepEqual(facts,[]);
 });
+
+
+test('free-tier planner payload stays compact with many areas and knowledge rows',()=>{
+ const runtime=new AgentRuntime({env:{}});
+ const questions=Array.from({length:18},(_,i)=>({id:'q'+i,field_key:'field_'+i,kind:'text',active:true,required:true,priority:50,label:'معلومة مطلوبة رقم '+i,agent_instruction:'تعليمات طويلة '.repeat(30)}));
+ const areas=Array.from({length:93},(_,i)=>({id:'a'+i,name:'منطقة '+i,active:true,aliases:['اسم بديل '+i],zone:'Z',details:'تفاصيل طويلة '.repeat(100)}));
+ const knowledge=Array.from({length:33},(_,i)=>({id:'k'+i,question:i===0?'المرتب كام؟':'سؤال '+i,answer:'إجابة '.repeat(300),active:true,memory_status:'verified',source:i===0?'manual':'staff',knowledge_scope:i===0?'breadfast':'office',examples:['صيغة '.repeat(100)]}));
+ const messages=runtime.buildPlannerMessages({
+  message:{body:'أنا ساكن في إمبابة ومعايا مكنة والرخصة خلصانة والمرتب كام'},
+  questions,areas,applicant:{awaiting_id:'q0',answers:{}},knowledge,
+  recentMessages:Array.from({length:20},(_,i)=>({direction:i%2?'out':'in',sender:i%2?'bot':'applicant',body:'رسالة طويلة '.repeat(100)})),
+  settings:{agent_context_messages:12,agent_system_instructions:'تعليمات '.repeat(500)}
+ });
+ const size=messages.reduce((n,m)=>n+String(m.content||'').length,0);
+ assert.ok(size<18000,'planner prompt too large: '+size);
+ assert.match(messages[1].content,/المرتب كام/);
+});

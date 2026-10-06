@@ -5,7 +5,7 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
-import {schemaMissing,suggestKeywords,findKnowledgeAnswer,createLearningSuggestion} from './knowledge.js';
+import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
 import {metaConfig,metaLoginUrl,metaStateHash,exchangeMetaCode,encryptMetaToken,decryptMetaToken,getMetaIdentity,listMetaAdAccounts,fetchMetaAccountSnapshot,normalizeMetaAdAccountId} from './meta.js';
@@ -532,6 +532,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  };
  async function intelligenceState(){
   try{
+   await promotePendingLearning(db);
    const [settings,knowledge,suggestions]=await Promise.all([
     db.from('masar_settings').select('*').eq('id',true).single(),
     db.from('masar_knowledge').select('*').order('updated_at',{ascending:false}),
@@ -970,8 +971,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const staffMessage=must(await db.from('masar_messages').insert(row).select('id').single());
    if(settings?.ai_learning_enabled!==false){
     try{
-     const source=must(await db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());
-     if(source)await createLearningSuggestion(db,{applicantId:a.id,sourceMessage:source,staffMessageId:staffMessage.id,answer:body,staffId:req.user.id,force:runMode==='training'});
+     await learnFromConversation(db,{applicantId:a.id,staffMessageId:staffMessage.id,staffId:req.user.id,force:runMode==='training'});
     }catch(e){if(!schemaMissing(e))throw e;}
    }
    await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:'crm_reply'});

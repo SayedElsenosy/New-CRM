@@ -126,12 +126,43 @@ export function decideConversationAction(text,question,areas=[]){
 }
 
 const MOTORCYCLE_WORDS=/(?:موتوسيكل|موتوسكل|موتسيكل|مكنه|مكنة|موتور)/;
+const LICENSE_WORDS=/(?:رخصه|رخصة|الرخصه|الرخصة|license)/;
+const AGE_WORDS=/(?:سني|سنى|عمري|العمر|السن|سنه|سنة|عام)/;
+const RESIDENCE_WORDS=/(?:ساكن|سكني|السكن|انا من|أنا من)/;
 const SHIFT_WORDS=/(?:شيفت|شفت|ورديه|وردية|ساعات الشغل|ساعات العمل|\d+\s*ساع)/;
 const READY_WORDS=/(?:ابدا|ابدأ|بدايه|بداية|ابتدي|أبتدي|استلم الشغل|انزل الشغل)/;
 const NEGATIVE_INTENT=/(?:مش|ما|معنديش|ماعنديش|مفيش|مينفعش|ماينفعش|مش هقدر|مش قادر|لا|لاء)/;
 const POSITIVE_COMMIT=/(?:معايا|عندي|موجود|متاح|تمام|موافق|ينفع|مناسب|اقدر|أقدر|هقدر|جاهز)/;
 const AREA_COMMIT=/(?:عايز|عاوز|اختار|اختياري|هشتغل|اشتغل|اقدر اشتغل|أقدر اشتغل|التزم|ينفعلي|مناسبه ليا|مناسبة ليا)/;
 
+
+const GENERIC_TOPIC_WORDS=new Set(['هل','ايه','إيه','عايز','عاوز','اعرف','أعرف','محتاج','مطلوب','عندك','معاك','معايا','عندي','متاح','مناسب','الحالي','الحالية','الشغل','العمل','الوظيفة','الوظيفه','بيانات','معلومة','المعلومة']);
+function topicWords(value){
+ return clean(value).split(' ').filter(w=>w.length>=3&&!GENERIC_TOPIC_WORDS.has(w));
+}
+function topicMentioned(question,text){
+ const qWords=topicWords((question?.label||'')+' '+(question?.agent_instruction||''));
+ const n=clean(text);
+ return qWords.some(w=>n.includes(w));
+}
+function explicitAge(text){
+ const n=clean(text);
+ const patterns=[
+  /(?:سني|سنى|عمري|العمر|السن)\s*(?:هو|=|:)?\s*(\d{1,2})/,
+  /(\d{1,2})\s*(?:سنه|سنة|عام)/
+ ];
+ for(const pattern of patterns){
+  const m=n.match(pattern),age=Number(m?.[1]);
+  if(Number.isInteger(age)&&age>=16&&age<=80)return age;
+ }
+ return null;
+}
+function explicitResidence(text){
+ const raw=String(text||'').trim();
+ const m=raw.match(/(?:^|\s)(?:انا\s+)?(?:ساكن(?:\s+حاليا)?\s+في|ساكن\s+|سكني\s+في|انا\s+من|أنا\s+من)\s*[:\-]?\s*([^،,.!?؟؛]{2,80})/u);
+ if(!m)return null;
+ return m[1].split(/\s+(?:و)?(?:عايز|عاوز|ومعايا|معايا|وعندي|عندي|وهشتغل|هشتغل|بس)(?=\s|$)/u)[0].trim();
+}
 function explicitFullName(text){
  const raw=String(text||'').trim();
  const start=raw.match(/(?:^|\s)(?:و\s*)?(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم|esmy|esmi)\s*[:\-]?\s*/iu);
@@ -178,6 +209,20 @@ export function extractConversationFacts(text,questions=[],areas=[]){
   }
  }
 
+ const license=byKey.get('motorcycle_license')||byKey.get('has_motorcycle_license')||byKey.get('has_license');
+ if(license&&LICENSE_WORDS.test(n)){
+  if(/(?:منتهيه|منتهية|مش ساريه|مش سارية|من غير|بدون|معنديش|ماعنديش|مش معايا|مفيش)/.test(n))add(license,false,'لا',.96);
+  else if(/(?:معايا|عندي|ساريه|سارية|موجوده|موجودة)/.test(n))add(license,true,'نعم',.95);
+ }
+
+ const ageQ=byKey.get('age');
+ const age=explicitAge(raw);
+ if(ageQ&&age!==null)add(ageQ,age,String(age),.97);
+
+ const residence=byKey.get('residence_area')||byKey.get('residence');
+ const residenceValue=explicitResidence(raw);
+ if(residence&&residenceValue)add(residence,residenceValue,residenceValue,.94);
+
  const workArea=byKey.get('preferred_work_area');
  if(workArea){
   const mentioned=areaHits(raw,areas).filter(a=>!areaRejected(raw,a));
@@ -201,6 +246,21 @@ export function extractConversationFacts(text,questions=[],areas=[]){
  if(ready&&READY_WORDS.test(n)){
   if(/(?:مش هقدر|مش جاهز|مش قادر|بعد فتره|بعد فترة)/.test(n))add(ready,false,'لا',.9);
   else if(/(?:بكره|بكرة|فورا|فوراً|حالاً|حالا|النهارده|النهاردة|جاهز|من دلوقتي|من بكرة)/.test(n))add(ready,true,'نعم',.94);
+ }
+
+ // Office-defined structured facts can be captured out of order when the user
+ // explicitly mentions their topic. This avoids forcing every reply into the
+ // currently pending question.
+ for(const q of questions||[]){
+  if(!q||q.active===false||result.some(x=>x.question_id===q.id)||q.allow_inference===false)continue;
+  if(!topicMentioned(q,raw))continue;
+  if(q.kind==='yes_no'){
+   const yn=indirectYesNo(raw);
+   if(yn)add(q,yn==='yes',yn==='yes'?'نعم':'لا',.91,'topic_explicit');
+  }else if(q.kind==='number'){
+   const value=numberAnswer(raw);
+   if(value!==null)add(q,Number(value),String(value),.9,'topic_explicit');
+  }
  }
 
  return result;

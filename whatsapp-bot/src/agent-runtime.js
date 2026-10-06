@@ -14,6 +14,30 @@ function clamp(value,min,max,fallback){
  const n=Number(value);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback;
 }
 function trim(value,max=1000){return String(value||'').trim().slice(0,max);}
+function words(value){
+ return String(value||'').toLowerCase()
+  .replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي')
+  .replace(/[^\p{L}\p{N}]+/gu,' ').split(/\s+/).filter(x=>x.length>1);
+}
+function lexicalScore(query,row){
+ const q=new Set(words(query));
+ if(!q.size)return 0;
+ const text=[row?.question,...(row?.examples||[]),...(row?.keywords||[])].join(' ');
+ const t=new Set(words(text));
+ let hits=0;for(const token of q)if(t.has(token))hits++;
+ let score=hits/q.size;
+ if(row?.source==='manual')score+=.12;
+ if(row?.knowledge_scope==='breadfast')score+=.08;
+ return score;
+}
+function compactKnowledge(rows,message,limit=8){
+ const safe=(rows||[]).filter(k=>k?.active!==false&&!['conflict','stale'].includes(String(k.memory_status||'')));
+ return safe
+  .map((row,index)=>({row,index,score:lexicalScore(message,row)}))
+  .sort((a,b)=>b.score-a.score||a.index-b.index)
+  .slice(0,Math.max(4,Math.min(10,limit)))
+  .map(({row})=>row);
+}
 function safePlan(value){
  const p=value&&typeof value==='object'?value:{};
  const action=ALLOWED_ACTIONS.has(p.action)?p.action:'none';
@@ -71,7 +95,7 @@ export class AgentRuntime{
     body:JSON.stringify({
      model:state.model,
      temperature:Number(settings.agent_llm_temperature??0.2),
-     max_tokens:Number(settings.agent_llm_max_tokens||800),
+     max_tokens:Math.max(250,Math.min(700,Number(settings.agent_llm_max_tokens||500))),
      response_format:{type:'json_object'},
      messages
     }),
@@ -85,21 +109,23 @@ export class AgentRuntime{
   }finally{clearTimeout(timer);}
  }
  buildPlannerMessages({message,questions,areas,applicant,knowledge,recentMessages,settings}){
-  const safeQuestions=(questions||[]).filter(q=>q?.active!==false).map(q=>({
+  const currentText=String(message?.body||'');
+  const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,24).map(q=>({
    field_key:q.field_key,kind:q.kind,required:q.required!==false,priority:Number(q.priority||50),
-   label:q.label,instruction:q.agent_instruction||'',confirmation_required:q.confirmation_required===true,
-   options:Array.isArray(q.options)?q.options.slice(0,10):[]
+   label:trim(q.label,180),instruction:trim(q.agent_instruction,220),confirmation_required:q.confirmation_required===true,
+   options:Array.isArray(q.options)?q.options.slice(0,8).map(o=>typeof o==='string'?trim(o,80):{label:trim(o?.label,80),value:trim(o?.value??o?.label,80)}):[]
   }));
-  const safeAreas=(areas||[]).filter(a=>a?.active===true).map(a=>({
-   id:a.id,name:a.name,aliases:a.aliases||[],zone:a.zone||'UNKNOWN',details:String(a.details||'').slice(0,1200)
+  const safeAreas=(areas||[]).filter(a=>a?.active===true).slice(0,35).map(a=>({
+   id:a.id,name:trim(a.name,120),aliases:(a.aliases||[]).slice(0,4).map(x=>trim(x,80)),zone:a.zone||'UNKNOWN'
   }));
-  const safeKnowledge=(knowledge||[]).filter(k=>k?.active!==false&&!['conflict','stale'].includes(String(k.memory_status||''))).slice(0,20).map(k=>({
-   id:k.id,question:k.question,answer:String(k.answer||'').slice(0,1200),scope:k.knowledge_scope||'office',
-   confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,8)
+  const safeKnowledge=compactKnowledge(knowledge,currentText,8).map(k=>({
+   id:k.id,question:trim(k.question,220),answer:trim(k.answer,450),scope:k.knowledge_scope||'office',
+   confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,3).map(x=>trim(x,120))
   }));
-  const conversation=(recentMessages||[]).slice(-Math.max(4,Math.min(30,Number(settings.agent_context_messages||12)))).map(x=>({
+  const contextLimit=Math.max(4,Math.min(8,Number(settings.agent_context_messages||6)));
+  const conversation=(recentMessages||[]).slice(-contextLimit).map(x=>({
    role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
-   text:String(x.body||'').slice(0,1800)
+   text:String(x.body||'').slice(0,700)
   }));
   const system=[
    'أنت Decision Planner لمساعد توظيف Breadfast في مصر.',
@@ -111,12 +137,12 @@ export class AgentRuntime{
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
    'لو السؤال غير موثوق استخدم clarify أو handoff بدل التخمين.',
-   settings.agent_system_instructions||''
+   trim(settings.agent_system_instructions||'',1200)
   ].filter(Boolean).join('\n');
   const payload={
-   current_message:String(message?.body||'').slice(0,4000),
+   current_message:currentText.slice(0,1800),
    awaiting_field:(questions||[]).find(q=>String(q.id)===String(applicant?.awaiting_id||''))?.field_key||null,
-   known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,30).map(v=>({field_key:v.key,value:v.value,display:v.display})),
+   known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,16).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,120)})),
    questions:safeQuestions,areas:safeAreas,knowledge:safeKnowledge,conversation
   };
   return [

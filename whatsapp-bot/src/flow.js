@@ -2,6 +2,7 @@ import {activeQuestions,answered,completion,computedStage,validateAnswer,questio
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,nextAgentQuestion} from './ai.js';
+import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -393,6 +394,32 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
+
+ if(current?.field_key==='preferred_work_area'&&!buttonAction&&(mentionsResidence(m.body)||asksForNearbyArea(m.body))){
+  let recommendation=nearestWorkAreas(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,limit:3});
+  if(!recommendation&&asksForNearbyArea(m.body)){
+   const residenceQuestion=qs.find(q=>['residence_area','residence'].includes(q.field_key));
+   const storedResidence=residenceQuestion?answers[residenceQuestion.id]?.display||answers[residenceQuestion.id]?.value:null;
+   if(storedResidence)recommendation=nearestWorkAreas(String(storedResidence),areas,{limit:3});
+  }
+  if(recommendation){
+   clearAgentState(answers);
+   delete answers.__area_preview;
+   delete answers.__area_page;
+   answers.__area_recommendations={
+    values:recommendation.items.map(item=>item.area.id),
+    origin_key:recommendation.origin.key,
+    origin_label:recommendation.origin.label,
+    kind:'area_recommendations',
+    at:new Date().toISOString()
+   };
+   return {
+    patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
+    reply:nearestWorkAreaReply(recommendation),
+    agent_action:'recommend_nearest_work_area'
+   };
+  }
+ }
 
  if(residenceOnlyWhileChoosingWorkArea(current,m.body)){
   clearAgentState(answers);

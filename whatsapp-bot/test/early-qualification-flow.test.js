@@ -544,11 +544,17 @@ test('LLM next-best action only drives flow in live mode above confidence thresh
  }};
  const liveSettings={...settings,agent_llm_enabled:true,agent_llm_mode:'live',agent_next_best_action_enabled:true,agent_planner_confidence_threshold:.72};
  const live=await planTurn({
-  applicant:a,message:{body:'تمام كمل'},questions,areas,settings:liveSettings,interpret:noAi,knowledge:[],
+  applicant:a,message:{body:'خلينا نتحرك'},questions,areas,settings:liveSettings,interpret:noAi,knowledge:[],
   llmPlan:{action:'resume_flow',confidence:.95,facts:[]}
  });
  assert.equal(live.agent_action,'llm_resume_flow');
  assert.match(live.reply,/موتوسيكل/);
+
+ const deterministicWins=await planTurn({
+  applicant:a,message:{body:'تمام كمل'},questions,areas,settings:liveSettings,interpret:noAi,knowledge:[],
+  llmPlan:{action:'handoff',confidence:.99,facts:[]}
+ });
+ assert.equal(deterministicWins.agent_action,'resume_flow');
 
  const shadowSettings={...liveSettings,agent_llm_mode:'shadow'};
  const shadow=await planTurn({

@@ -143,22 +143,19 @@ export class Worker {
    if(multi)messageRow.whatsapp_account_id=accountId;
    const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
 
-   let settings=null,runMode='live';
-   try{
-    settings=must(await this.db.from('masar_settings').select('*').eq('id',true).single());
-    runMode=settings.ai_run_mode||'live';
-    if(runMode==='training'&&settings.ai_training_until&&Date.parse(settings.ai_training_until)<=Date.now()){
-     try{must(await this.db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204'&&e.code!=='42703')throw e;}
-     runMode='paused';
-    }
-   }catch(e){if(!schemaMissing(e))throw e;}
-   if(runMode==='live')must(await this.db.from('masar_applicants').update({bot_enabled:false,updated_at:new Date().toISOString()}).eq('id',a.id));
+   let settings=null;
+   try{settings=must(await this.db.from('masar_settings').select('*').eq('id',true).single());}
+   catch(e){if(!schemaMissing(e))throw e;}
+   const officeConfig=await config(this.db,a.office_id||null);
+   if(officeConfig.settings?.agent_enabled!==false){
+    must(await this.db.from('masar_applicants').update({bot_enabled:false,updated_at:new Date().toISOString()}).eq('id',a.id));
+   }
 
    let memory={learned:false,action:'skipped'};
    if(source&&settings?.ai_learning_enabled!==false&&((prepared.transcribed&&prepared.transcription_trusted)||!prepared.is_audio)){
-    memory=await learnFromConversation(this.db,{applicantId:a.id,staffMessageId:saved.id,staffId:null,force:runMode==='training'});
+    memory=await learnFromConversation(this.db,{applicantId:a.id,officeId:a.office_id||null,staffMessageId:saved.id,staffId:null,force:true});
    }
-   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',memory_learned:Boolean(memory?.learned),memory_action:memory?.action||'skipped',run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',memory_learned:Boolean(memory?.learned),memory_action:memory?.action||'skipped',agent_enabled:officeConfig.settings?.agent_enabled!==false,learning_mode:'continuous',voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
    try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'linked_whatsapp_staff_reply'});}
    catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
    try{
@@ -193,11 +190,6 @@ export class Worker {
   const now=Date.now();
   if(now-this.lastFollowupSweep<60000)return;
   this.lastFollowupSweep=now;
-  let globalSettings;
-  try{globalSettings=must(await this.db.from('masar_settings').select('*').eq('id',true).single());}catch(e){throw e;}
-  let runMode=globalSettings?.ai_run_mode||'live';
-  if(runMode==='training'&&globalSettings?.ai_training_until&&Date.parse(globalSettings.ai_training_until)<=now)runMode='paused';
-  if(runMode!=='live')return;
   let candidates;
   try{
    candidates=must(await this.db.from('masar_applicants').select('*').in('stage',['new','incomplete']).eq('bot_enabled',true).order('updated_at',{ascending:true}).limit(1000));
@@ -211,7 +203,7 @@ export class Worker {
   const configCache=new Map();
   for(const a of candidates){
    const key=a.office_id||'__global__';if(!configCache.has(key))configCache.set(key,await config(this.db,a.office_id||null));
-   const c=configCache.get(key);if(c.settings?.followup_enabled!==true)continue;
+   const c=configCache.get(key);if(c.settings?.agent_enabled===false||c.settings?.followup_enabled!==true)continue;
    const hours=Math.max(1,Math.min(72,Number(c.settings?.followup_hours)||8));
    if(blocked.has(a.id)||!followupDue(a,{now,hours}))continue;
    const body=buildFollowupMessage(a,c.questions,c.areas);
@@ -240,20 +232,15 @@ export class Worker {
     if(prior.length){blocked.add(m.applicant_id);continue;}
     try{
      const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db,a.office_id||null);
-     let runMode=c.settings?.ai_run_mode||'live';
-     if(runMode==='training'&&c.settings?.ai_training_until&&Date.parse(c.settings.ai_training_until)<=Date.now()){
-      try{must(await this.db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204'&&e.code!=='42703')throw e;}
-      runMode='paused';
-     }
-     if(runMode!=='live'){
-      // Silent learning mode: never answer the applicant, but keep understanding
-      // the conversation so the recruitment pipeline can move automatically.
-      try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:runMode==='training'?'training_silent':'paused_silent'});}
+     if(c.settings?.agent_enabled===false){
+      // Office-level agent pause. Learning from staff continues 24/7, but the
+      // agent does not reply to applicants in this office.
+      try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'office_agent_paused'});}
       catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
       must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
       continue;
      }
-     const knowledge=await loadKnowledge(this.db);
+     const knowledge=await loadKnowledge(this.db,a.office_id||null);
      const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge});
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.followup_reply){
@@ -311,10 +298,8 @@ export class Worker {
     if(snapshot?.status!=='connected')continue;
     const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled,answers,office_id').eq('id',m.applicant_id).single());
     const cfgKey=a.office_id||'__global__';if(!sendConfigCache.has(cfgKey))sendConfigCache.set(cfgKey,await config(this.db,a.office_id||null));const sendConfig=sendConfigCache.get(cfgKey);
-    let outgoingRunMode=sendConfig?.settings?.ai_run_mode||'live';
-    if(outgoingRunMode==='training'&&sendConfig?.settings?.ai_training_until&&Date.parse(sendConfig.settings.ai_training_until)<=Date.now())outgoingRunMode='paused';
-    if(m.sender==='bot'&&outgoingRunMode!=='live'){
-     must(await this.db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي لأن البوت العام متوقف.'}).eq('id',m.id));
+    if(m.sender==='bot'&&sendConfig?.settings?.agent_enabled===false){
+     must(await this.db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي لأن Agent المكتب متوقف.'}).eq('id',m.id));
      continue;
     }
     let buttons=[];

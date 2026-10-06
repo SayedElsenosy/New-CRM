@@ -113,7 +113,7 @@ const AREA_COMMIT=/(?:عايز|عاوز|اختار|اختياري|هشتغل|ا�
 
 function explicitFullName(text){
  const raw=String(text||'').trim();
- const start=raw.match(/(?:^|\s)(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم)\s*[:\-]?\s*/u);
+ const start=raw.match(/(?:^|\s)(?:و\s*)?(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم)\s*[:\-]?\s*/u);
  if(!start)return null;
  const rest=raw.slice((start.index||0)+start[0].length)
   .split(/[،,.!?؟؛;]/)[0]

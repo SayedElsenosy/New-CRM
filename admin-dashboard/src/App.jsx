@@ -97,7 +97,7 @@ export default function App(){
  {activeTab==='whatsapp'&&can('whatsapp')&&<WhatsApp action={action} role={role} offices={bootstrap.offices||[]} officesConfigured={bootstrap.offices_configured}/>} 
  {activeTab==='campaigns'&&can('campaigns')&&(scopedReady?<Campaigns action={action} officeId={bootstrap.config_office_id||officeId} role={role}/>:<OfficeScopeRequired offices={bootstrap.offices||[]} onOffice={setOfficeId} title="الحملات الإعلانية"/>)} 
  {activeTab==='reports'&&can('reports')&&<Reports version={version} officeId={officeId}/>} 
- {activeTab==='intelligence'&&role==='admin'&&<BotIntelligence action={action}/>}
+ {activeTab==='agent'&&role==='admin'&&<AIAgentPage action={action}/>}
  {activeTab==='staff'&&['admin','office_admin'].includes(role)&&<StaffPage action={action} currentRole={role} currentOfficeId={bootstrap.office_id||officeId}/>} 
  {activeTab==='settings'&&can('settings')&&(scopedReady?<SettingsPage {...shared} officeId={bootstrap.config_office_id||officeId} role={role}/>:<OfficeScopeRequired offices={bootstrap.offices||[]} onOffice={setOfficeId} title="إعدادات المكتب"/>)}
  {activeTab==='support'&&<SupportPage/>}

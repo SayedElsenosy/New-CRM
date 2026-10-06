@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {interpret} from './ai.js';
-import {loadKnowledge,schemaMissing,learnFromConversation,promotePendingLearning} from './knowledge.js';
+import {loadKnowledge,schemaMissing,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
@@ -63,6 +63,7 @@ export class Worker {
  async init(){
   await fs.mkdir(this.spool,{recursive:true});
   try{await promotePendingLearning(this.db);}catch(e){if(!schemaMissing(e))console.warn('Pending memory promotion failed:',e.code||e.name||'Error');}
+  try{await rebuildBreadfastSharedBrain(this.db);}catch(e){if(!schemaMissing(e))console.warn('Breadfast shared brain rebuild failed:',e.code||e.name||'Error');}
   must(await this.db.from('masar_messages').update({status:'uncertain',error:'الخدمة توقفت أثناء الإرسال؛ راجع واتساب قبل إعادة المحاولة.'}).eq('status','sending'));
   this.timer=setInterval(()=>this.tick(),2500);this.timer.unref();
  }

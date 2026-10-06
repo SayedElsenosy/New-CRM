@@ -133,14 +133,18 @@ test('work area is previewed first, saved only after confirmation, then motorcyc
  assert.match(afterBike.reply+String(afterBike.followup_reply||''),/اسمك بالكامل/);
 });
 
-test('residence mention never becomes preferred work area',async()=>{
+test('residence mention recommends nearby work areas but never becomes the final work area',async()=>{
  const qs=[...questions,{id:'res2',field_key:'residence_area',kind:'text',label:'ساكن فين؟',position:90,priority:20,active:true,required:false}];
+ const liveAreas=[...areas,{id:'zayed',name:'الشيخ زايد',aliases:['زايد'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل زايد'}];
  const a={...applicant,awaiting_id:'q2',answers:{}};
- const r=await planTurn({applicant:a,message:{body:'انا ساكن في زايد'},questions:qs,areas:[...areas,{id:'zayed',name:'الشيخ زايد',aliases:['زايد'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل زايد'}],settings,interpret:noAi,knowledge:[]});
+ const r=await planTurn({applicant:a,message:{body:'انا ساكن في زايد'},questions:qs,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
  assert.equal(r.patch.answers?.q2,undefined);
  assert.equal(r.patch.answers?.res2?.value,'زايد');
  assert.equal(r.patch.awaiting_id,'q2');
- assert.match(r.followup_reply||r.reply,/منطقة|تنزل شغل/);
+ assert.equal(r.agent_action,'recommend_nearest_work_area');
+ assert.equal(r.patch.answers.__area_recommendations.values[0],'zayed');
+ assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/اختار المنطقة من الأزرار/);
 });
 
 test('answering another field never gets consumed as the current pending question',async()=>{
@@ -229,15 +233,31 @@ test('agent understands work-area aliases while extracting natural replies',asyn
  assert.match(r.reply,/أكتوبر/);
 });
 
-test('residence wording while choosing work area never selects the work area',async()=>{
+test('residence wording while choosing work area recommends instead of selecting',async()=>{
  const liveAreas=[...areas,{id:'zayed',name:'الشيخ زايد',aliases:['زايد'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل الشيخ زايد'}];
  const a={...applicant,awaiting_id:'q2',answers:{}};
  const r=await planTurn({applicant:a,message:{body:'انا ساكن في زايد'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
  assert.equal(r.patch.answers?.q2,undefined);
  assert.equal(r.patch.awaiting_id,'q2');
- assert.equal(r.agent_action,'clarify_work_area_vs_residence');
- assert.match(r.reply,/مكان سكنك/);
- assert.match(r.reply,/منطقة الشغل/);
+ assert.equal(r.agent_action,'recommend_nearest_work_area');
+ assert.equal(r.patch.answers.__area_recommendations.values[0],'zayed');
+ assert.match(r.reply,/أقرب اختيارات الشغل/);
+});
+
+test('Imbaba question recommends Mohandessin when it is an active work area',async()=>{
+ const liveAreas=[
+  ...areas,
+  {id:'moh',name:'المهندسين مطاعم',aliases:['المهندسين'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل المهندسين'},
+  {id:'haram',name:'الهرم مطاعم',aliases:['الهرم'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل الهرم'}
+ ];
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'طيب انا ساكن في امبابة ايه اقرب حاجة ليا'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers?.q2,undefined);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.agent_action,'recommend_nearest_work_area');
+ assert.equal(r.patch.answers.__area_recommendations.values[0],'moh');
+ assert.match(r.reply,/المهندسين مطاعم/);
+ assert.match(r.reply,/الأقرب تقريبًا/);
 });
 
 test('ambiguous no plus a side question never disqualifies motorcycle automatically',async()=>{

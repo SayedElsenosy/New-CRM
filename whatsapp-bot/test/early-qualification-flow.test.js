@@ -196,6 +196,37 @@ test('typing an eligible area name directly saves it without preview or confirma
  assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
 });
 
+
+test('agent can reopen work-area answer without changing qualification rules',async()=>{
+ const a={...applicant,stage:'incomplete',awaiting_id:'q3',answers:{
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
+  q2:{value:'oct',display:'أكتوبر',kind:'area',key:'preferred_work_area',work_area_eligible:true,work_area_zone:'WEST'}
+ }};
+ const r=await planTurn({applicant:a,message:{body:'عايز اغير المنطقة'},questions,areas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.handoff,undefined);
+ assert.equal(r.agent_action,'change_answer');
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+});
+
+test('agent can recover from no-work-area stop when applicant wants to choose again',async()=>{
+ const stopped={...applicant,stage:'incomplete',awaiting_id:null,answers:{
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
+  q2:{value:'__none__',display:'لا توجد منطقة مناسبة',kind:'area',key:'preferred_work_area',no_eligible_work_area:true,work_area_eligible:false},
+  __qualification_stop:{reason:'no_eligible_work_area',at:new Date().toISOString()},
+  __application_flow_status:{value:'stopped_not_qualified',reason:'no_eligible_work_area',kind:'flow_status'}
+ }};
+ const r=await planTurn({applicant:stopped,message:{body:'غيرت رأيي عايز اغير المنطقة'},questions,areas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.handoff,undefined);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__qualification_stop,undefined);
+ assert.equal(r.patch.answers.__application_flow_status.value,'active');
+ assert.match(r.reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
+});
+
 test('explicit no available work area stops as not qualified',async()=>{
  const attribution={source_id:'ad-1'};
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{

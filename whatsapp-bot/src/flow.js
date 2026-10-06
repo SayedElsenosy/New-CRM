@@ -473,6 +473,28 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   clearAgentState(answers);
   return {patch:{answers,awaiting_id:current?.id||null},reply:current?questionPrompt(current,areas):postCompletionReply(),agent_action:'resume_flow',agent_confidence:decision.confidence};
  }
+ const livePlanner=settings.agent_llm_enabled===true&&settings.agent_llm_mode==='live'
+  &&settings.agent_next_best_action_enabled!==false
+  &&Number(llmPlan?.confidence||0)>=Number(settings.agent_planner_confidence_threshold||.72)
+  ?llmPlan:null;
+ if(livePlanner&&(!decision||decision.action==='unknown')){
+  if(livePlanner.action==='change_answer'&&livePlanner.field_key){
+   const reopened=reopenAnswer({decision:{action:'change_answer',field_key:livePlanner.field_key,confidence:livePlanner.confidence},answers,questions,areas,applicant:a});
+   if(reopened)return {...reopened,agent_action:'llm_change_answer',agent_confidence:livePlanner.confidence};
+  }
+  if(livePlanner.action==='resume_flow'){
+   clearAgentState(answers);
+   return {patch:{answers,awaiting_id:current?.id||null},reply:current?questionPrompt(current,areas):postCompletionReply(),agent_action:'llm_resume_flow',agent_confidence:livePlanner.confidence};
+  }
+  if(livePlanner.action==='clarify'){
+   clearAgentState(answers);
+   const clarification=current?explainCurrentQuestion(current,areas):String(livePlanner.clarification||'ممكن توضح قصدك أكتر علشان أساعدك بدقة؟').slice(0,500);
+   return {patch:{answers,awaiting_id:current?.id||null},reply:clarification,agent_action:'llm_clarify',agent_confidence:livePlanner.confidence};
+  }
+  if(livePlanner.action==='handoff'){
+   return handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:'llm_low_confidence_or_exception'});
+  }
+ }
  if(!protocolAction&&decision?.action==='answer_current'&&current?.field_key==='preferred_work_area'&&decision.area_id){
   const area=areas.find(z=>z.active&&String(z.id)===String(decision.area_id));
   if(area){

@@ -275,5 +275,14 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[versionCount]}=await db.query("select count(*)::int as n from masar_knowledge_versions");
  const {rows:[reliableKnowledgeCount]}=await db.query("select count(*)::int as n from masar_knowledge");
  assert.equal(versionCount.n,reliableKnowledgeCount.n);
+
+ const sharedBrainSql=await fs.readFile(new URL('../../supabase/021_breadfast_shared_brain.sql',import.meta.url),'utf8');
+ await db.exec(sharedBrainSql);await db.exec(sharedBrainSql);
+ const {rows:[choiceQuestion]}=await db.query("insert into masar_questions(office_id,label,field_key,kind,options,required,active,position) values($1,'أنهي شيفت مناسب ليك؟','shift_type','choice',$2::jsonb,true,true,99) returning kind,options",[primaryOfficeForConfig.id,JSON.stringify([{label:'صباحي',value:'morning'},{label:'مسائي',value:'evening'}])]);
+ assert.equal(choiceQuestion.kind,'choice');assert.equal(choiceQuestion.options.length,2);
+ const {rows:[brainColumns]}=await db.query("select knowledge_scope,examples,shared_office_count from masar_knowledge order by created_at limit 1");
+ assert.ok(['office','breadfast','system','legacy'].includes(brainColumns.knowledge_scope));
+ assert.ok(Array.isArray(brainColumns.examples));
+ assert.ok(Number(brainColumns.shared_office_count)>=0);
  }finally{await db.close();}
 });

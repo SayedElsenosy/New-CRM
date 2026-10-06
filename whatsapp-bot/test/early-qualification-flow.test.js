@@ -109,6 +109,57 @@ test('job details are answered as a trusted overview without asking residence or
  assert.equal(r.followup_reply,undefined);
 });
 
+test('area button saves preferred work area even while another question is pending',async()=>{
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const selected=await call(a,'area_preview:oct');
+ assert.equal(selected.patch.answers.q2.value,'oct');
+ assert.equal(selected.patch.awaiting_id,'q1');
+ assert.match(selected.reply,/أكتوبر/);
+ assert.match(selected.followup_reply,/هل معاك موتوسيكل/);
+
+ const afterBike=await call({...a,awaiting_id:selected.patch.awaiting_id,answers:selected.patch.answers},'اه معايا موتوسيكل');
+ assert.equal(afterBike.patch.answers.q1.value,true);
+ assert.equal(afterBike.patch.answers.q2.value,'oct');
+ assert.equal(afterBike.patch.awaiting_id,'q3');
+ assert.match(afterBike.reply+String(afterBike.followup_reply||''),/اسمك بالكامل/);
+ assert.doesNotMatch(afterBike.reply+String(afterBike.followup_reply||''),/أنهي منطقة تقدر تشتغل/);
+});
+
+test('answering another field never gets consumed as the current pending question',async()=>{
+ const qs=[
+  ...questions,
+  {id:'license',field_key:'motorcycle_license',kind:'yes_no',label:'معاك رخصة موتوسيكل سارية؟',position:6,active:true,required:false},
+  {id:'age',field_key:'age',kind:'number',label:'سنك كام؟',position:7,active:true,required:false},
+  {id:'residence',field_key:'residence_area',kind:'text',label:'ساكن فين؟',position:8,active:true,required:false}
+ ];
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'معايا رخصة سارية وسني 24 وساكن فيصل'},questions:qs,areas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers.license.value,true);
+ assert.equal(r.patch.answers.age.value,24);
+ assert.equal(r.patch.answers.residence.value,'فيصل');
+ assert.equal(r.patch.answers.q1,undefined);
+ assert.equal(r.patch.awaiting_id,'q1');
+ assert.match(r.followup_reply,/هل معاك موتوسيكل/);
+});
+
+test('one turn can save a fact and answer a side question naturally',async()=>{
+ const kb=[
+  {id:'shift',question:'الشيفت كام ساعة؟',answer:'الشيفت 9 ساعات.',source:'manual',active:true,memory_status:'verified'},
+  {id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه.',source:'manual',active:true,memory_status:'verified'},
+  {id:'income',question:'الدخل كام؟',answer:'الدخل حسب الشغل والأوردرات والحوافز.',source:'manual',active:true,memory_status:'verified'},
+  {id:'insurance',question:'في تأمين؟',answer:'أيوه، فيه تأمين طبي.',source:'manual',active:true,memory_status:'verified'},
+  {id:'bike',question:'لازم موتوسيكل؟',answer:'أيوه، الموتوسيكل شرط أساسي.',source:'manual',active:true,memory_status:'verified'},
+  {id:'free',question:'التقديم بفلوس؟',answer:'لا، التقديم مجاني.',source:'manual',active:true,memory_status:'verified'}
+ ];
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'معايا موتوسيكل وعايز اعرف تفاصيل الشغل'},questions,areas,settings,interpret:noAi,knowledge:kb});
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.agent_action,'job_overview_with_facts');
+ assert.match(r.reply,/6200/);
+ assert.equal(r.followup_reply,undefined);
+});
+
 test('dynamic agent extracts several facts from one Egyptian message and skips duplicate questions',async()=>{
  const a={...applicant,awaiting_id:'q1',answers:{}};
  const r=await call(a,'اه معايا موتوسيكل واسمي محمد احمد وعايز أكتوبر');

@@ -247,5 +247,18 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(namePriority.priority,90);
  const {rows:knowledgeScopes}=await db.query("select office_id from masar_knowledge limit 1");
  assert.equal(Object.prototype.hasOwnProperty.call(knowledgeScopes[0],'office_id'),true);
+
+ const {rows:[officeTotal]}=await db.query("select count(*)::int as n from masar_offices");
+ const {rows:[scopedSalary]}=await db.query("select count(*)::int as n from masar_knowledge where question='المرتب كام؟' and office_id is not null and active=true");
+ assert.equal(scopedSalary.n,officeTotal.n);
+ const {rows:[globalSalary]}=await db.query("select active from masar_knowledge where question='المرتب كام؟' and office_id is null limit 1");
+ assert.equal(globalSalary.active,false);
+
+ const {rows:[futureOffice]}=await db.query("insert into masar_offices(name,code) values('Agent Clone Office','AGENTCLONE') returning id");
+ await db.query("select masar_clone_office_config($1,$2,false)",[primaryOfficeForConfig.id,futureOffice.id]);
+ const {rows:[futureQuestion]}=await db.query("select priority,allow_inference,confirmation_required from masar_questions where office_id=$1 and field_key='has_motorcycle'",[futureOffice.id]);
+ assert.equal(futureQuestion.priority,100);assert.equal(futureQuestion.allow_inference,true);assert.equal(futureQuestion.confirmation_required,false);
+ const {rows:[futureAgent]}=await db.query("select agent_enabled from masar_office_settings where office_id=$1",[futureOffice.id]);
+ assert.equal(futureAgent.agent_enabled,true);
  }finally{await db.close();}
 });

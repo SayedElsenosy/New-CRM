@@ -283,19 +283,24 @@ test('answer plus a real question still uses knowledge then resumes the flow',as
  assert.match(r.followup_reply,/أنهي منطقة تقدر تشتغل فيها يوميًا/);
 });
 
-test('eligible work area button is saved immediately and continues the flow',async()=>{
+test('eligible work area is previewed and becomes qualifying only after confirmation',async()=>{
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
   q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}
  }};
- const r=await call(a,'area_preview:tagamoa');
+ const preview=await call(a,'area_preview:tagamoa');
+ assert.equal(preview.patch.answers.q2,undefined);
+ assert.equal(preview.patch.answers.__area_preview.value,'tagamoa');
+ assert.equal(preview.patch.awaiting_id,'q2');
+ assert.match(preview.reply,/تفاصيل التجمع/);
+ assert.match(preview.reply,/مناسبة وكمل/);
+
+ const r=await call({...a,awaiting_id:'q2',answers:preview.patch.answers},'confirm_area:tagamoa');
  assert.equal(r.patch.answers.q2.value,'tagamoa');
  assert.equal(r.patch.answers.q2.work_area_eligible,true);
  assert.equal(r.patch.answers.__area_preview,undefined);
  assert.equal(r.patch.awaiting_id,'q3');
- assert.match(r.reply,/سجلت منطقة العمل: التجمع/);
- assert.match(r.reply,/تفاصيل التجمع/);
- assert.doesNotMatch(r.reply,/اكتب اسمك بالكامل|تأكيد التجمع/);
- assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
+ assert.match(r.reply,/هنكمل على منطقة التجمع/);
+ assert.match(r.followup_reply,/اسمك بالكامل/);
  const q=qualificationFor({...a,answers:r.patch.answers},questions,areas,settings);
  assert.equal(q.geo_qualified,true);
  assert.equal(q.geo_basis,'preferred_work_area');
@@ -303,7 +308,7 @@ test('eligible work area button is saved immediately and continues the flow',asy
 });
 
 
-test('legacy active work area cannot appear in bot and then fail qualification',async()=>{
+test('legacy active work area is previewed then confirms as eligible after normalization',async()=>{
  const legacyAreas=normalizeWorkAreas([
   ...areas.filter(x=>x.id!=='outside'),
   {id:'hadayek-market',name:'حدائق الأهرام ماركت',active:true,recruitment_eligible:false,zone:'WEST',details:'تفاصيل حدائق الأهرام ماركت'}
@@ -311,28 +316,28 @@ test('legacy active work area cannot appear in bot and then fail qualification',
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
   q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}
  }};
- const r=await planTurn({applicant:a,message:{body:'area_preview:hadayek-market'},questions,areas:legacyAreas,settings,interpret:noAi,knowledge:[]});
+ const preview=await planTurn({applicant:a,message:{body:'area_preview:hadayek-market'},questions,areas:legacyAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(preview.patch.answers.q2,undefined);
+ assert.equal(preview.patch.answers.__area_preview.value,'hadayek-market');
+ assert.match(preview.reply,/تفاصيل حدائق الأهرام ماركت/);
+ const r=await planTurn({applicant:{...a,awaiting_id:'q2',answers:preview.patch.answers},message:{body:'confirm_area:hadayek-market'},questions,areas:legacyAreas,settings,interpret:noAi,knowledge:[]});
  assert.equal(r.patch.answers.q2.value,'hadayek-market');
  assert.equal(r.patch.answers.q2.work_area_eligible,true);
  assert.equal(r.patch.awaiting_id,'q3');
  assert.equal(r.patch.answers.__qualification_stop,undefined);
- assert.match(r.reply,/سجلت منطقة العمل: حدائق الأهرام ماركت/);
- assert.match(r.reply,/تفاصيل حدائق الأهرام ماركت/);
- assert.doesNotMatch(r.reply,/اكتب اسمك بالكامل/);
- assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
+ assert.match(r.reply,/هنكمل على منطقة حدائق الأهرام ماركت/);
 });
 
-test('typing an eligible area name directly saves it without preview or confirmation',async()=>{
+test('typing a work area previews details and waits for confirmation',async()=>{
  const a={...applicant,stage:'incomplete',awaiting_id:'q2',answers:{
   q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'}
  }};
- const r=await call(a,'مدينة نصر');
- assert.equal(r.patch.answers.q2.value,'nasr');
- assert.equal(r.patch.awaiting_id,'q3');
- assert.match(r.reply,/سجلت منطقة العمل: مدينة نصر/);
+ const r=await call(a,'عايز اشتغل في مدينة نصر');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'nasr');
+ assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/تفاصيل مدينة نصر/);
- assert.doesNotMatch(r.reply,/اكتب اسمك بالكامل|تأكيد مدينة نصر/);
- assert.match(r.followup_reply,/اكتب اسمك بالكامل/);
+ assert.match(r.reply,/مناسبة وكمل/);
 });
 
 

@@ -128,9 +128,10 @@ function shouldReplaceKnowledgeAnswer(previous,next){
  if(CORRECTION_WORDS.test(newCanonical))return true;
  return newText.length>=Math.max(20,Math.round(oldText.length*.8));
 }
-async function insertAuditSuggestion(db,{applicantId,candidate,staffId,status='approved'}){
+async function insertAuditSuggestion(db,{applicantId,officeId=null,candidate,staffId,status='approved'}){
  const row={
   applicant_id:applicantId,
+  ...(officeId?{office_id:officeId}:{}),
   source_message_id:candidate.source_message_id,
   staff_message_id:candidate.staff_message_id,
   question:candidate.question,
@@ -153,8 +154,10 @@ async function recordMemoryEvent(db,{applicantId,kind,detail}){
   if(result.error)throw result.error;
  }catch(e){if(!schemaMissing(e))throw e;}
 }
-async function upsertOperationalMemory(db,{applicantId,candidate,staffId,suggestionId=null}){
- const knowledgeResult=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});
+async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,staffId,suggestionId=null}){
+ let knowledgeQuery=db.from('masar_knowledge').select('*').eq('active',true);
+ if(officeId)knowledgeQuery=knowledgeQuery.or('office_id.is.null,office_id.eq.'+officeId);
+ const knowledgeResult=await knowledgeQuery.order('updated_at',{ascending:false});
  if(knowledgeResult.error)throw knowledgeResult.error;
  const rows=knowledgeResult.data||[];
  const match=findKnowledgeAnswer(candidate.question,rows,.84,{allowStatement:true});
@@ -179,6 +182,7 @@ async function upsertOperationalMemory(db,{applicantId,candidate,staffId,suggest
   keywords:autoKeywords(candidate.question),
   active:true,
   source:'staff',
+  ...(officeId?{office_id:officeId}:{}),
   created_by:staffId||null,
   ...(suggestionId?{source_suggestion_id:suggestionId}:{})
  };
@@ -187,8 +191,13 @@ async function upsertOperationalMemory(db,{applicantId,candidate,staffId,suggest
  await recordMemoryEvent(db,{applicantId,kind:'ai_memory_learned',detail:{knowledge_id:inserted.data.id,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id}});
  return {learned:true,action:'created',knowledge_id:inserted.data.id,question:candidate.question};
 }
-export async function learnFromConversation(db,{applicantId,staffMessageId,staffId=null,force=false}){
+export async function learnFromConversation(db,{applicantId,officeId=null,staffMessageId,staffId=null,force=false}){
  try{
+  if(!officeId){
+   const applicantResult=await db.from('masar_applicants').select('office_id').eq('id',applicantId).maybeSingle();
+   if(!applicantResult.error)officeId=applicantResult.data?.office_id||null;
+   else if(!schemaMissing(applicantResult.error)&&applicantResult.error.code!=='PGRST204')throw applicantResult.error;
+  }
   const messagesResult=await db.from('masar_messages').select('id,direction,sender,body,sequence,created_at').eq('applicant_id',applicantId).order('sequence',{ascending:false}).limit(40);
   if(messagesResult.error)throw messagesResult.error;
   const messages=[...(messagesResult.data||[])].reverse();
@@ -198,8 +207,8 @@ export async function learnFromConversation(db,{applicantId,staffMessageId,staff
    return {learned:false,action:'skipped'};
   }
   let suggestion=null;
-  try{suggestion=await insertAuditSuggestion(db,{applicantId,candidate,staffId,status:'approved'});}catch(e){if(!schemaMissing(e))throw e;}
-  return await upsertOperationalMemory(db,{applicantId,candidate,staffId,suggestionId:suggestion?.id||null});
+  try{suggestion=await insertAuditSuggestion(db,{applicantId,officeId,candidate,staffId,status:'approved'});}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
+  return await upsertOperationalMemory(db,{applicantId,officeId,candidate,staffId,suggestionId:suggestion?.id||null});
  }catch(e){
   if(schemaMissing(e))return {learned:false,action:'schema_missing'};
   throw e;
@@ -223,7 +232,12 @@ export async function promotePendingLearning(db,{limit=500}={}){
     if(rejected.error)throw rejected.error;
     skipped++;continue;
    }
-   await upsertOperationalMemory(db,{applicantId:suggestion.applicant_id,candidate,staffId:suggestion.created_by,suggestionId:null});
+   let officeId=suggestion.office_id||null;
+   if(!officeId&&suggestion.applicant_id){
+    const applicantResult=await db.from('masar_applicants').select('office_id').eq('id',suggestion.applicant_id).maybeSingle();
+    if(!applicantResult.error)officeId=applicantResult.data?.office_id||null;
+   }
+   await upsertOperationalMemory(db,{applicantId:suggestion.applicant_id,officeId,candidate,staffId:suggestion.created_by,suggestionId:null});
    const approved=await db.from('masar_learning_suggestions').update({status:'approved',reviewed_by:suggestion.created_by||null,reviewed_at:new Date().toISOString()}).eq('id',suggestion.id);
    if(approved.error)throw approved.error;
    promoted++;
@@ -269,18 +283,29 @@ export function findKnowledgeAnswer(text,rows,threshold=.62,{allowStatement=fals
  }
  return best&&best.confidence>=threshold?best:null;
 }
-export async function loadKnowledge(db){
+export async function loadKnowledge(db,officeId=null){
  try{
-  const result=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});
+  let query=db.from('masar_knowledge').select('*').eq('active',true);
+  if(officeId)query=query.or('office_id.is.null,office_id.eq.'+officeId);
+  const result=await query.order('updated_at',{ascending:false});
   if(result.error)throw result.error;
   return result.data||[];
- }catch(e){if(schemaMissing(e))return [];throw e;}
+ }catch(e){
+  if(['42703','PGRST204'].includes(e?.code||'')){
+   const legacy=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});
+   if(legacy.error){if(schemaMissing(legacy.error))return [];throw legacy.error;}
+   return legacy.data||[];
+  }
+  if(schemaMissing(e))return [];
+  throw e;
+ }
 }
-export async function createLearningSuggestion(db,{applicantId,sourceMessage,staffMessageId,answer,staffId,force=false}){
+export async function createLearningSuggestion(db,{applicantId,officeId=null,sourceMessage,staffMessageId,answer,staffId,force=false}){
  if(!isLearnableExchange(sourceMessage?.body,answer,{force}))return false;
  try{
   const result=await db.from('masar_learning_suggestions').insert({
    applicant_id:applicantId,
+   ...(officeId?{office_id:officeId}:{}),
    source_message_id:sourceMessage.id,
    staff_message_id:staffMessageId,
    question:String(sourceMessage.body).trim().slice(0,2000),

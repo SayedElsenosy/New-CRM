@@ -443,6 +443,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(action){
   const area=areas.find(z=>z.active&&z.id===action.id);
   if(!area)return {patch:current?{awaiting_id:current.id}:{},reply:current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas)};
+  const preferredQuestion=qs.find(q=>q.field_key==='preferred_work_area');
+  if(preferredQuestion&&!answered(preferredQuestion,answers,areas)&&(action.type==='preview'||action.type==='confirm')){
+   return commitAreaChoice({area,current:preferredQuestion,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+  }
   if(current?.kind==='area'){
    if(current.field_key==='preferred_work_area'&&(action.type==='preview'||action.type==='confirm')){
     return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
@@ -483,8 +487,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
 
  if(areaListInquiry(m.body)){
   answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:true};
-  const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
-  return {patch:current?{answers,awaiting_id:current.id}:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas)+continueFlow};
+  return {patch:current?{answers,awaiting_id:current.id}:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas),agent_action:'answer_area_list'};
  }
 
  const turnNorm=norm(m.body);
@@ -524,6 +527,13 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  if(current&&a.awaiting_id===current.id&&norm(m.body)!=='تخطي'){
+  const answeredOtherFact=savedAgentFacts.length>0&&!savedAgentFacts.some(x=>x.q.id===current.id);
+  if(answeredOtherFact){
+   const factsText=savedAgentFacts.map(x=>x.q.field_key==='preferred_work_area'
+    ?'تمام، سجلت منطقة العمل: '+x.fact.display+' ✅'
+    :'تمام، سجلت '+x.q.label.replace(/[?؟.]+$/,'')+' ✅').join('\n');
+   return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:factsText,followup_reply:questionPrompt(current,areas),agent_action:'out_of_order_fact'};
+  }
   const parsed=await parseStructuredPendingAnswer({current,message:m,areas,settings,interpret});
   if(parsed){
    clearAgentState(answers);

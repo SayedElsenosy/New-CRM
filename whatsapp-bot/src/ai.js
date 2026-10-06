@@ -177,7 +177,7 @@ function explicitFullName(text){
 }
 function factPriority(q){
  const key=q?.field_key;
- const special={has_motorcycle:100,preferred_work_area:95,full_name:90,shift_acceptance:80,ready_to_start:70};
+ const special={preferred_work_area:100,has_motorcycle:90,full_name:80,shift_acceptance:70,ready_to_start:60};
  return Number.isFinite(Number(q?.priority))?Number(q.priority):(special[key]||50);
 }
 export function nextAgentQuestion(questions,answers,areas,answeredFn){
@@ -227,7 +227,8 @@ export function extractConversationFacts(text,questions=[],areas=[]){
  if(workArea){
   const mentioned=areaHits(raw,areas).filter(a=>!areaRejected(raw,a));
   const asksOnlyInfo=hasAny(n,INFO_WORDS)&&(/[?؟]/.test(raw)||/(?:كام|ايه|فين|تفاصيل|مرتب|راتب|قبض|مواعيد)/.test(n));
-  if(mentioned.length===1&&(!asksOnlyInfo||AREA_COMMIT.test(n))){
+  const residenceOnly=RESIDENCE_WORDS.test(n)&&!AREA_COMMIT.test(n);
+  if(mentioned.length===1&&!residenceOnly&&(!asksOnlyInfo||AREA_COMMIT.test(n))){
    add(workArea,mentioned[0].id,mentioned[0].name,.96);
   }
  }

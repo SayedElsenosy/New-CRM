@@ -159,7 +159,7 @@ function explicitAge(text){
 }
 function explicitResidence(text){
  const raw=String(text||'').trim();
- const m=raw.match(/(?:^|\s)(?:و\s*)?(?:انا\s+)?(?:ساكن(?:\s+حاليا)?\s+في|ساكن\s+|سكني\s+في|انا\s+من|أنا\s+من)\s*[:\-]?\s*([^،,.!?؟؛]{2,80})/u);
+ const m=raw.match(/(?:^|\s)(?:و\s*)?(?:انا\s+)?(?:ساكن(?:\s+حاليا)?\s+في\s+|ساكن\s+|سكني\s+في\s+|انا\s+من\s+|أنا\s+من\s+)[:\-]?\s*([^،,.!?؟؛]{2,80})/u);
  if(!m)return null;
  return m[1].split(/\s+(?:و)?(?:عايز|عاوز|ومعايا|معايا|وعندي|عندي|وهشتغل|هشتغل|بس)(?=\s|$)/u)[0].trim();
 }

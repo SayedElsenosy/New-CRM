@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
-import {STAGES,computedStage,completion,csvCell} from './domain.js';
+import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,snapshotKnowledgeVersion,recordKnowledgeEvidence} from './knowledge.js';
 import {legacyImport} from './legacy.js';

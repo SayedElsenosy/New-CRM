@@ -302,6 +302,28 @@ test('Imbaba question recommends Mohandessin when it is an active work area',asy
  assert.match(r.reply,/الأقرب تقريبًا/);
 });
 
+test('compound residence message stores motorcycle, answers salary, and recommends nearby area',async()=>{
+ const liveAreas=[
+  ...areas,
+  {id:'moh',name:'المهندسين مطاعم',aliases:['المهندسين'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل المهندسين'},
+  {id:'haram',name:'الهرم مطاعم',aliases:['الهرم'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل الهرم'}
+ ];
+ const knowledge=[{id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه.',active:true,confidence:.98,keywords:['مرتب','المرتب']}];
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({
+  applicant:a,
+  message:{body:'انا ساكن في امبابة ومعايا مكنة بس الرخصة خلصانة وعايز اعرف اقرب منطقة والمرتب كام'},
+  questions,areas:liveAreas,settings,interpret:noAi,knowledge
+ });
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.agent_action,'recommend_nearest_work_area_with_answer');
+ assert.equal(r.knowledge_id,'salary');
+ assert.match(r.reply,/6200/);
+ assert.match(r.reply,/المهندسين مطاعم/);
+});
+
 test('ambiguous no plus a side question never disqualifies motorcycle automatically',async()=>{
  const a={...applicant,awaiting_id:'q1',answers:{
   q2:{value:'oct',display:'أكتوبر',kind:'area',key:'preferred_work_area',work_area_eligible:true,work_area_zone:'WEST'}

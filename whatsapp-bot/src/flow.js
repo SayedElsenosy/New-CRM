@@ -224,6 +224,41 @@ function postCompletionReply(){
  return 'بياناتك متسجلة عندنا بالفعل ✅\nلو عندك سؤال عن الشغل، المرتب، المواعيد أو المناطق ابعته وأنا أساعدك.';
 }
 
+function jobOverviewIntent(text){
+ const n=norm(text);
+ if(!n)return false;
+ return /(?:تفاصيل|معلومات|نظام|طبيعه|طبيعة|نوع)\s+(?:الشغل|الوظيفه|الوظيفة|العمل)/.test(n)
+  || /(?:الشغل|الوظيفه|الوظيفة|العمل)\s+(?:عباره عن ايه|عبارة عن ايه|نظامه ايه|نظامها ايه|تفاصيله|تفاصيلها)/.test(n)
+  || /(?:عايز|عاوز|ممكن|حابب)\s+(?:اعرف|أعرف)?\s*(?:كل\s+)?(?:تفاصيل|معلومات)\s+(?:الشغل|الوظيفه|الوظيفة)/.test(n);
+}
+function trustedOverviewRows(knowledge){
+ const rows=(knowledge||[]).filter(row=>row?.active!==false&&row?.source==='manual'
+  &&!['conflict','stale'].includes(String(row?.memory_status||''))
+  &&String(row?.answer||'').trim());
+ const topics=[
+  /(?:الشيفت|شيفت|ساعات)/,
+  /(?:المرتب|مرتب|راتب)/,
+  /(?:الدخل|دخل)/,
+  /(?:تأمين|تامين)/,
+  /(?:موتوسيكل|موتوسكل|مكنه|مكنة)/,
+  /(?:التقديم.*فلوس|فلوس.*التقديم)/
+ ];
+ const picked=[];
+ for(const pattern of topics){
+  const row=rows.find(item=>pattern.test(norm(item.question||'')));
+  if(row&&!picked.some(x=>x.id===row.id))picked.push(row);
+ }
+ return picked;
+}
+function jobOverviewReply(knowledge){
+ const rows=trustedOverviewRows(knowledge);
+ if(!rows.length)return null;
+ const bullets=rows.map(row=>'• '+String(row.answer||'').trim().replace(/\s+/g,' '));
+ return 'أكيد 👌 دي أهم تفاصيل الشغل المؤكدة عندنا حاليًا:\n\n'
+  +bullets.join('\n')
+  +'\n\nتفاصيل المنطقة نفسها ممكن تختلف حسب نظام التشغيل، ولما تختار منطقة العمل هقولك تفاصيلها المسجلة.\n\nلو التفاصيل مناسبة ليك نكمل التقديم من مكان ما وقفنا.';
+}
+
 const RESTAURANT_WORDS=['مطاعم','مطعم','ريستورانت','restaurant','restaurants'];
 const MARKET_WORDS=['ماركت','سوبرماركت','سوبر ماركت','متجر','market'];
 function hasWord(text,words){
@@ -373,6 +408,19 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
  }
 
+ if(jobOverviewIntent(m.body)&&settings.ai_enabled&&settings.ai_knowledge_enabled===true){
+  const overview=jobOverviewReply(knowledge);
+  if(overview){
+   const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
+   clearAgentState(answers);
+   return {
+    patch:current?{...(hadAgentState?{answers}:{}),awaiting_id:current.id}:{...(hadAgentState?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
+    reply:overview,
+    agent_action:'job_overview'
+   };
+  }
+ }
+
  if(current?.field_key==='preferred_work_area'&&noWorkAreaAnswer(m.body)){
   saveNoWorkArea(answers,current);
   return {patch:stopQualification(answers,'no_eligible_work_area'),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
@@ -439,7 +487,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:current?{answers,awaiting_id:current.id}:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaListReply(areas)+continueFlow};
  }
 
- const areaQuestion=/(تفاصيل|مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(norm(m.body));
+ const turnNorm=norm(m.body);
+ const areaQuestion=/(مرتب|قبض|عنوان|مواعيد|ساعات|بونص|مميزات)/.test(turnNorm)
+  ||(/تفاصيل/.test(turnNorm)&&(explicitAreaHits(m.body,areas).length>0||/(?:منطقه|منطقة|زون|الزون|فرع|لوكيشن|عنوان)/.test(turnNorm)));
  const compoundStructuredQuestion=current?.kind==='yes_no'
   &&looksLikeQuestion(m.body)
   &&validateAnswer(current,m.body,areas,null).ok;

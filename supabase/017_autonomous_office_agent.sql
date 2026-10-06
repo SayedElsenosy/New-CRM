@@ -47,7 +47,7 @@ where k.office_id is null
 -- Preserve them for every office that already existed at upgrade time, but stop
 -- the old global copies so future/different offices cannot inherit Breadfast
 -- salary/shift/policy by accident.
-do $
+do $agent_scope$
 declare o record; k record;
 begin
  for k in
@@ -85,7 +85,7 @@ begin
     'المرتب كام؟','الدخل كام؟','الشيفت كام ساعة؟',
     'لازم موتوسيكل؟','في تأمين؟','التقديم بفلوس؟'
    );
-end $;
+end $agent_scope$;
 
 create index if not exists masar_knowledge_office_active
  on public.masar_knowledge(office_id,active,updated_at desc);
@@ -105,7 +105,7 @@ where id=true;
 
 -- Keep future office cloning aware of the autonomous-agent metadata.
 create or replace function public.masar_clone_office_config(p_source uuid,p_target uuid,p_remap_existing boolean default false)
-returns void language plpgsql security definer set search_path=public as $
+returns void language plpgsql security definer set search_path=public as $agent_clone$
 declare q record; z record; app_row record; nid uuid; mapped_key text; mapped_value jsonb; pair record;
 begin
  if p_source is null or p_target is null or p_source=p_target then return; end if;
@@ -183,11 +183,11 @@ begin
   for app_row in select id,answers from public.masar_applicants where office_id=p_target loop
    for pair in select * from jsonb_each(coalesce(app_row.answers,'{}'::jsonb)) loop
     mapped_key=pair.key;mapped_value=pair.value;
-    if mapped_key ~* '^[0-9a-f]{8}-[0-9a-f-]{27} then
+    if length(mapped_key)=36 and mapped_key ~* '^[0-9a-f]{8}-[0-9a-f-]{27}' then
      select new_id::text into mapped_key from masar_q_map where old_id::text=pair.key;
      mapped_key=coalesce(mapped_key,pair.key);
     end if;
-    if pair.value->>'kind' in ('area','area_preview') and (pair.value->>'value') ~* '^[0-9a-f]{8}-[0-9a-f-]{27} then
+    if pair.value->>'kind' in ('area','area_preview') and length(pair.value->>'value')=36 and (pair.value->>'value') ~* '^[0-9a-f]{8}-[0-9a-f-]{27}' then
      select jsonb_set(pair.value,'{value}',to_jsonb(new_id::text),false) into mapped_value
      from masar_a_map where old_id::text=pair.value->>'value';
      mapped_value=coalesce(mapped_value,pair.value);
@@ -198,7 +198,7 @@ begin
    end loop;
   end loop;
  end if;
-end $;
+end $agent_clone$;
 revoke all on function public.masar_clone_office_config(uuid,uuid,boolean) from public,anon,authenticated;
 grant execute on function public.masar_clone_office_config(uuid,uuid,boolean) to service_role;
 

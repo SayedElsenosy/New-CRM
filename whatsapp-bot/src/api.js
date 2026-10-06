@@ -538,10 +538,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  });
  permissionRoute('settings','put','/settings',async(req,res)=>{
   const b=req.body,officeId=await scopedOfficeId(req);
-  if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');
+  if(!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');
   const hours=Number(b.followup_hours);
   if(typeof b.followup_enabled!=='boolean'||!Number.isInteger(hours)||hours<1||hours>72)throw bad('متابعة البيانات الناقصة لازم تكون من 1 إلى 72 ساعة');
-  const patch={office_id:officeId,ai_enabled:b.ai_enabled,welcome:String(b.welcome).trim(),completion:String(b.completion).trim(),followup_enabled:b.followup_enabled,followup_hours:hours,qualification_require_shift:b.qualification_require_shift===true,qualification_require_motorcycle_license:b.qualification_require_motorcycle_license===true,updated_at:new Date().toISOString()};
+  const patch={office_id:officeId,welcome:String(b.welcome).trim(),completion:String(b.completion).trim(),followup_enabled:b.followup_enabled,followup_hours:hours,qualification_require_shift:b.qualification_require_shift===true,qualification_require_motorcycle_license:b.qualification_require_motorcycle_license===true,updated_at:new Date().toISOString()};
   try{must(await db.from('masar_office_settings').upsert(patch,{onConflict:'office_id'}));}
   catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code))throw bad('فعّل إعدادات المكاتب أولاً بتشغيل ملف supabase/012_office_admin_scoped_config.sql في Supabase SQL Editor.',503);throw e;}
   res.json({ok:true});

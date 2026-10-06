@@ -284,5 +284,14 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.ok(['office','breadfast','system','legacy'].includes(brainColumns.knowledge_scope));
  assert.ok(Array.isArray(brainColumns.examples));
  assert.ok(Number(brainColumns.shared_office_count)>=0);
+
+ const bootstrapSharedSql=await fs.readFile(new URL('../../supabase/022_bootstrap_breadfast_shared_facts.sql',import.meta.url),'utf8');
+ await db.exec(bootstrapSharedSql);await db.exec(bootstrapSharedSql);
+ const {rows:[sharedManualCount]}=await db.query("select count(*)::int as n from masar_knowledge where office_id is null and knowledge_scope='breadfast' and source='manual' and active=true");
+ assert.equal(sharedManualCount.n,6);
+ const {rows:[sharedSalaryFact]}=await db.query("select confidence,shared_office_count,examples from masar_knowledge where office_id is null and knowledge_scope='breadfast' and source='manual' and question='المرتب كام؟' limit 1");
+ assert.equal(Number(sharedSalaryFact.confidence),1);
+ assert.ok(Number(sharedSalaryFact.shared_office_count)>=2);
+ assert.ok(sharedSalaryFact.examples.includes('المرتب كام؟'));
  }finally{await db.close();}
 });

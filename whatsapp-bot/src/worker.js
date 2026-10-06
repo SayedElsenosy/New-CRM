@@ -55,8 +55,8 @@ export function choiceButtons(question){
 }
 
 export class Worker {
- constructor({db,connection,connections,serial,sessionPath,speech=null}){
-  Object.assign(this,{db,connection,connections,serial,speech});
+ constructor({db,connection,connections,serial,sessionPath,speech=null,agentRuntime=null}){
+  Object.assign(this,{db,connection,connections,serial,speech,agentRuntime});
   this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;this.lastFollowupSweep=0;
  }
  multi(){return Boolean(this.connections?.configured);}
@@ -272,8 +272,25 @@ export class Worker {
       must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
       continue;
      }
-     const knowledge=await loadKnowledge(this.db,a.office_id||null);
-     const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge});
+     let knowledge=await loadKnowledge(this.db,a.office_id||null);
+     let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
+     if(this.agentRuntime&&c.settings?.agent_llm_enabled===true){
+      try{
+       const recent=must(await this.db.from('masar_messages').select('direction,sender,body,created_at')
+        .eq('applicant_id',a.id).order('sequence',{ascending:false}).limit(Math.max(4,Math.min(30,Number(c.settings.agent_context_messages||12)))));
+       llmAnalysis=await this.agentRuntime.analyzeTurn({
+        applicant:a,message:m,questions:c.questions,areas:c.areas,settings:c.settings,
+        knowledge,recentMessages:[...recent].reverse()
+       });
+       if(llmAnalysis?.available&&['assist','live'].includes(c.settings.agent_llm_mode)){
+        knowledge=this.agentRuntime.reorderKnowledge(knowledge,llmAnalysis.plan,c.settings);
+       }
+      }catch(e){
+       llmAnalysis={available:false,plan:null,state:this.agentRuntime.snapshot(c.settings),error:String(e?.message||e).slice(0,500)};
+       console.warn('AI Agent LLM planner failed:',e.code||e.name||'Error');
+      }
+     }
+     const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.followup_reply){
       try{
@@ -305,6 +322,27 @@ export class Worker {
        }
       });
       if(eventResult.error)throw eventResult.error;
+      try{
+       const plannerMode=llmAnalysis?.available
+        ?(c.settings.agent_llm_mode==='live'?'llm_live':c.settings.agent_llm_mode==='assist'?'llm_assist':'llm_shadow')
+        :(c.settings.agent_llm_enabled===true?'fallback':'deterministic');
+       const decision=llmAnalysis?.plan;
+       const trace=await this.db.from('masar_agent_decisions').insert({
+        applicant_id:a.id,office_id:a.office_id||null,message_id:m.id,planner_mode:plannerMode,
+        input_text:String(m.body||'').slice(0,4000),
+        intents:decision?.intent?[decision.intent]:[],
+        facts:decision?.facts||[],
+        action:decision?.action||action,
+        confidence:decision?.confidence??turn.agent_confidence??turn.knowledge_confidence??null,
+        knowledge_ids:[...new Set([decision?.knowledge_id,turn.knowledge_id].filter(Boolean))],
+        decision_summary:decision?.summary||'',
+        provider:llmAnalysis?.provider||null,model:llmAnalysis?.model||null,
+        latency_ms:llmAnalysis?.latency_ms??null,
+        fallback_used:Boolean(c.settings.agent_llm_enabled===true&&!llmAnalysis?.available),
+        error:llmAnalysis?.error||null
+       });
+       if(trace.error&&!schemaMissing(trace.error)&&trace.error.code!=='PGRST204')throw trace.error;
+      }catch(traceError){if(!schemaMissing(traceError)&&traceError.code!=='PGRST204')console.warn('Agent decision trace failed:',traceError.code||traceError.name||'Error');}
      }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')console.warn('Agent turn audit failed:',e.code||e.name||'Error');}
      if(turn.handoff){
       const question=String(m.body||'').slice(0,1000);

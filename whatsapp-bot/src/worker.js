@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {interpret} from './ai.js';
-import {loadKnowledge,schemaMissing,createLearningSuggestion} from './knowledge.js';
+import {loadKnowledge,schemaMissing,learnFromConversation,promotePendingLearning} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
@@ -31,6 +31,7 @@ export class Worker {
  multi(){return Boolean(this.connections?.configured);}
  async init(){
   await fs.mkdir(this.spool,{recursive:true});
+  try{await promotePendingLearning(this.db);}catch(e){if(!schemaMissing(e))console.warn('Pending memory promotion failed:',e.code||e.name||'Error');}
   must(await this.db.from('masar_messages').update({status:'uncertain',error:'الخدمة توقفت أثناء الإرسال؛ راجع واتساب قبل إعادة المحاولة.'}).eq('status','sending'));
   this.timer=setInterval(()=>this.tick(),2500);this.timer.unref();
  }
@@ -153,13 +154,11 @@ export class Worker {
    }catch(e){if(!schemaMissing(e))throw e;}
    if(runMode==='live')must(await this.db.from('masar_applicants').update({bot_enabled:false,updated_at:new Date().toISOString()}).eq('id',a.id));
 
-   let learned=false;
-   if(source&&settings?.ai_learning_enabled!==false){
-    learned=await createLearningSuggestion(this.db,{
-     applicantId:a.id,sourceMessage:source,staffMessageId:saved.id,answer:(prepared.transcribed&&prepared.transcription_trusted)||!prepared.is_audio?prepared.body:'',staffId:null,force:runMode==='training'
-    });
+   let memory={learned:false,action:'skipped'};
+   if(source&&settings?.ai_learning_enabled!==false&&((prepared.transcribed&&prepared.transcription_trusted)||!prepared.is_audio)){
+    memory=await learnFromConversation(this.db,{applicantId:a.id,staffMessageId:saved.id,staffId:null,force:runMode==='training'});
    }
-   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',learning_suggestion_created:Boolean(learned),run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
+   must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',memory_learned:Boolean(memory?.learned),memory_action:memory?.action||'skipped',run_mode:runMode,voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
    try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'linked_whatsapp_staff_reply'});}
    catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
    try{

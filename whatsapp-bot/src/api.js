@@ -5,7 +5,7 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
-import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning} from './knowledge.js';
+import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,snapshotKnowledgeVersion,recordKnowledgeEvidence} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
 import {metaConfig,metaLoginUrl,metaStateHash,exchangeMetaCode,encryptMetaToken,decryptMetaToken,getMetaIdentity,listMetaAdAccounts,fetchMetaAccountSnapshot,normalizeMetaAdAccountId} from './meta.js';
@@ -576,7 +576,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     ai_confidence_threshold:Number(s.ai_confidence_threshold||0.62),
     ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.'
    },knowledge:k,suggestions:sg,stats:{
-    active:k.filter(x=>x.active).length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
+    active:k.filter(x=>x.active&&x.memory_status!=='conflict'&&x.memory_status!=='stale').length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
+    conflicts:k.filter(x=>x.memory_status==='conflict').length,stale:k.filter(x=>x.memory_status==='stale').length,
     approved:sg.filter(x=>x.status==='approved').length,skipped:sg.filter(x=>x.status==='rejected').length,
     learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0),
     turns_30d:turns.length,handoffs_30d:handoffTurns.length,autonomy_rate_30d:autonomyRate,
@@ -601,17 +602,57 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const question=String(req.body.question||'').trim(),answer=String(req.body.answer||'').trim();
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
   const keywords=cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question));
-  try{res.status(201).json(must(await db.from('masar_knowledge').insert({question,answer,keywords,active:req.body.active!==false,source:'manual',created_by:req.user.id}).select().single()));}
-  catch(e){if(schemaMissing(e))throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);throw e;}
+  try{
+   const knowledge=must(await db.from('masar_knowledge').insert({question,answer,keywords,active:req.body.active!==false,source:'manual',created_by:req.user.id}).select().single());
+   await recordKnowledgeEvidence(db,{knowledgeId:knowledge.id,officeId:knowledge.office_id||null,candidate:{question,answer,context:'إضافة يدوية من مسؤول النظام'},kind:'manual',confidence:1});
+   res.status(201).json(knowledge);
+  }catch(e){if(schemaMissing(e))throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);throw e;}
  });});
  adminRoute('put','/intelligence/knowledge/:id',async(req,res)=>{await serial(async()=>{
   if(!uuid(req.params.id))throw bad('معرف المعرفة غير صحيح');
   const question=String(req.body.question||'').trim(),answer=String(req.body.answer||'').trim();
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
+  const current=must(await db.from('masar_knowledge').select('*').eq('id',req.params.id).single());
+  await snapshotKnowledgeVersion(db,current,{staffId:req.user.id,reason:'manual_edit'});
   const patch={question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),active:req.body.active!==false,updated_at:new Date().toISOString()};
-  res.json(must(await db.from('masar_knowledge').update(patch).eq('id',req.params.id).select().single()));
+  if(Object.prototype.hasOwnProperty.call(current,'memory_status')){
+   patch.memory_status='verified';patch.last_verified_at=new Date().toISOString();patch.confidence=1;
+   patch.version=Number(current.version||1)+1;
+  }
+  const knowledge=must(await db.from('masar_knowledge').update(patch).eq('id',req.params.id).select().single());
+  await recordKnowledgeEvidence(db,{knowledgeId:knowledge.id,officeId:knowledge.office_id||null,candidate:{question,answer,context:'تعديل يدوي من مسؤول النظام'},kind:'manual',confidence:1});
+  res.json(knowledge);
  });});
  adminRoute('delete','/intelligence/knowledge/:id',async(req,res)=>{if(!uuid(req.params.id))throw bad('معرف المعرفة غير صحيح');must(await db.from('masar_knowledge').delete().eq('id',req.params.id));res.json({ok:true});});
+ adminRoute('get','/intelligence/knowledge/:id/history',async(req,res)=>{
+  if(!uuid(req.params.id))throw bad('معرف المعرفة غير صحيح');
+  try{
+   const rows=must(await db.from('masar_knowledge_versions').select('*').eq('knowledge_id',req.params.id).order('version',{ascending:false}).limit(100));
+   res.json(rows);
+  }catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))throw bad('فعّل سجل ذاكرة الـAgent بتشغيل supabase/018_agent_memory_reliability.sql.',503);throw e;}
+ });
+ adminRoute('post','/intelligence/knowledge/:id/rollback',async(req,res)=>{await serial(async()=>{
+  if(!uuid(req.params.id))throw bad('معرف المعرفة غير صحيح');
+  const version=Number(req.body.version);if(!Number.isInteger(version)||version<1)throw bad('اختر نسخة صحيحة للرجوع إليها');
+  let current,target;
+  try{
+   current=must(await db.from('masar_knowledge').select('*').eq('id',req.params.id).single());
+   target=must(await db.from('masar_knowledge_versions').select('*').eq('knowledge_id',req.params.id).eq('version',version).single());
+  }catch(e){if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code||''))throw bad('فعّل سجل ذاكرة الـAgent بتشغيل supabase/018_agent_memory_reliability.sql.',503);throw e;}
+  await snapshotKnowledgeVersion(db,current,{staffId:req.user.id,reason:'before_rollback'});
+  const now=new Date().toISOString();
+  const patch={
+   question:target.question,answer:target.answer,keywords:target.keywords||[],active:target.active!==false,
+   memory_status:'verified',confidence:1,last_verified_at:now,
+   evidence_count:Number(target.evidence_count||1),conflict_count:Number(target.conflict_count||0),
+   version:Number(current.version||1)+1,updated_at:now
+  };
+  const restored=must(await db.from('masar_knowledge').update(patch).eq('id',req.params.id).select().single());
+  await recordKnowledgeEvidence(db,{knowledgeId:restored.id,officeId:restored.office_id||null,candidate:{question:restored.question,answer:restored.answer,context:'Rollback إلى النسخة '+version},kind:'rollback',confidence:1});
+  must(await db.from('masar_events').insert({kind:'ai_memory_rollback',staff_id:req.user.id,detail:{knowledge_id:restored.id,from_version:current.version,to_snapshot_version:version,new_version:restored.version}}));
+  res.json(restored);
+ });});
+
  adminRoute('post','/intelligence/suggestions/:id/approve',async(req,res)=>{await serial(async()=>{
   if(!uuid(req.params.id))throw bad('معرف الاقتراح غير صحيح');
   const suggestion=must(await db.from('masar_learning_suggestions').select('*').eq('id',req.params.id).single());

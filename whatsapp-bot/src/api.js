@@ -604,7 +604,11 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
   const keywords=cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question));
   try{
-   const knowledge=must(await db.from('masar_knowledge').insert({question,answer,keywords,active:req.body.active!==false,source:'manual',created_by:req.user.id}).select().single());
+   const knowledge=must(await db.from('masar_knowledge').insert({
+    question,answer,keywords,examples:[question],active:req.body.active!==false,
+    source:'manual',office_id:null,knowledge_scope:'breadfast',confidence:1,
+    last_verified_at:new Date().toISOString(),created_by:req.user.id
+   }).select().single());
    await recordKnowledgeEvidence(db,{knowledgeId:knowledge.id,officeId:knowledge.office_id||null,candidate:{question,answer,context:'إضافة يدوية من مسؤول النظام'},kind:'manual',confidence:1});
    res.status(201).json(knowledge);
   }catch(e){if(schemaMissing(e))throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);throw e;}

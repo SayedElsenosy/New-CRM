@@ -60,6 +60,6 @@ test('free-tier planner payload stays compact with many areas and knowledge rows
   settings:{agent_context_messages:12,agent_system_instructions:'تعليمات '.repeat(500)}
  });
  const size=messages.reduce((n,m)=>n+String(m.content||'').length,0);
- assert.ok(size<18000,'planner prompt too large: '+size);
+ assert.ok(size<10000,'planner prompt too large for free tier: '+size);
  assert.match(messages[1].content,/المرتب كام/);
 });

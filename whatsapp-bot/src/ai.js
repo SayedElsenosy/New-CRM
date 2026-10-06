@@ -117,7 +117,7 @@ function explicitFullName(text){
 }
 function factPriority(q){
  const key=q?.field_key;
- const special={has_motorcycle:100,preferred_work_area:95,shift_acceptance:85,full_name:80,ready_to_start:70};
+ const special={has_motorcycle:100,preferred_work_area:95,full_name:90,shift_acceptance:80,ready_to_start:70};
  return Number.isFinite(Number(q?.priority))?Number(q.priority):(special[key]||50);
 }
 export function nextAgentQuestion(questions,answers,areas,answeredFn){

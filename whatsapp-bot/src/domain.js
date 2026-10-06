@@ -48,7 +48,20 @@ export function validateAnswer(q,input,areas,media) {
  return {ok:true,value:s,display:s};
 }
 export function questionPrompt(q,areas) {
- let text=q.label;
+ const raw=String(q.label||'').trim();
+ const alreadyQuestion=/[?؟]$/.test(raw)||/^(?:هل|ايه|إيه|فين|امتى|إمتى|كام|ازاي|إزاي|أنهي|انهي|معاك|عندك|ساكن|اكتب|ابعت|اختار)/.test(raw);
+ let text=raw;
+ if(!alreadyQuestion){
+  if(q.field_key==='has_motorcycle')text='معاك موتوسيكل متاح للشغل يوميًا؟';
+  else if(q.field_key==='preferred_work_area')text='أنهي منطقة تقدر تشتغل فيها يوميًا وتلتزم بيها بشكل مستمر؟';
+  else if(q.field_key==='full_name')text='اسمك بالكامل إيه؟';
+  else if(q.field_key==='shift_acceptance')text='نظام الشيفت الحالي مناسب ليك وتقدر تلتزم بيه؟';
+  else if(q.field_key==='ready_to_start')text='لو تم قبولك، تقدر تبدأ الشغل قريب؟';
+  else if(q.kind==='yes_no')text='بالنسبة لـ «'+raw+'»، الإجابة عندك نعم ولا؟';
+  else if(q.kind==='number')text='محتاج أعرف '+raw+'، الرقم كام؟';
+  else if(q.kind==='image')text='ابعت '+raw+'.';
+  else text='محتاج أعرف '+raw+'.';
+ }
  if(q.kind==='area'){
   if(q.field_key==='preferred_work_area') text+='\nاختار منطقة العمل من الأزرار تحت. أول ما تختارها هنسجلها ونكمل التقديم. ولو مفيش أي منطقة تقدر تلتزم بيها اختار «❌ ولا منطقة مناسبة».';
   else text+='\nاختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها. تقدر تقارن بين أكتر من منطقة، ومش هنسجل اختيارك النهائي غير لما تأكده.';

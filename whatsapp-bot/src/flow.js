@@ -144,6 +144,7 @@ function completeFlow(answers){
  return answers;
 }
 function commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant,qualificationFlowEnabled}){
+ clearAgentState(answers);
  delete answers.__area_preview;
  delete answers.__area_page;
  answers[current.id]={
@@ -256,8 +257,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  const earlyDecision=settings.ai_enabled?decideConversationAction(m.body,null,areas):null;
+ const earlyCurrent=qs.find(q=>q.id===a.awaiting_id)||null;
  if(earlyDecision?.action==='handoff'){
-  return handoffTurn({answers,current:null,applicant:a,questions,areas,settings,message:m,reason:earlyDecision.reason});
+  return handoffTurn({answers,current:earlyCurrent,applicant:a,questions,areas,settings,message:m,reason:earlyDecision.reason});
  }
  if(earlyDecision?.action==='change_answer'){
   const reopened=reopenAnswer({decision:earlyDecision,answers,questions,areas,applicant:a});
@@ -274,7 +276,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
    const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
-   if(match)return {patch:{awaiting_id:null},reply:String(match.answer||'').trim(),knowledge_id:match.id,knowledge_confidence:match.confidence};
+   if(match){const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);clearAgentState(answers);return {patch:{...(hadAgentState?{answers}:{}),awaiting_id:null},reply:String(match.answer||'').trim(),knowledge_id:match.id,knowledge_confidence:match.confidence};}
   }
   return {patch:{awaiting_id:null},reply:stoppedReply(answers.__qualification_stop.reason)};
  }
@@ -376,7 +378,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(areaQuestion&&!compoundStructuredQuestion&&settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)&&explicitAreaHits(m.body,areas).length===0){
   const threshold=Number(settings.ai_confidence_threshold||0.62),match=findKnowledgeAnswer(m.body,knowledge,threshold);
   if(match){
-   return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence};
+   const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
+   clearAgentState(answers);
+   return {patch:current?{...(hadAgentState?{answers}:{}),awaiting_id:current.id}:{...(hadAgentState?{answers}:{}),stage:computedStage(a,questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence};
   }
  }
  if(areaQuestion&&!compoundStructuredQuestion){
@@ -445,8 +449,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const threshold=Number(settings.ai_confidence_threshold||0.62);
   const match=findKnowledgeAnswer(m.body,knowledge,threshold);
   if(match){
+   const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
+   clearAgentState(answers);
    return {
-    patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},
+    patch:current?{...(hadAgentState?{answers}:{}),awaiting_id:current.id}:{...(hadAgentState?{answers}:{}),stage:computedStage(a,questions,areas),awaiting_id:null},
     reply:String(match.answer||'').trim(),
     followup_reply:current?questionPrompt(current,areas):null,
     knowledge_id:match.id,

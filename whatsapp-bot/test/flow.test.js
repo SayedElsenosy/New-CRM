@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion} from '../src/knowledge.js';
+import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -28,6 +28,44 @@ test('CSV protects against spreadsheet formulas',()=>{assert.equal(csvCell('=1+1
 test('privacy helper still redacts long phone/ID strings',()=>assert.ok(!redactForAI('رقمي ٠١٠١٢٣٤٥٦٧٨').includes('01012345678')));
 test('local interpreter understands indirect Egyptian replies without external AI',async()=>{assert.equal((await interpret('لسه مجبتش موتوسيكل',questions[2],areas)).answer,'no');assert.equal((await interpret('اه معايا الحمد لله',questions[2],areas)).answer,'yes');assert.equal((await interpret('اه بس مش معايا رخصة',questions[2],areas)).answer,'yes');assert.equal((await interpret('انا عندي ٢٨ سنة',{kind:'number'},areas)).answer,'28');});
 test('local interpreter resolves active areas and rejects unknown text',async()=>{assert.equal((await interpret('تفاصيل الشغل في أكتوبر؟',questions[0],areas)).area_id,'oct');assert.equal((await interpret('عايز الشيخ زايد',questions[1],areas)).intent,'clarify');assert.equal((await interpret('كلام مش واضح',questions[2],areas)).intent,'clarify');});
+
+test('conversation decision layer understands control intents',()=>{
+ assert.equal(decideConversationAction('مش فاهم السؤال',questions[2],areas).action,'clarify_current');
+ assert.equal(decideConversationAction('تمام كمل',questions[1],areas).action,'resume_flow');
+ const change=decideConversationAction('عايز اغير المنطقة',questions[1],areas);
+ assert.equal(change.action,'change_answer');
+ assert.equal(change.field_key,'preferred_work_area');
+ const human=decideConversationAction('عايز أكلم موظف',questions[1],areas);
+ assert.equal(human.action,'handoff');
+ assert.equal(human.reason,'user_requested_human');
+});
+
+test('agent explains current question instead of handing off',async()=>{
+ const a={...applicant,awaiting_id:'bike',answers:{name:{value:'سيد محمد',kind:'name'},area:{value:'oct',kind:'area'}}};
+ const r=await planTurn({applicant:a,message:{body:'مش فاهم السؤال'},questions,areas,settings:{...settings,ai_knowledge_enabled:true},interpret,knowledge:[]});
+ assert.equal(r.handoff,undefined);
+ assert.equal(r.patch.awaiting_id,'bike');
+ assert.equal(r.patch.bot_enabled,undefined);
+ assert.match(r.reply,/موتوسيكل|نعم|لا/);
+});
+
+test('agent resumes the pending flow on command',async()=>{
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'تمام كمل'},questions,areas,settings:{...settings,ai_knowledge_enabled:true},interpret,knowledge:[]});
+ assert.equal(r.handoff,undefined);
+ assert.equal(r.patch.awaiting_id,'area');
+ assert.match(r.reply,/أنهي منطقة/);
+});
+
+test('explicit human request hands off immediately without losing pending question',async()=>{
+ const a={...applicant,awaiting_id:'area',answers:{name:{value:'سيد محمد',kind:'name'}}};
+ const r=await planTurn({applicant:a,message:{body:'عايز أكلم موظف'},questions,areas,settings:{...settings,ai_knowledge_enabled:true},interpret,knowledge:[]});
+ assert.equal(r.handoff,true);
+ assert.equal(r.handoff_reason,'user_requested_human');
+ assert.equal(r.patch.bot_enabled,false);
+ assert.equal(r.patch.awaiting_id,'area');
+ assert.match(r.reply,/مسؤول التوظيف/);
+});
 test('negative area wording is treated as rejection, never a selection',async()=>{
  const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
  assert.equal(areaRejected('لا مش عاوز اشتغل في الشيخ زايد',liveAreas[1]),true);
@@ -259,27 +297,39 @@ test('area button pagination changes page without listing names in message text'
 });
 
 
-test('truly unknown side question while previewing an area produces a handoff reply and preserves the area preview',async()=>{
+test('unknown side question gets agent clarification before handoff and preserves flow state',async()=>{
  const liveAreas=[
   {id:'zayed-market',name:'الشيخ زايد',active:true,details:'تفاصيل ماركت'},
   {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,details:'تفاصيل مطاعم'}
  ];
- const a={...applicant,awaiting_id:'area',answers:{
+ const base={...applicant,awaiting_id:'area',answers:{
   name:{value:'سيد محمد',kind:'name'},
   __area_preview:{value:'zayed-rest',display:'الشيخ زايد مطاعم',kind:'area_preview'}
  }};
- const r=await planTurn({
-  applicant:a,
-  message:{body:'هل في سكن للموظفين؟'},
-  questions,areas:liveAreas,
-  settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.62,ai_fallback:'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق.'},
-  interpret,knowledge:[]
- });
- assert.equal(r.handoff,true);
- assert.equal(r.patch.bot_enabled,false);
- assert.equal(r.patch.answers.__area_preview.value,'zayed-rest');
- assert.equal(r.patch.answers.__ai_handoff.question,'هل في سكن للموظفين؟');
- assert.match(r.reply,/هحوّل المحادثة للفريق/);
+ const cfg={...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.62,ai_fallback:'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق.'};
+
+ const first=await planTurn({applicant:base,message:{body:'هل في سكن للموظفين؟'},questions,areas:liveAreas,settings:cfg,interpret,knowledge:[]});
+ assert.equal(first.handoff,undefined);
+ assert.equal(first.patch.bot_enabled,undefined);
+ assert.equal(first.patch.awaiting_id,'area');
+ assert.equal(first.patch.answers.__area_preview.value,'zayed-rest');
+ assert.equal(first.patch.answers.__agent_state.attempts,1);
+ assert.match(first.reply,/مش هخمن|مش عندي إجابة مؤكدة/);
+
+ const secondApplicant={...base,answers:first.patch.answers};
+ const second=await planTurn({applicant:secondApplicant,message:{body:'قصدي الشركة بتوفر سكن ولا لا؟'},questions,areas:liveAreas,settings:cfg,interpret,knowledge:[]});
+ assert.equal(second.handoff,undefined);
+ assert.equal(second.patch.answers.__agent_state.attempts,2);
+ assert.match(second.reply,/مرة أخيرة|عايز موظف/);
+
+ const thirdApplicant={...base,answers:second.patch.answers};
+ const third=await planTurn({applicant:thirdApplicant,message:{body:'يعني فيه سكن للطيارين؟'},questions,areas:liveAreas,settings:cfg,interpret,knowledge:[]});
+ assert.equal(third.handoff,true);
+ assert.equal(third.handoff_reason,'repeated_unknown_question');
+ assert.equal(third.patch.bot_enabled,false);
+ assert.equal(third.patch.awaiting_id,'area');
+ assert.equal(third.patch.answers.__area_preview.value,'zayed-rest');
+ assert.equal(third.patch.answers.__ai_handoff.question,'يعني فيه سكن للطيارين؟');
 });
 
 

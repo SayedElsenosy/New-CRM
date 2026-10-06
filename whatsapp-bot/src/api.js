@@ -5,7 +5,7 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
-import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence} from './knowledge.js';
+import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence,loadKnowledge} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
 import {metaConfig,metaLoginUrl,metaStateHash,exchangeMetaCode,encryptMetaToken,decryptMetaToken,getMetaIdentity,listMetaAdAccounts,fetchMetaAccountSnapshot,normalizeMetaAdAccountId} from './meta.js';
@@ -21,7 +21,7 @@ const RECRUITMENT_STAGE_SET=new Set(RECRUITMENT_STAGES);
 const INTERVIEW_STATUSES=new Set(['scheduled','completed','cancelled','no_show']);
 const cleanPermissions=value=>Array.isArray(value)?[...new Set(value.filter(v=>PERMISSIONS.has(v)))]:[...DEFAULT_RECRUITER_PERMISSIONS];
 const recruitmentStageOf=a=>RECRUITMENT_STAGE_SET.has(a?.recruitment_stage)?a.recruitment_stage:a?.stage==='working'?'hired':a?.stage==='lecture'?'interview':a?.stage==='complete'?'review':'new';
-export function makeApi({db,connection,connections,worker,speech=null,serial,origins,dashboardDist=null}){
+export function makeApi({db,connection,connections,worker,speech=null,agentRuntime=null,serial,origins,dashboardDist=null}){
  const whatsapp=connections||{
   configured:false,
   defaultAccountId:()=>null,
@@ -575,7 +575,22 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     ai_knowledge_enabled:s.ai_knowledge_enabled!==false,
     ai_learning_enabled:true,
     ai_confidence_threshold:Number(s.ai_confidence_threshold||0.62),
-    ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.'
+    ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.',
+    agent_llm_enabled:s.agent_llm_enabled===true,
+    agent_llm_mode:s.agent_llm_mode||'shadow',
+    agent_llm_provider:s.agent_llm_provider||'openai_compatible',
+    agent_llm_model:s.agent_llm_model||'',
+    agent_llm_temperature:Number(s.agent_llm_temperature??0.2),
+    agent_llm_timeout_ms:Number(s.agent_llm_timeout_ms||8000),
+    agent_llm_max_tokens:Number(s.agent_llm_max_tokens||800),
+    agent_planner_confidence_threshold:Number(s.agent_planner_confidence_threshold||0.72),
+    agent_hybrid_memory_enabled:s.agent_hybrid_memory_enabled!==false,
+    agent_llm_rerank_enabled:s.agent_llm_rerank_enabled!==false,
+    agent_fact_extraction_enabled:s.agent_fact_extraction_enabled!==false,
+    agent_next_best_action_enabled:s.agent_next_best_action_enabled!==false,
+    agent_context_messages:Number(s.agent_context_messages||12),
+    agent_tone:s.agent_tone||'egyptian_natural',
+    agent_system_instructions:s.agent_system_instructions||''
    },knowledge:k,suggestions:sg,stats:{
     active:k.filter(x=>x.active&&x.memory_status!=='conflict'&&x.memory_status!=='stale').length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
     conflicts:k.filter(x=>x.memory_status==='conflict').length,stale:k.filter(x=>x.memory_status==='stale').length,
@@ -595,6 +610,118 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    throw e;
   }
  }
+ async function agentState(){
+  const base=await intelligenceState();
+  if(!base.configured)return {...base,llm:agentRuntime?.snapshot?.({})||{configured:false,enabled:false},decisions:[],quality:{cases:[],recent_runs:[]},agent_stats:{}};
+  let decisions=[],cases=[],runs=[];
+  try{
+   const [d,casesResult,runsResult]=await Promise.all([
+    db.from('masar_agent_decisions').select('*').order('created_at',{ascending:false}).limit(300),
+    db.from('masar_agent_eval_cases').select('*').order('created_at',{ascending:false}).limit(200),
+    db.from('masar_agent_eval_runs').select('*').order('created_at',{ascending:false}).limit(300)
+   ]);
+   decisions=d.error&&schemaMissing(d.error)?[]:must(d);
+   cases=casesResult.error&&schemaMissing(casesResult.error)?[]:must(casesResult);
+   runs=runsResult.error&&schemaMissing(runsResult.error)?[]:must(runsResult);
+  }catch(e){if(!schemaMissing(e))throw e;}
+  const since24=Date.now()-24*60*60*1000,recent=decisions.filter(x=>Date.parse(x.created_at)>=since24);
+  const llmRecent=recent.filter(x=>String(x.planner_mode||'').startsWith('llm_'));
+  const fallback=recent.filter(x=>x.fallback_used===true);
+  const confidenceValues=recent.map(x=>Number(x.confidence)).filter(Number.isFinite);
+  const latencyValues=llmRecent.map(x=>Number(x.latency_ms)).filter(Number.isFinite);
+  const actions={};for(const row of recent)actions[row.action]=(actions[row.action]||0)+1;
+  const growth={};
+  for(const row of base.knowledge||[]){
+   const day=String(row.created_at||'').slice(0,10);if(day)growth[day]=(growth[day]||0)+1;
+  }
+  return {...base,
+   llm:agentRuntime?.snapshot?.(base.settings)||{configured:false,enabled:false},
+   decisions:decisions.slice(0,100),
+   quality:{cases,recent_runs:runs.slice(0,100)},
+   knowledge_growth:Object.entries(growth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-30).map(([day,count])=>({day,count})),
+   agent_stats:{
+    decisions_24h:recent.length,llm_decisions_24h:llmRecent.length,
+    fallback_rate_24h:recent.length?Math.round(fallback.length/recent.length*1000)/10:0,
+    avg_confidence_24h:confidenceValues.length?Math.round(confidenceValues.reduce((a,b)=>a+b,0)/confidenceValues.length*1000)/10:null,
+    avg_latency_ms:latencyValues.length?Math.round(latencyValues.reduce((a,b)=>a+b,0)/latencyValues.length):null,
+    actions_24h:actions
+   }
+  };
+ }
+ adminRoute('get','/agent',async(_req,res)=>res.json(await agentState()));
+ adminRoute('put','/agent/settings',async(req,res)=>{
+  const b=req.body||{};
+  const mode=String(b.agent_llm_mode||'shadow'),provider=String(b.agent_llm_provider||'openai_compatible').trim(),model=String(b.agent_llm_model||'').trim();
+  const temperature=Number(b.agent_llm_temperature),timeout=Number(b.agent_llm_timeout_ms),tokens=Number(b.agent_llm_max_tokens);
+  const plannerThreshold=Number(b.agent_planner_confidence_threshold),contextMessages=Number(b.agent_context_messages);
+  const tone=String(b.agent_tone||'egyptian_natural').trim(),instructions=String(b.agent_system_instructions||'').trim();
+  if(!['shadow','assist','live'].includes(mode)||!provider||provider.length>100||model.length>200
+    ||!Number.isFinite(temperature)||temperature<0||temperature>1
+    ||!Number.isInteger(timeout)||timeout<1000||timeout>30000
+    ||!Number.isInteger(tokens)||tokens<200||tokens>3000
+    ||!Number.isFinite(plannerThreshold)||plannerThreshold<.5||plannerThreshold>.95
+    ||!Number.isInteger(contextMessages)||contextMessages<4||contextMessages>30
+    ||tone.length<2||tone.length>100||instructions.length>5000)throw bad('راجع إعدادات AI Agent');
+  if(b.agent_llm_enabled===true&&!agentRuntime?.snapshot?.({...b,agent_llm_model:model})?.configured)throw bad('لا يمكن تشغيل عقل LLM قبل إضافة AGENT_LLM_API_URL و AGENT_LLM_API_KEY واسم الموديل في Railway.',409);
+  must(await db.from('masar_settings').update({
+   agent_llm_enabled:b.agent_llm_enabled===true,agent_llm_mode:mode,agent_llm_provider:provider,agent_llm_model:model,
+   agent_llm_temperature:temperature,agent_llm_timeout_ms:timeout,agent_llm_max_tokens:tokens,
+   agent_planner_confidence_threshold:plannerThreshold,
+   agent_hybrid_memory_enabled:b.agent_hybrid_memory_enabled!==false,
+   agent_llm_rerank_enabled:b.agent_llm_rerank_enabled!==false,
+   agent_fact_extraction_enabled:b.agent_fact_extraction_enabled!==false,
+   agent_next_best_action_enabled:b.agent_next_best_action_enabled!==false,
+   agent_context_messages:contextMessages,agent_tone:tone,agent_system_instructions:instructions
+  }).eq('id',true));
+  res.json({ok:true,llm:agentRuntime?.snapshot?.({...b,agent_llm_model:model})||{configured:false}});
+ });
+ adminRoute('post','/agent/test-plan',async(req,res)=>{
+  const text=String(req.body?.text||'').trim();if(text.length<2||text.length>4000)throw bad('اكتب رسالة اختبار صحيحة');
+  const state=await intelligenceState();
+  const officeId=uuid(req.body?.office_id)?req.body.office_id:null;
+  let questions=[],areas=[];
+  if(officeId){
+   const cfg=await config(db,officeId);questions=cfg.questions;areas=cfg.areas;
+  }else{
+   const first=must(await db.from('masar_offices').select('id').order('created_at',{ascending:true}).limit(1).maybeSingle());
+   if(first){const cfg=await config(db,first.id);questions=cfg.questions;areas=cfg.areas;}
+  }
+  const knowledge=officeId?await loadKnowledge(db,officeId):(state.knowledge||[]).filter(x=>x.active);
+  const testSettings={...state.settings,agent_llm_enabled:true};
+  const runtime=agentRuntime?.snapshot?.(testSettings);
+  if(!runtime?.configured)throw bad('LLM Provider غير متصل حاليًا. أضف إعدادات المزود في Railway أولاً.',409);
+  const result=await agentRuntime.testPlan({
+   applicant:{awaiting_id:null,answers:{}},message:{body:text},questions,areas,settings:testSettings,knowledge,recentMessages:[{direction:'in',sender:'applicant',body:text}]
+  });
+  res.json(result);
+ });
+ adminRoute('post','/agent/quality/cases',async(req,res)=>{
+  const title=String(req.body?.title||'').trim(),input=String(req.body?.input_text||'').trim();
+  if(title.length<2||title.length>200||input.length<2||input.length>4000)throw bad('راجع اسم ورسالة حالة الاختبار');
+  const tags=Array.isArray(req.body?.tags)?req.body.tags.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20):[];
+  const row=must(await db.from('masar_agent_eval_cases').insert({title,input_text:input,expected:req.body?.expected||{},tags,created_by:req.user.id}).select().single());
+  res.status(201).json(row);
+ });
+ adminRoute('delete','/agent/quality/cases/:id',async(req,res)=>{
+  if(!uuid(req.params.id))throw bad('معرف حالة الاختبار غير صحيح');
+  must(await db.from('masar_agent_eval_cases').delete().eq('id',req.params.id));res.json({ok:true});
+ });
+ adminRoute('post','/agent/quality/cases/:id/run',async(req,res)=>{
+  if(!uuid(req.params.id))throw bad('معرف حالة الاختبار غير صحيح');
+  const testCase=must(await db.from('masar_agent_eval_cases').select('*').eq('id',req.params.id).single());
+  const state=await intelligenceState(),testSettings={...state.settings,agent_llm_enabled:true};
+  if(!agentRuntime?.snapshot?.(testSettings)?.configured)throw bad('LLM Provider غير متصل حاليًا.',409);
+  const knowledge=(state.knowledge||[]).filter(x=>x.active);
+  const result=await agentRuntime.testPlan({applicant:{awaiting_id:null,answers:{}},message:{body:testCase.input_text},questions:[],areas:[],settings:testSettings,knowledge,recentMessages:[]});
+  const expected=testCase.expected||{},plan=result.plan||{};
+  let passed=null;
+  if(expected.action)passed=String(plan.action)===String(expected.action);
+  const run=must(await db.from('masar_agent_eval_runs').insert({
+   case_id:testCase.id,result,passed,provider:result.provider||null,model:result.model||null,latency_ms:result.latency_ms||null
+  }).select().single());
+  res.json(run);
+ });
+
  adminRoute('get','/intelligence',async(_req,res)=>res.json(await intelligenceState()));
  adminRoute('put','/intelligence/settings',async(req,res)=>{
   const b=req.body,threshold=Number(b.ai_confidence_threshold),fallback=String(b.ai_fallback||'').trim();

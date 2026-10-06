@@ -5,11 +5,11 @@ import {qualificationFor} from '../src/qualification.js';
 import {normalizeWorkAreas} from '../src/db.js';
 
 const questions=[
- {id:'q1',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',position:1,active:true,required:true},
- {id:'q2',field_key:'preferred_work_area',kind:'area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.',position:2,active:true,required:true},
- {id:'q3',field_key:'full_name',kind:'name',label:'اكتب اسمك بالكامل.',position:3,active:true,required:true},
- {id:'q4',field_key:'shift_acceptance',kind:'yes_no',label:'الشيفت 9 ساعات. النظام ده مناسب ليك؟',position:4,active:true,required:true},
- {id:'q5',field_key:'ready_to_start',kind:'yes_no',label:'لو تم قبولك، تقدر تبدأ الشغل قريب؟',position:5,active:true,required:true},
+ {id:'q1',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',position:2,priority:90,active:true,required:true},
+ {id:'q2',field_key:'preferred_work_area',kind:'area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.',position:1,priority:100,confirmation_required:true,active:true,required:true},
+ {id:'q3',field_key:'full_name',kind:'name',label:'اكتب اسمك بالكامل.',position:3,priority:80,active:true,required:true},
+ {id:'q4',field_key:'shift_acceptance',kind:'yes_no',label:'الشيفت 9 ساعات. النظام ده مناسب ليك؟',position:4,priority:70,active:true,required:true},
+ {id:'q5',field_key:'ready_to_start',kind:'yes_no',label:'لو تم قبولك، تقدر تبدأ الشغل قريب؟',position:5,priority:60,active:true,required:true},
  {id:'res',field_key:'residence_area',kind:'text',label:'ساكن فين؟',position:90,active:false,required:false}
 ];
 const areas=[
@@ -28,12 +28,13 @@ const applicant={stage:'new',recruitment_stage:'new',answers:{},awaiting_id:null
 const noAi=async()=>null;
 const call=(a,body,extra={})=>planTurn({applicant:a,message:{body},questions,areas,settings,interpret:noAi,knowledge:[],...extra});
 
-test('welcome is sent separately before the motorcycle qualification question',async()=>{
+test('welcome is sent separately before the work-area choice',async()=>{
  const r=await call(applicant,'السلام عليكم');
- assert.equal(r.patch.awaiting_id,'q1');
+ assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/Breadfast/);
  assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
- assert.match(r.followup_reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
+ assert.match(r.followup_reply,/منطقة|تنزل شغل/);
+ assert.doesNotMatch(r.followup_reply,/هل معاك موتوسيكل/);
 });
 
 test('Meta ad default opener starts application without knowledge handoff or consuming an answer',async()=>{
@@ -51,7 +52,7 @@ test('Meta ad default opener starts application without knowledge handoff or con
   message:{body:'مرحباً! هل يمكنني الحصول على مزيد من المعلومات حول هذا؟'},
   questions,areas,settings,interpret:noAi,knowledge:kb
  });
- assert.equal(r.patch.awaiting_id,'q1');
+ assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.patch.stage,'new');
  assert.equal(r.patch.bot_enabled,undefined);
  assert.equal(r.patch.answers,undefined);
@@ -59,7 +60,8 @@ test('Meta ad default opener starts application without knowledge handoff or con
  assert.equal(r.knowledge_id,undefined);
  assert.match(r.reply,/Breadfast/);
  assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا|رد Knowledge/);
- assert.match(r.followup_reply,/هل معاك موتوسيكل متاح للشغل يوميًا/);
+ assert.match(r.followup_reply,/منطقة|تنزل شغل/);
+ assert.doesNotMatch(r.followup_reply,/هل معاك موتوسيكل/);
  assert.deepEqual(a.answers.__attribution,attribution);
  assert.equal(a.bot_enabled,true);
 });
@@ -79,12 +81,12 @@ test('clear application openers start the flow even when Meta referral is missin
  for(const body of openers){
   assert.equal(isApplicationStartMessage(body),true,body);
   const r=await call(applicant,body);
-  assert.equal(r.patch.awaiting_id,'q1',body);
+  assert.equal(r.patch.awaiting_id,'q2',body);
   assert.equal(r.handoff,undefined,body);
   assert.equal(r.knowledge_id,undefined,body);
   assert.match(r.reply,/Breadfast/,body);
   assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا/,body);
-  assert.match(r.followup_reply,/هل معاك موتوسيكل متاح للشغل يوميًا/,body);
+  assert.match(r.followup_reply,/منطقة|تنزل شغل/,body);
  }
 });
 
@@ -109,20 +111,36 @@ test('job details are answered as a trusted overview without asking residence or
  assert.equal(r.followup_reply,undefined);
 });
 
-test('area button saves preferred work area even while another question is pending',async()=>{
- const a={...applicant,awaiting_id:'q1',answers:{}};
- const selected=await call(a,'area_preview:oct');
- assert.equal(selected.patch.answers.q2.value,'oct');
- assert.equal(selected.patch.awaiting_id,'q1');
- assert.match(selected.reply,/أكتوبر/);
- assert.match(selected.followup_reply,/هل معاك موتوسيكل/);
+test('work area is previewed first, saved only after confirmation, then motorcycle is asked',async()=>{
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const preview=await call(a,'area_preview:oct');
+ assert.equal(preview.patch.answers.q2,undefined);
+ assert.equal(preview.patch.answers.__area_preview.value,'oct');
+ assert.equal(preview.patch.awaiting_id,'q2');
+ assert.match(preview.reply,/تفاصيل أكتوبر/);
+ assert.match(preview.reply,/مناسبة وكمل/);
 
- const afterBike=await call({...a,awaiting_id:selected.patch.awaiting_id,answers:selected.patch.answers},'اه معايا موتوسيكل');
+ const confirmed=await call({...a,awaiting_id:'q2',answers:preview.patch.answers},'confirm_area:oct');
+ assert.equal(confirmed.patch.answers.q2.value,'oct');
+ assert.equal(confirmed.patch.awaiting_id,'q1');
+ assert.match(confirmed.reply,/هنكمل على منطقة أكتوبر/);
+ assert.match(confirmed.followup_reply,/هل معاك موتوسيكل/);
+
+ const afterBike=await call({...a,awaiting_id:confirmed.patch.awaiting_id,answers:confirmed.patch.answers},'اه معايا موتوسيكل');
  assert.equal(afterBike.patch.answers.q1.value,true);
  assert.equal(afterBike.patch.answers.q2.value,'oct');
  assert.equal(afterBike.patch.awaiting_id,'q3');
  assert.match(afterBike.reply+String(afterBike.followup_reply||''),/اسمك بالكامل/);
- assert.doesNotMatch(afterBike.reply+String(afterBike.followup_reply||''),/أنهي منطقة تقدر تشتغل/);
+});
+
+test('residence mention never becomes preferred work area',async()=>{
+ const qs=[...questions,{id:'res2',field_key:'residence_area',kind:'text',label:'ساكن فين؟',position:90,priority:20,active:true,required:false}];
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'انا ساكن في زايد'},questions:qs,areas:[...areas,{id:'zayed',name:'الشيخ زايد',aliases:['زايد'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل زايد'}],settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers?.q2,undefined);
+ assert.equal(r.patch.answers?.res2?.value,'زايد');
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.match(r.followup_reply||r.reply,/منطقة|تنزل شغل/);
 });
 
 test('answering another field never gets consumed as the current pending question',async()=>{
@@ -164,13 +182,13 @@ test('dynamic agent extracts several facts from one Egyptian message and skips d
  const a={...applicant,awaiting_id:'q1',answers:{}};
  const r=await call(a,'اه معايا موتوسيكل واسمي محمد احمد وعايز أكتوبر');
  assert.equal(r.patch.answers.q1.value,true);
- assert.equal(r.patch.answers.q2.value,'oct');
+ assert.equal(r.patch.answers.q2,undefined);
  assert.equal(r.patch.answers.q3.value,'محمد احمد');
  assert.equal(r.patch.answers.q1.agent_extracted,true);
- assert.equal(r.patch.awaiting_id,'q4');
- assert.match(r.reply,/سجلت|فهمت|أكتوبر/);
- assert.match(r.followup_reply,/الشيفت 9 ساعات/);
- assert.doesNotMatch(r.followup_reply,/اسمك بالكامل|أنهي منطقة/);
+ assert.equal(r.patch.answers.__area_preview.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.match(r.reply,/تفاصيل أكتوبر/);
+ assert.match(r.reply,/مناسبة وكمل/);
 });
 
 test('dynamic agent saves facts and answers a side question in the same turn',async()=>{
@@ -181,8 +199,9 @@ test('dynamic agent saves facts and answers a side question in the same turn',as
   questions,areas,settings,interpret:noAi,knowledge:kb
  });
  assert.equal(r.patch.answers.q1.value,true);
- assert.equal(r.patch.answers.q2.value,'oct');
- assert.equal(r.patch.awaiting_id,'q3');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.knowledge_id,'salary');
  assert.match(r.reply,/6200/);
  assert.match(r.followup_reply,/اسمك بالكامل/);
@@ -192,17 +211,19 @@ test('agent understands common Egyptian Franco and mixed Arabic-English replies'
  const a={...applicant,awaiting_id:'q1',answers:{}};
  const r=await call(a,'aywa m3aya moto w 3ayz october');
  assert.equal(r.patch.answers.q1.value,true);
- assert.equal(r.patch.answers.q2.value,'oct');
- assert.equal(r.patch.awaiting_id,'q3');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/أكتوبر/);
- assert.match(r.followup_reply,/اسمك بالكامل/);
+ assert.match(r.reply,/مناسبة وكمل/);
 });
 
 test('agent understands work-area aliases while extracting natural replies',async()=>{
  const a={...applicant,awaiting_id:'q2',answers:{q1:{value:true,kind:'yes_no',key:'has_motorcycle'}}};
  const r=await call(a,'عايز اشتغل 6 أكتوبر');
- assert.equal(r.patch.answers.q2.value,'oct');
- assert.equal(r.patch.awaiting_id,'q3');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/أكتوبر/);
 });
 

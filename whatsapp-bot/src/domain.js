@@ -50,8 +50,8 @@ export function validateAnswer(q,input,areas,media) {
 export function questionPrompt(q,areas) {
  const raw=String(q.label||'').trim();
  const alreadyQuestion=/[?؟]$/.test(raw)||/^(?:هل|ايه|إيه|فين|امتى|إمتى|كام|ازاي|إزاي|أنهي|انهي|معاك|عندك|ساكن|اكتب|ابعت|اختار)/.test(raw);
- let text=raw;
- if(!alreadyQuestion){
+ let text=q.field_key==='preferred_work_area'?'حابب تنزل شغل في أنهي منطقة؟':raw;
+ if(q.field_key!=='preferred_work_area'&&!alreadyQuestion){
   if(q.field_key==='has_motorcycle')text='معاك موتوسيكل متاح للشغل يوميًا؟';
   else if(q.field_key==='preferred_work_area')text='حابب تنزل شغل في أنهي منطقة؟';
   else if(q.field_key==='full_name')text='اسمك بالكامل إيه؟';

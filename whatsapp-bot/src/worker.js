@@ -275,7 +275,7 @@ export class Worker {
      }
      if(turn.handoff){
       const question=String(m.body||'').slice(0,1000);
-      must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question,reason:'low_confidence'}}));
+      must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question,reason:turn.handoff_reason||'low_confidence'}}));
       try{
        const row={
         applicant_id:a.id,

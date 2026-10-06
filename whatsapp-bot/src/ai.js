@@ -273,13 +273,15 @@ export function extractConversationFacts(text,questions=[],areas=[]){
  // currently pending question.
  for(const q of questions||[]){
   if(!q||q.active===false||result.some(x=>x.question_id===q.id)||q.allow_inference===false)continue;
+  if(q.kind==='choice'){
+   const hit=optionHit(q,raw);
+   if(hit)add(q,hit.value,hit.display,.94,'choice_explicit');
+   continue;
+  }
   if(!topicMentioned(q,raw))continue;
   if(q.kind==='yes_no'){
    const yn=indirectYesNo(raw);
    if(yn)add(q,yn==='yes',yn==='yes'?'نعم':'لا',.91,'topic_explicit');
-  }else if(q.kind==='choice'){
-   const hit=optionHit(q,raw);
-   if(hit)add(q,hit.value,hit.display,.94,'choice_explicit');
   }else if(q.kind==='number'){
    const value=numberAnswer(raw);
    if(value!==null)add(q,Number(value),String(value),.9,'topic_explicit');
@@ -317,6 +319,11 @@ export async function interpret(text,question,areas){
  if(question?.kind==='yes_no'){
   const answer=indirectYesNo(text);
   if(answer)return {intent:'answer',answer,area_id:'',confidence:0.96};
+ }
+
+ if(question?.kind==='choice'){
+  const hit=optionHit(question,text);
+  if(hit)return {intent:'answer',answer:hit.value,area_id:'',confidence:0.96};
  }
 
  if(question?.kind==='number'){

@@ -239,12 +239,14 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  assert.equal(autonomousSettings.ai_training_until,null);
  const {rows:agentOfficeSettings}=await db.query("select office_id,agent_enabled from masar_office_settings order by office_id");
  assert.ok(agentOfficeSettings.length>=2);assert.ok(agentOfficeSettings.every(x=>x.agent_enabled===true));
+ const workAreaFirstSql=await fs.readFile(new URL('../../supabase/020_work_area_first_flow.sql',import.meta.url),'utf8');
+ await db.exec(workAreaFirstSql);await db.exec(workAreaFirstSql);
  const {rows:[agentQuestion]}=await db.query("select priority,allow_inference,confirmation_required,agent_instruction from masar_questions where office_id=$1 and field_key='has_motorcycle'",[primaryOfficeForConfig.id]);
- assert.equal(agentQuestion.priority,100);assert.equal(agentQuestion.allow_inference,true);assert.equal(agentQuestion.confirmation_required,false);
- const {rows:[preferredPriority]}=await db.query("select priority from masar_questions where office_id=$1 and field_key='preferred_work_area'",[primaryOfficeForConfig.id]);
- assert.equal(preferredPriority.priority,95);
+ assert.equal(agentQuestion.priority,90);assert.equal(agentQuestion.allow_inference,true);assert.equal(agentQuestion.confirmation_required,false);
+ const {rows:[preferredPriority]}=await db.query("select priority,confirmation_required from masar_questions where office_id=$1 and field_key='preferred_work_area'",[primaryOfficeForConfig.id]);
+ assert.equal(preferredPriority.priority,100);assert.equal(preferredPriority.confirmation_required,true);
  const {rows:[namePriority]}=await db.query("select priority from masar_questions where office_id=$1 and field_key='full_name'",[primaryOfficeForConfig.id]);
- assert.equal(namePriority.priority,90);
+ assert.equal(namePriority.priority,80);
  const {rows:knowledgeScopes}=await db.query("select office_id from masar_knowledge limit 1");
  assert.equal(Object.prototype.hasOwnProperty.call(knowledgeScopes[0],'office_id'),true);
 
@@ -257,7 +259,7 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[futureOffice]}=await db.query("insert into masar_offices(name,code) values('Agent Clone Office','AGENTCLONE') returning id");
  await db.query("select masar_clone_office_config($1,$2,false)",[primaryOfficeForConfig.id,futureOffice.id]);
  const {rows:[futureQuestion]}=await db.query("select priority,allow_inference,confirmation_required from masar_questions where office_id=$1 and field_key='has_motorcycle'",[futureOffice.id]);
- assert.equal(futureQuestion.priority,100);assert.equal(futureQuestion.allow_inference,true);assert.equal(futureQuestion.confirmation_required,false);
+ assert.equal(futureQuestion.priority,90);assert.equal(futureQuestion.allow_inference,true);assert.equal(futureQuestion.confirmation_required,false);
  const {rows:[futureAgent]}=await db.query("select agent_enabled from masar_office_settings where office_id=$1",[futureOffice.id]);
  assert.equal(futureAgent.agent_enabled,true);
 

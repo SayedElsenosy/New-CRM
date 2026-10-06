@@ -1253,7 +1253,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    {field_key:'has_motorcycle',label:'وجود موتوسيكل متاح للشغل يوميًا',kind:'yes_no',priority:100,agent_instruction:'اتأكد إن الموتوسيكل متاح للشغل بشكل مستمر، مش مجرد موجود أحيانًا.'},
    {field_key:'preferred_work_area',label:'منطقة العمل اللي يقدر يلتزم بيها يوميًا',kind:'area',priority:95,agent_instruction:'المقصود مكان الشغل وليس السكن. اختار من مناطق العمل المفعلة فقط.'},
    {field_key:'motorcycle_license',label:'حالة رخصة الموتوسيكل',kind:'yes_no',priority:88,agent_instruction:'اعرف هل الرخصة سارية حسب متطلبات الوظيفة الحالية.'},
-   {field_key:'full_name',label:'الاسم بالكامل',kind:'name',priority:80,agent_instruction:'اجمع الاسم الكامل بشكل طبيعي من المحادثة.'},
+   {field_key:'full_name',label:'الاسم بالكامل',kind:'name',priority:90,agent_instruction:'اجمع الاسم الكامل بشكل طبيعي من المحادثة.'},
    {field_key:'age',label:'العمر',kind:'number',priority:60,agent_instruction:'لو العمر اتقال طبيعيًا سجله، وإلا اسأل عنه وقت ما يكون مناسب.'},
    {field_key:'residence_area',label:'منطقة السكن الحالية',kind:'text',priority:40,agent_instruction:'للمعلومة والتحليل فقط؛ لا تستخدم السكن في Geo Qualification.'},
    {field_key:'document',label:'المستند المطلوب للتقديم',kind:'image',priority:20,required:false,active:false,confirmation_required:true}

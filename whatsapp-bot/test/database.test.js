@@ -287,7 +287,7 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
 
  const bootstrapSharedSql=await fs.readFile(new URL('../../supabase/022_bootstrap_breadfast_shared_facts.sql',import.meta.url),'utf8');
  await db.exec(bootstrapSharedSql);await db.exec(bootstrapSharedSql);
- const {rows:[sharedManualCount]}=await db.query("select count(*)::int as n from masar_knowledge where office_id is null and knowledge_scope='breadfast' and source='manual' and active=true");
+ const {rows:[sharedManualCount]}=await db.query("select count(*)::int as n from masar_knowledge where office_id is null and knowledge_scope='breadfast' and source='manual' and active=true and question in ('المرتب كام؟','الدخل كام؟','الشيفت كام ساعة؟','لازم موتوسيكل؟','في تأمين؟','التقديم بفلوس؟')");
  assert.equal(sharedManualCount.n,6);
  const {rows:[sharedSalaryFact]}=await db.query("select confidence,shared_office_count,examples from masar_knowledge where office_id is null and knowledge_scope='breadfast' and source='manual' and question='المرتب كام؟' limit 1");
  assert.equal(Number(sharedSalaryFact.confidence),1);

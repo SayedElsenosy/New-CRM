@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion,extractConversationMemory,isOperationalMemoryCandidate} from '../src/knowledge.js';
+import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion,extractConversationMemory,isOperationalMemoryCandidate,scopeKnowledgeRows} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -192,6 +192,7 @@ test('unknown side question stays with the agent before human escalation',async(
  assert.match(r.reply,/مش عندي إجابة مؤكدة|مش هخمن/);
 });
 
+test('office scoping excludes old global learned rows',()=>{const rows=[{id:'a',office_id:'o1',source:'staff'},{id:'m',office_id:null,source:'manual'},{id:'g',office_id:null,source:'staff'},{id:'b',office_id:'o2',source:'staff'}];assert.deepEqual(scopeKnowledgeRows(rows,'o1').map(x=>x.id),['a','m']);});
 test('knowledge retrieval excludes conflicted stale and expired memory',()=>{
  const question='المرتب كام؟';
  const base={id:'k',question,answer:'6200 جنيه',keywords:['مرتب'],active:true,confidence:.95,last_verified_at:new Date().toISOString()};

@@ -28,6 +28,20 @@ export function validateAnswer(q,input,areas,media) {
  const s=String(input ?? '').trim();
  if(q.kind==='image') return media?.path ? {ok:true,value:media.path,display:'مرفق مستلم'} : {ok:false};
  if(q.kind==='area') { const z=areas.find(z=>z.active&&(z.id===s||norm(z.name)===norm(s)));return z?{ok:true,value:z.id,display:z.name}:{ok:false}; }
+ if(q.kind==='choice') {
+  const n=norm(s);
+  const options=Array.isArray(q.options)?q.options:[];
+  const hit=options.find(option=>{
+   const label=typeof option==='string'?option:option?.label;
+   const value=typeof option==='string'?option:option?.value;
+   const aliases=typeof option==='string'?[]:(Array.isArray(option?.aliases)?option.aliases:[]);
+   return [label,value,...aliases].filter(Boolean).some(x=>norm(x)===n);
+  });
+  if(!hit)return {ok:false};
+  const value=typeof hit==='string'?hit:(hit.value??hit.label);
+  const display=typeof hit==='string'?hit:(hit.label??String(value));
+  return {ok:true,value,display};
+ }
  if(q.kind==='yes_no') {
   if(typeof input==='boolean') return {ok:true,value:input,display:input?'نعم':'لا'};
   const n=norm(s);
@@ -58,6 +72,7 @@ export function questionPrompt(q,areas) {
   else if(q.field_key==='shift_acceptance')text='نظام الشيفت الحالي مناسب ليك وتقدر تلتزم بيه؟';
   else if(q.field_key==='ready_to_start')text='لو تم قبولك، تقدر تبدأ الشغل قريب؟';
   else if(q.kind==='yes_no')text='بالنسبة لـ «'+raw+'»، الإجابة عندك نعم ولا؟';
+  else if(q.kind==='choice')text=raw;
   else if(q.kind==='number')text='محتاج أعرف '+raw+'، الرقم كام؟';
   else if(q.kind==='image')text='ابعت '+raw+'.';
   else text='محتاج أعرف '+raw+'.';
@@ -66,6 +81,7 @@ export function questionPrompt(q,areas) {
   if(q.field_key==='preferred_work_area') text+='\nاختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم. ولو مفيش أي منطقة مناسبة اختار «❌ ولا منطقة مناسبة».';
   else text+='\nاختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها. تقدر تقارن بين أكتر من منطقة، ومش هنسجل اختيارك النهائي غير لما تأكده.';
  }
+ if(q.kind==='choice'&&Array.isArray(q.options)&&q.options.length)text+='\nاختار الإجابة من الأزرار تحت.';
  if(!q.required)text+='\n(اختياري؛ اكتب «تخطي» لو مش حابب تجاوب)';
  return text;
 }

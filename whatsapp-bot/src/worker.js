@@ -259,6 +259,21 @@ export class Worker {
        must(await this.db.from('masar_knowledge').update({usage_count:Number(row.usage_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',turn.knowledge_id));
       }catch(e){if(!schemaMissing(e))throw e;}
      }
+     try{
+      const action=turn.agent_action||(turn.handoff?'handoff':turn.knowledge_id?'knowledge_answer':turn.followup_reply?'answer_and_continue':'flow_turn');
+      const afterAwaiting=Object.prototype.hasOwnProperty.call(turn.patch||{},'awaiting_id')?turn.patch.awaiting_id:a.awaiting_id;
+      const extracted=Object.values(turn.patch?.answers||{}).filter(v=>v?.agent_extracted===true).length;
+      const eventResult=await this.db.from('masar_events').insert({
+       applicant_id:a.id,kind:'agent_turn',
+       detail:{
+        message_id:m.id,office_id:a.office_id||null,action,
+        handoff:Boolean(turn.handoff),handoff_reason:turn.handoff_reason||null,
+        knowledge_id:turn.knowledge_id||null,knowledge_confidence:turn.knowledge_confidence??null,
+        extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null
+       }
+      });
+      if(eventResult.error)throw eventResult.error;
+     }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')console.warn('Agent turn audit failed:',e.code||e.name||'Error');}
      if(turn.handoff){
       const question=String(m.body||'').slice(0,1000);
       must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question,reason:turn.handoff_reason||'low_confidence'}}));

@@ -116,6 +116,16 @@ test('dynamic agent saves facts and answers a side question in the same turn',as
  assert.match(r.followup_reply,/اسمك بالكامل/);
 });
 
+test('agent understands common Egyptian Franco and mixed Arabic-English replies',async()=>{
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await call(a,'aywa m3aya moto w 3ayz october');
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.answers.q2.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q3');
+ assert.match(r.reply,/أكتوبر/);
+ assert.match(r.followup_reply,/اسمك بالكامل/);
+});
+
 test('agent understands work-area aliases while extracting natural replies',async()=>{
  const a={...applicant,awaiting_id:'q2',answers:{q1:{value:true,kind:'yes_no',key:'has_motorcycle'}}};
  const r=await call(a,'عايز اشتغل 6 أكتوبر');

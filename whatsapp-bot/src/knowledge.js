@@ -72,6 +72,23 @@ const CASE_SPECIFIC_PATTERNS=[
 ];
 const TRIVIAL_CONTEXT=new Set(['تمام','اوكي','ok','okay','حاضر','شكرا','شكراً','اه','ايوه','ايوا','نعم','لا','لاء','ماشي']);
 const CORRECTION_WORDS=/(?:الصح|تصحيح|اتغير|اتغيّر|بقي|بقى|حاليا|حاليًا|دلوقتي|تعديل|مش كده|مش كدا|بدل)/;
+const BREADFAST_LOCAL_ONLY=/(?:منطقه|منطقة|فرع|عنوان|لوكيشن|نقطه تجمع|نقطة تجمع|ماركت|مطاعم|المكتب|مكتبنا|الناحيه|الناحية|اقرب|أقرب)/;
+function mergeExamples(...groups){
+ const out=[];
+ for(const value of groups.flat()){
+  const s=String(value||'').trim();
+  if(s&&!out.some(x=>canonical(x)===canonical(s)))out.push(s.slice(0,500));
+ }
+ return out.slice(0,30);
+}
+export function isBreadfastShareableMemory(question,answer){
+ const q=String(question||'').trim(),a=String(answer||'').trim();
+ if(!isOperationalMemoryCandidate(q,a,{force:true}))return false;
+ const combined=canonical(q+' '+a);
+ if(BREADFAST_LOCAL_ONLY.test(combined))return false;
+ if(/(?:انا عندنا|عندنا هنا|الموظف ده|المرشح ده|الرقم ده)/.test(combined))return false;
+ return tokens(q).length>=1&&a.length>=3;
+}
 
 function meaningfulContext(text){
  const raw=String(text||'').trim();
@@ -223,6 +240,7 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
   const relation=answerRelation(match.answer,candidate.answer);
   const reliable=Object.prototype.hasOwnProperty.call(match,'memory_status');
   const keywords=[...new Set([...(match.keywords||[]),...autoKeywords(candidate.question)])].slice(0,20);
+  const examples=mergeExamples(match.examples||[],match.question,candidate.question);
 
   if(relation==='conflict'){
    if(reliable){
@@ -244,7 +262,7 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
   if(replace&&reliable)await snapshotKnowledgeVersion(db,match,{staffId,reason:relation});
   const nextEvidence=Number(match.evidence_count||1)+1,nextConflicts=Number(match.conflict_count||0);
   const resolvedByConsensus=reliable&&match.memory_status==='conflict'&&nextEvidence>=nextConflicts+2;
-  const patch={keywords,updated_at:now,active:true};
+  const patch={keywords,examples,updated_at:now,active:true};
   if(replace)patch.answer=candidate.answer;
   if(reliable){
    patch.evidence_count=nextEvidence;
@@ -263,8 +281,10 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
   question:candidate.question,
   answer:candidate.answer,
   keywords:autoKeywords(candidate.question),
+  examples:[candidate.question],
   active:true,
   source:'staff',
+  knowledge_scope:'office',
   ...(officeId?{office_id:officeId}:{}),
   created_by:staffId||null,
   ...(suggestionId?{source_suggestion_id:suggestionId}:{})

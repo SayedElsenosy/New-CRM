@@ -285,7 +285,8 @@ test('generic available-areas question is answered directly instead of handed of
  assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
  assert.doesNotMatch(r.reply,/• أكتوبر/);
  assert.doesNotMatch(r.reply,/• الشيخ زايد/);
- assert.match(r.reply,/اسمك بالكامل/);
+ assert.doesNotMatch(r.reply,/اسمك بالكامل/);
+ assert.equal(r.patch.awaiting_id,'name');
  assert.equal(r.handoff,undefined);
 });
 

@@ -173,13 +173,13 @@ test('learned entry for the same structured question does not create a second an
  assert.match(r.reply,/تم الاستلام/);
 });
 
-test('approved knowledge answers side questions then resumes the pending application question',async()=>{
+test('approved knowledge answers a side question without immediately repeating the pending question',async()=>{
  const kb=[{id:'k1',question:'التأمين الطبي بيبدأ امتى؟',answer:'التأمين الطبي يبدأ بعد استكمال إجراءات التعيين.',keywords:['تأمين طبي'],active:true}];
  const a={...applicant,awaiting_id:'name'};
  const r=await planTurn({applicant:a,message:{body:'التأمين الطبي بيبدأ امتى؟'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},interpret,knowledge:kb});
  assert.equal(r.knowledge_id,'k1');assert.equal(r.patch.awaiting_id,'name');assert.equal(r.patch.bot_enabled,undefined);
  assert.match(r.reply,/التأمين الطبي يبدأ/);assert.doesNotMatch(r.reply,/اسمك بالكامل/);
- assert.equal(r.followup_reply,'اسمك بالكامل؟');
+ assert.equal(r.followup_reply,null);
 });
 
 test('unknown side question stays with the agent before human escalation',async()=>{
@@ -275,7 +275,7 @@ test('agent combines a clarification turn with previous context when recalling m
  assert.equal(r.patch.awaiting_id,'name');
  assert.equal(r.patch.answers.__agent_state,undefined);
  assert.match(r.reply,/التأمين الطبي يبدأ/);
- assert.equal(r.followup_reply,'اسمك بالكامل؟');
+ assert.equal(r.followup_reply,null);
 });
 
 

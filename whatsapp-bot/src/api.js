@@ -689,13 +689,26 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     const active=b.active!==false;
     row={name:b.name.trim(),details:b.details,active,position:Number.isInteger(b.position)?b.position:0,office_id:officeId,zone,recruitment_eligible:active,aliases:cleanAliases};
    }else{
-    if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع المعلومة المطلوبة ونوعها ومفتاح حفظ البيانات');
+    if(typeof b.label!=='string'||!b.label.trim()||b.label.length>1000||!['name','text','number','yes_no','area','choice','image'].includes(b.kind)||!/^[a-z][a-z0-9_]{0,39}$/.test(b.field_key))throw bad('راجع المعلومة المطلوبة ونوعها ومفتاح حفظ البيانات');
     const instruction=String(b.agent_instruction||'').trim(),priority=Number(b.priority??50);
     if(instruction.length>1200||!Number.isInteger(priority)||priority<1||priority>100)throw bad('راجع تعليمات الـAgent وأولوية المعلومة');
+    let options=[];
+    if(b.kind==='choice'){
+     const rawOptions=Array.isArray(b.options)?b.options:[];
+     options=rawOptions.map(option=>{
+      const label=String(typeof option==='string'?option:option?.label||'').trim();
+      const value=String(typeof option==='string'?option:(option?.value??label)).trim();
+      const aliases=Array.isArray(option?.aliases)?option.aliases.map(x=>String(x||'').trim()).filter(Boolean).slice(0,10):[];
+      return {label:label.slice(0,80),value:value.slice(0,80),aliases:aliases.map(x=>x.slice(0,80))};
+     }).filter(x=>x.label&&x.value);
+     const keys=options.map(x=>norm(x.value));
+     if(options.length<2||options.length>10||new Set(keys).size!==keys.length)throw bad('سؤال الاختيارات لازم يحتوي من 2 إلى 10 اختيارات مختلفة');
+    }
     row={
      label:b.label.trim(),field_key:b.field_key,kind:b.kind,required:b.required!==false,active:b.active!==false,
      position:Number.isInteger(b.position)?b.position:0,office_id:officeId,
-     agent_instruction:instruction,priority,allow_inference:b.allow_inference!==false,confirmation_required:b.confirmation_required===true
+     agent_instruction:instruction,priority,allow_inference:b.allow_inference!==false,confirmation_required:b.confirmation_required===true,
+     options
     };
    }
    if(b.id&&!uuid(b.id))throw bad('معرف غير صحيح');

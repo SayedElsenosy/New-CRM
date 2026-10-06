@@ -229,6 +229,28 @@ test('agent understands work-area aliases while extracting natural replies',asyn
  assert.match(r.reply,/أكتوبر/);
 });
 
+test('residence wording while choosing work area never selects the work area',async()=>{
+ const liveAreas=[...areas,{id:'zayed',name:'الشيخ زايد',aliases:['زايد'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل الشيخ زايد'}];
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'انا ساكن في زايد'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers?.q2,undefined);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.agent_action,'clarify_work_area_vs_residence');
+ assert.match(r.reply,/مكان سكنك/);
+ assert.match(r.reply,/منطقة الشغل/);
+});
+
+test('ambiguous no plus a side question never disqualifies motorcycle automatically',async()=>{
+ const a={...applicant,awaiting_id:'q1',answers:{
+  q2:{value:'oct',display:'أكتوبر',kind:'area',key:'preferred_work_area',work_area_eligible:true,work_area_zone:'WEST'}
+ }};
+ const r=await call(a,'لاء ايه المتاح الناحية دي؟');
+ assert.equal(r.patch.answers?.q1,undefined);
+ assert.equal(r.patch.answers?.__qualification_stop,undefined);
+ assert.equal(r.patch.awaiting_id,'q1');
+ assert.doesNotMatch(r.reply,/مش هنقدر نكمل التقديم|بتشترط وجود موتوسيكل/);
+});
+
 test('has_motorcycle=no saves answer and stops without recruiter rejection',async()=>{
  const attribution={source_id:'1202552915330556',ctwa_clid:'first-touch'};
  const a={...applicant,awaiting_id:'q1',answers:{__attribution:attribution}};

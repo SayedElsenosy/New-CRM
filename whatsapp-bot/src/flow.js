@@ -1,7 +1,7 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
-import {decideConversationAction} from './ai.js';
+import {decideConversationAction,extractConversationFacts,nextAgentQuestion} from './ai.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -10,6 +10,33 @@ function areaPreviewReply(area,areas){
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
 function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
+function applyAgentFacts({facts,questions,areas,answers}){
+ const saved=[];
+ for(const fact of facts||[]){
+  const q=(questions||[]).find(item=>item.id===fact.question_id);
+  if(!q||q.active===false||q.confirmation_required===true||answered(q,answers,areas))continue;
+  let value=fact.value,display=fact.display;
+  if(q.kind==='area'){
+   const area=areas.find(z=>z.active&&String(z.id)===String(value));
+   if(!area)continue;
+   value=area.id;display=area.name;
+  }else if(q.kind==='yes_no'){
+   value=Boolean(value);display=value?'نعم':'لا';
+  }
+  answers[q.id]={
+   value,display,label:q.label,key:q.field_key,kind:q.kind,at:new Date().toISOString(),
+   agent_extracted:true,agent_confidence:Number(fact.confidence||0),agent_source:fact.source||'explicit',
+   ...(q.field_key==='preferred_work_area'?{
+    work_area_eligible:areas.find(z=>String(z.id)===String(value))?.recruitment_eligible===true,
+    work_area_zone:areas.find(z=>String(z.id)===String(value))?.zone||'UNKNOWN'
+   }:{})
+  };
+  saved.push({q,fact});
+ }
+ if(saved.length)clearAgentState(answers);
+ return saved;
+}
+function nextMissing(qs,answers,areas){return nextAgentQuestion(qs,answers,areas,answered);}
 function knowledgeQueryText(answers,text){
  const current=String(text||'').trim();
  const previous=answers?.__agent_state?.kind==='clarification'?String(answers.__agent_state.last_message||'').trim():'';
@@ -161,7 +188,7 @@ function commitAreaChoice({area,current,answers,qs,questions,areas,settings,appl
  if(current.field_key==='preferred_work_area'&&area.recruitment_eligible!==true){
   return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:area.name}),reply:NO_ELIGIBLE_WORK_AREA_REPLY};
  }
- const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
+ const next=nextMissing(qs,answers,areas);
  const comp=completion(questions,answers,areas);
  const qualification=qualificationFlowEnabled?qualificationFor({...applicant,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
  if(comp.complete&&qualification.qualified_candidate===false){
@@ -253,8 +280,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
  const qualificationFlowEnabled=qs.some(q=>q.field_key==='has_motorcycle')&&qs.some(q=>q.field_key==='preferred_work_area');
 
- if(isFreshApplicationStart(a,m)){
-  const first=qs[0];
+ const openingFacts=settings.ai_enabled?extractConversationFacts(m.body,qs,areas):[];
+ if(isFreshApplicationStart(a,m)&&openingFacts.length===0){
+  const first=nextMissing(qs,answers,areas)||qs[0];
   const welcome=String(settings.welcome||'').trim();
   const firstQuestion=questionPrompt(first,areas);
   return welcome
@@ -289,8 +317,25 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  activeFlow(answers);
- const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
- const current=pending.find(q=>q.id===a.awaiting_id)||pending[0];
+ const agentFacts=settings.ai_enabled?extractConversationFacts(m.body,qs,areas):[];
+ const savedAgentFacts=applyAgentFacts({facts:agentFacts,questions:qs,areas,answers});
+ if(savedAgentFacts.length){
+  const motorcycleQuestion=qs.find(q=>q.field_key==='has_motorcycle');
+  if(motorcycleQuestion&&answers[motorcycleQuestion.id]?.value===false){
+   return {patch:stopQualification(answers,'no_motorcycle'),reply:NO_MOTORCYCLE_REPLY,agent_action:'qualification_fact'};
+  }
+  const workAreaQuestion=qs.find(q=>q.field_key==='preferred_work_area');
+  if(workAreaQuestion&&answers[workAreaQuestion.id]&&answers[workAreaQuestion.id].work_area_eligible===false){
+   const areaName=answers[workAreaQuestion.id].display||'';
+   return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:areaName}),reply:NO_ELIGIBLE_WORK_AREA_REPLY,agent_action:'qualification_fact'};
+  }
+ }
+ const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required))
+  .sort((x,y)=>{
+   const nx=nextAgentQuestion([x,y],answers,areas,answered);
+   return nx?.id===x.id?-1:1;
+  });
+ const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
 
  const decision=settings.ai_enabled?decideConversationAction(m.body,current,areas):null;
  if(decision?.action==='handoff'){
@@ -438,7 +483,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    if(current.field_key==='shift_acceptance'&&parsed.value===false&&settings.qualification_require_shift===true){
     return {patch:stopQualification(answers,'shift_not_accepted'),reply:SHIFT_STOP_REPLY};
    }
-   const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
+   const next=nextMissing(qs,answers,areas);
    const comp=completion(questions,answers,areas);
    const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
    if(comp.complete&&qualification.qualified_candidate===false){
@@ -500,7 +545,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
  if(!a.awaiting_id || a.awaiting_id!==current.id){
   const prompt=questionPrompt(current,areas);
-  if(realAnswerCount(answers))return {patch:{awaiting_id:current.id},reply:'نكمل بياناتك: '+prompt};
+  const implicitAreaFact=savedAgentFacts?.find(x=>x.q.field_key==='preferred_work_area');
+  if(implicitAreaFact){
+   const area=areas.find(z=>String(z.id)===String(implicitAreaFact.fact.value));
+   if(area)return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:'تمام، فهمت إن منطقة العمل المناسبة ليك هي '+area.name+' ✅\n\n'+areaDetails(area),followup_reply:prompt,agent_action:'multi_fact_extract'};
+  }
+  if(realAnswerCount(answers))return {patch:{...(savedAgentFacts?.length?{answers}:{}),awaiting_id:current.id},reply:'نكمل بياناتك: '+prompt,agent_action:savedAgentFacts?.length?'multi_fact_extract':undefined};
   const welcome=String(settings.welcome||'').trim();
   return welcome
    ?{patch:{awaiting_id:current.id},reply:welcome,followup_reply:prompt}
@@ -565,7 +615,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(current.field_key==='shift_acceptance'&&answers[current.id]?.value===false&&settings.qualification_require_shift===true){
   return {patch:stopQualification(answers,'shift_not_accepted'),reply:SHIFT_STOP_REPLY};
  }
- const next=qs.find(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
+ const next=nextMissing(qs,answers,areas);
  const comp=completion(questions,answers,areas);
  const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
  if(comp.complete&&qualification.qualified_candidate===false){

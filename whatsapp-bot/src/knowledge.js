@@ -416,7 +416,8 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
   if(update.error)throw update.error;
   await recordKnowledgeEvidence(db,{knowledgeId:match.id,officeId,applicantId,candidate,kind:relation==='corrected'?'corrected':replace?'updated':'reinforced',confidence:.94});
   await recordMemoryEvent(db,{applicantId,kind:replace?'ai_memory_updated':'ai_memory_reinforced',detail:{knowledge_id:match.id,relation,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,consensus_resolved:resolvedByConsensus}});
-  return {learned:true,action:relation,knowledge_id:match.id,question:candidate.question};
+  const shared=await refreshBreadfastSharedMemory(db,{candidate,officeId,applicantId,staffId});
+  return {learned:true,action:relation,knowledge_id:match.id,question:candidate.question,shared_action:shared.action,shared_knowledge_id:shared.knowledge_id||null};
  }
  const row={
   question:candidate.question,
@@ -434,7 +435,8 @@ async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,s
  if(inserted.error)throw inserted.error;
  await recordKnowledgeEvidence(db,{knowledgeId:inserted.data.id,officeId,applicantId,candidate,kind:'learned',confidence:.94});
  await recordMemoryEvent(db,{applicantId,kind:'ai_memory_learned',detail:{knowledge_id:inserted.data.id,question:candidate.question,answer:candidate.answer,context:candidate.context||'',source_message_id:candidate.source_message_id,staff_message_id:candidate.staff_message_id,office_id:officeId}});
- return {learned:true,action:'created',knowledge_id:inserted.data.id,question:candidate.question};
+ const shared=await refreshBreadfastSharedMemory(db,{candidate,officeId,applicantId,staffId});
+ return {learned:true,action:'created',knowledge_id:inserted.data.id,question:candidate.question,shared_action:shared.action,shared_knowledge_id:shared.knowledge_id||null};
 }
 export async function learnFromConversation(db,{applicantId,officeId=null,staffMessageId,staffId=null,force=false}){
  try{

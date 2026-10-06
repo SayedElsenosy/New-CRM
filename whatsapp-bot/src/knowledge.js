@@ -81,7 +81,7 @@ function meaningfulContext(text){
 export function isOperationalMemoryCandidate(question,answer,{force=false}={}){
  const q=String(question||'').trim(),a=String(answer||'').trim();
  if(!meaningfulContext(q)||!usefulAnswer(a))return false;
- const normalizedAnswer=canonical(a);
+ const normalizedAnswer=norm(digits(a)).replace(/[^\p{L}\p{N}\s]/gu,' ').replace(/\s+/g,' ').trim();
  if(CASE_SPECIFIC_PATTERNS.some(pattern=>pattern.test(normalizedAnswer)))return false;
  if(looksLikeQuestion(q))return true;
  if(force)return q.length>=3&&q.length<=2000;

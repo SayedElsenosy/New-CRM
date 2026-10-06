@@ -11,6 +11,17 @@ alter table public.masar_questions
  add column if not exists allow_inference boolean not null default true,
  add column if not exists confirmation_required boolean not null default false;
 
+update public.masar_questions
+set priority=case field_key
+ when 'has_motorcycle' then 100
+ when 'preferred_work_area' then 95
+ when 'shift_acceptance' then 85
+ when 'full_name' then 80
+ when 'ready_to_start' then 70
+ else priority
+end
+where field_key in ('has_motorcycle','preferred_work_area','shift_acceptance','full_name','ready_to_start');
+
 -- Learned operational facts are isolated by office. NULL means global knowledge
 -- created by the system owner and is intentionally reusable across offices.
 alter table public.masar_knowledge

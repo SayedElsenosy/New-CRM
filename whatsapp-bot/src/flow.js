@@ -449,7 +449,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(match){
    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
    clearAgentState(answers);
-   return {patch:current?{...(hadAgentState?{answers}:{}),awaiting_id:current.id}:{...(hadAgentState?{answers}:{}),stage:computedStage(a,questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence};
+   const persistAnswers=hadAgentState||savedAgentFacts.length>0;
+   return {patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:current?questionPrompt(current,areas):null,knowledge_id:match.id,knowledge_confidence:match.confidence,agent_action:savedAgentFacts.length?'multi_fact_extract':undefined};
   }
  }
  if(areaQuestion&&!compoundStructuredQuestion){
@@ -521,8 +522,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(match){
    const hadAgentState=Boolean(answers.__agent_state||answers.__ai_handoff);
    clearAgentState(answers);
+   const persistAnswers=hadAgentState||savedAgentFacts.length>0;
    return {
-    patch:current?{...(hadAgentState?{answers}:{}),awaiting_id:current.id}:{...(hadAgentState?{answers}:{}),stage:computedStage(a,questions,areas),awaiting_id:null},
+    patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:String(match.answer||'').trim(),
     followup_reply:current?questionPrompt(current,areas):null,
     knowledge_id:match.id,
@@ -539,9 +541,21 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!current){
   if(areaQuestion){
    answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString()};
-   return {patch:{answers,stage:computedStage(a,questions,areas),awaiting_id:null},reply:'اختار المنطقة من الأزرار تحت علشان أقولك تفاصيلها.'};
+   return {patch:{answers,stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:'اختار المنطقة من الأزرار تحت علشان أقولك تفاصيلها.'};
   }
-  return {patch:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:postCompletionReply()};
+  if(savedAgentFacts.length){
+   const comp=completion(questions,answers,areas);
+   const qualification=qualificationFlowEnabled?qualificationFor({...a,answers},questions,areas,settings):{qualified_candidate:true,reasons:[]};
+   if(comp.complete&&qualification.qualified_candidate===false){
+    const reason=qualification.reasons[0]||'not_qualified';
+    return {patch:stopQualification(answers,reason),reply:stoppedReply(reason),agent_action:'multi_fact_extract'};
+   }
+   if(comp.complete&&qualification.qualified_candidate===true){
+    completeFlow(answers);
+    return {patch:{answers,stage:'complete',awaiting_id:null},reply:settings.completion,agent_action:'multi_fact_extract'};
+   }
+  }
+  return {patch:{...(savedAgentFacts.length?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:postCompletionReply()};
  }
  if(!a.awaiting_id || a.awaiting_id!==current.id){
   const prompt=questionPrompt(current,areas);

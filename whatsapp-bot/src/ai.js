@@ -13,11 +13,12 @@ const hasAny=(text,words)=>{const tokens=new Set(text.split(' '));return words.s
 function areaHits(text,areas){
  const n=clean(text);
  return areas.filter(a=>a.active).filter(a=>{
-  const name=clean(a.name);
-  if(!name)return false;
-  if(n.includes(name))return true;
-  const tokens=name.split(' ').filter(t=>t.length>=3&&!['الشيخ','مدينه','مدينة','منطقه','منطقة'].includes(t));
-  return tokens.length>0 && tokens.every(t=>n.includes(t));
+  const names=[a.name,...(Array.isArray(a.aliases)?a.aliases:[])].map(clean).filter(Boolean);
+  return names.some(name=>{
+   if(n.includes(name))return true;
+   const tokens=name.split(' ').filter(t=>t.length>=3&&!['الشيخ','مدينه','مدينة','منطقه','منطقة'].includes(t));
+   return tokens.length>0&&tokens.every(t=>n.includes(t));
+  });
  });
 }
 
@@ -112,8 +113,15 @@ const AREA_COMMIT=/(?:عايز|عاوز|اختار|اختياري|هشتغل|ا�
 
 function explicitFullName(text){
  const raw=String(text||'').trim();
- const m=raw.match(/(?:^|\s)(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم)\s*[:\-]?\s*([\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,4})/u);
- return m?.[1]?.trim()||null;
+ const start=raw.match(/(?:^|\s)(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم)\s*[:\-]?\s*/u);
+ if(!start)return null;
+ const rest=raw.slice((start.index||0)+start[0].length)
+  .split(/[،,.!?؟؛;]/)[0]
+  .split(/\s+(?:و)?(?:معايا|عندي|عايز|عاوز|حابب|ساكن|هشتغل|اشتغل|اقدر|أقدر|محتاج)\b/u)[0]
+  .trim();
+ const words=rest.split(/\s+/).filter(Boolean);
+ if(words.length<2||words.length>5||words.some(w=>/\d/.test(w)))return null;
+ return rest;
 }
 function factPriority(q){
  const key=q?.field_key;

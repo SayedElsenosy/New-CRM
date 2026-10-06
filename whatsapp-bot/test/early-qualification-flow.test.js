@@ -88,6 +88,42 @@ test('clear application openers start the flow even when Meta referral is missin
  }
 });
 
+test('dynamic agent extracts several facts from one Egyptian message and skips duplicate questions',async()=>{
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await call(a,'اه معايا موتوسيكل واسمي محمد احمد وعايز أكتوبر');
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.answers.q2.value,'oct');
+ assert.equal(r.patch.answers.q3.value,'محمد احمد');
+ assert.equal(r.patch.answers.q1.agent_extracted,true);
+ assert.equal(r.patch.awaiting_id,'q4');
+ assert.match(r.reply,/سجلت|فهمت|أكتوبر/);
+ assert.match(r.followup_reply,/الشيفت 9 ساعات/);
+ assert.doesNotMatch(r.followup_reply,/اسمك بالكامل|أنهي منطقة/);
+});
+
+test('dynamic agent saves facts and answers a side question in the same turn',async()=>{
+ const kb=[{id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه.',keywords:['مرتب','6200'],active:true}];
+ const a={...applicant,awaiting_id:'q1',answers:{}};
+ const r=await planTurn({
+  applicant:a,message:{body:'اه معايا مكنة وعايز أكتوبر بس المرتب كام؟'},
+  questions,areas,settings,interpret:noAi,knowledge:kb
+ });
+ assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.answers.q2.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q3');
+ assert.equal(r.knowledge_id,'salary');
+ assert.match(r.reply,/6200/);
+ assert.match(r.followup_reply,/اسمك بالكامل/);
+});
+
+test('agent understands work-area aliases while extracting natural replies',async()=>{
+ const a={...applicant,awaiting_id:'q2',answers:{q1:{value:true,kind:'yes_no',key:'has_motorcycle'}}};
+ const r=await call(a,'عايز اشتغل 6 أكتوبر');
+ assert.equal(r.patch.answers.q2.value,'oct');
+ assert.equal(r.patch.awaiting_id,'q3');
+ assert.match(r.reply,/أكتوبر/);
+});
+
 test('has_motorcycle=no saves answer and stops without recruiter rejection',async()=>{
  const attribution={source_id:'1202552915330556',ctwa_clid:'first-touch'};
  const a={...applicant,awaiting_id:'q1',answers:{__attribution:attribution}};

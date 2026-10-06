@@ -558,6 +558,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     ai_training_until:until
    },knowledge:k,suggestions:sg,stats:{
     active:k.filter(x=>x.active).length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
+    approved:sg.filter(x=>x.status==='approved').length,skipped:sg.filter(x=>x.status==='rejected').length,
     learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0),
     training_suggestions:trainingSuggestions
    }};

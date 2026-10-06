@@ -6,7 +6,7 @@ import {decideConversationAction,extractConversationFacts,nextAgentQuestion} fro
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
  const choices=others.length?'\n\nولو عايز تقارن بمنطقة تانية اختارها من الأزرار تحت.':'';
- return areaDetails(area)+`\n\nلو ${area.name} هي المنطقة اللي هتنزل فيها اضغط «✅ تأكيد ${area.name}».`+choices;
+ return areaDetails(area)+`\n\nلو تفاصيل ${area.name} مناسبة ليك اضغط «✅ مناسبة وكمل». ولو مش مناسبة اختار منطقة تانية من الأزرار.`+choices;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
 function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
@@ -198,11 +198,11 @@ function commitAreaChoice({area,current,answers,qs,questions,areas,settings,appl
  if(comp.complete&&qualification.qualified_candidate===true)completeFlow(answers);
  const stage=comp.complete&&qualification.qualified_candidate===true?'complete':realAnswerCount(answers)?'incomplete':'new';
  const finalReply=next?questionPrompt(next,areas):(qualification.qualified_candidate===true?settings.completion:QUALIFICATION_PENDING_REPLY);
- const prefix=current.field_key==='preferred_work_area'?'تمام، سجلت منطقة العمل: '+area.name+' ✅\n\n':'تم تثبيت منطقة التقديم: '+area.name+' ✅\n\n';
+ const prefix=current.field_key==='preferred_work_area'?'تمام، هنكمل على منطقة '+area.name+' ✅':'تم تثبيت منطقة التقديم: '+area.name+' ✅\n\n';
  if(current.field_key==='preferred_work_area'){
   return {
    patch:{answers,stage,awaiting_id:next?.id||null},
-   reply:prefix+areaDetails(area),
+   reply:prefix,
    followup_reply:finalReply
   };
  }
@@ -444,12 +444,26 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const area=areas.find(z=>z.active&&z.id===action.id);
   if(!area)return {patch:current?{awaiting_id:current.id}:{},reply:current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas)};
   const preferredQuestion=qs.find(q=>q.field_key==='preferred_work_area');
-  if(preferredQuestion&&!answered(preferredQuestion,answers,areas)&&(action.type==='preview'||action.type==='confirm')){
-   return commitAreaChoice({area,current:preferredQuestion,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+  if(preferredQuestion&&!answered(preferredQuestion,answers,areas)&&current?.id!==preferredQuestion.id){
+   if(action.type==='preview'){
+    answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
+    return {patch:{answers,awaiting_id:preferredQuestion.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
+   }
+   if(action.type==='confirm'){
+    if(answers.__area_preview?.value!==area.id)return {patch:{answers,awaiting_id:preferredQuestion.id},reply:questionPrompt(preferredQuestion,areas)};
+    return commitAreaChoice({area,current:preferredQuestion,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+   }
   }
   if(current?.kind==='area'){
-   if(current.field_key==='preferred_work_area'&&(action.type==='preview'||action.type==='confirm')){
-    return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+   if(current.field_key==='preferred_work_area'){
+    if(action.type==='preview'){
+     answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
+     return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
+    }
+    if(action.type==='confirm'){
+     if(answers.__area_preview?.value!==area.id)return {patch:{answers,awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها اضغط «✅ مناسبة وكمل».\n\n'+questionPrompt(current,areas)};
+     return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+    }
    }
    if(action.type==='preview'){
     answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};
@@ -476,9 +490,6 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const inquiry=areaInquiry(m.body,areas);
  if(inquiry&&!committedAreaInTurn){
   if(current?.kind==='area'){
-   if(current.field_key==='preferred_work_area'){
-    return commitAreaChoice({area:inquiry,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
-   }
    answers.__area_preview={value:inquiry.id,display:inquiry.name,kind:'area_preview',at:new Date().toISOString()};
    return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(inquiry,areas)};
   }

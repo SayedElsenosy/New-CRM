@@ -117,7 +117,7 @@ function explicitFullName(text){
  if(!start)return null;
  const rest=raw.slice((start.index||0)+start[0].length)
   .split(/[،,.!?؟؛;]/)[0]
-  .split(/\s+(?:و)?(?:معايا|عندي|عايز|عاوز|حابب|ساكن|هشتغل|اشتغل|اقدر|أقدر|محتاج)\b/u)[0]
+  .split(/\s+(?:و)?(?:معايا|عندي|عايز|عاوز|حابب|ساكن|هشتغل|اشتغل|اقدر|أقدر|محتاج)(?=\s|$)/u)[0]
   .trim();
  const words=rest.split(/\s+/).filter(Boolean);
  if(words.length<2||words.length>5||words.some(w=>/\d/.test(w)))return null;

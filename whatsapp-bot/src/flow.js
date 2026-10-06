@@ -391,7 +391,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   clearAgentState(answers);
   return {patch:{answers,awaiting_id:current?.id||null},reply:current?questionPrompt(current,areas):postCompletionReply(),agent_action:'resume_flow',agent_confidence:decision.confidence};
  }
- if(decision?.action==='answer_current'&&current?.field_key==='preferred_work_area'&&decision.area_id){
+ if(!buttonAction&&decision?.action==='answer_current'&&current?.field_key==='preferred_work_area'&&decision.area_id){
   const area=areas.find(z=>z.active&&String(z.id)===String(decision.area_id));
   if(area){
    answers.__area_preview={value:area.id,display:area.name,kind:'area_preview',at:new Date().toISOString()};

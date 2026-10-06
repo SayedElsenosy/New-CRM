@@ -366,7 +366,7 @@ test('answer plus a real question still uses knowledge then resumes the flow',as
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.knowledge_id,'salary');
  assert.match(r.reply,/6200/);
- assert.equal(r.followup_reply,null);
+ assert.match(r.followup_reply,/حابب تنزل شغل في أنهي منطقة/);
 });
 
 test('eligible work area is previewed and becomes qualifying only after confirmation',async()=>{
@@ -523,7 +523,7 @@ test('salary question during work-area step answers without repeating the same p
  assert.equal(r.knowledge_id,'salary');
  assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/6200/);
- assert.match(r.followup_reply,/حابب تنزل شغل في أنهي منطقة/);
+ assert.equal(r.followup_reply,null);
 });
 
 test('ready_to_start remains priority data only',()=>{

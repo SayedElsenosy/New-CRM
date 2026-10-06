@@ -5,7 +5,6 @@ begin;
 
 with trusted as (
  select question,answer,
-        max(keywords) as keywords,
         count(distinct office_id)::int as office_count
  from public.masar_knowledge
  where source='manual'
@@ -24,7 +23,7 @@ insert into public.masar_knowledge(
  confidence,evidence_count,conflict_count,memory_status,last_verified_at,
  shared_office_count,version,created_at,updated_at
 )
-select t.question,t.answer,coalesce(t.keywords,'{}'::text[]),array[t.question],
+select t.question,t.answer,'{}'::text[],array[t.question],
  true,'manual',null,'breadfast',1.000,t.office_count,0,'verified',now(),
  t.office_count,1,now(),now()
 from trusted t

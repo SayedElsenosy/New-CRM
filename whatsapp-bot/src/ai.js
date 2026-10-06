@@ -7,7 +7,28 @@ const NEGATIVE=[
 ];
 const POSITIVE=['نعم','ايوه','ايوا','اه','أه','تمام','موافق','عندي','معايا','موجود','متاح','yes','yep','yeah'];
 
-const clean=v=>norm(digits(v)).replace(/[^\p{L}\p{N}\s?؟]/gu,' ').replace(/\s+/g,' ').trim();
+const FRANCO_REPLACEMENTS=[
+ [/\b(?:3ayz|3awez|3awz|3ayez)\b/gi,'عايز'],
+ [/\b(?:m3aya|ma3aya)\b/gi,'معايا'],
+ [/\b(?:m3ndish|ma3ndish|m3andish|ma3andish)\b/gi,'معنديش'],
+ [/\b(?:aywa|aiwa|aywah)\b/gi,'ايوه'],
+ [/\b(?:la2|laa)\b/gi,'لا'],
+ [/\b(?:moto|motorcycle|motosikl|motosikl)\b/gi,'موتوسيكل'],
+ [/\b(?:shift)\b/gi,'شيفت'],
+ [/\b(?:salary)\b/gi,'مرتب'],
+ [/\b(?:kam)\b/gi,'كام'],
+ [/\b(?:tamam|tmam)\b/gi,'تمام'],
+ [/\b(?:ready)\b/gi,'جاهز'],
+ [/\b(?:october|octobr|oktober)\b/gi,'أكتوبر'],
+ [/\b(?:tagamo3|tagamoa|tagamo)\b/gi,'التجمع'],
+ [/\b(?:nasr\s*city|madinet\s*nasr)\b/gi,'مدينة نصر']
+];
+function normalizeEgyptianInput(value){
+ let s=String(value??'');
+ for(const [pattern,replacement] of FRANCO_REPLACEMENTS)s=s.replace(pattern,replacement);
+ return s;
+}
+const clean=v=>norm(digits(normalizeEgyptianInput(v))).replace(/[^\p{L}\p{N}\s?؟]/gu,' ').replace(/\s+/g,' ').trim();
 const hasAny=(text,words)=>{const tokens=new Set(text.split(' '));return words.some(w=>{const x=clean(w);return x.includes(' ')?text.includes(x):text===x||tokens.has(x);});};
 
 function areaHits(text,areas){
@@ -113,7 +134,7 @@ const AREA_COMMIT=/(?:عايز|عاوز|اختار|اختياري|هشتغل|ا�
 
 function explicitFullName(text){
  const raw=String(text||'').trim();
- const start=raw.match(/(?:^|\s)(?:و\s*)?(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم)\s*[:\-]?\s*/u);
+ const start=raw.match(/(?:^|\s)(?:و\s*)?(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم|esmy|esmi)\s*[:\-]?\s*/iu);
  if(!start)return null;
  const rest=raw.slice((start.index||0)+start[0].length)
   .split(/[،,.!?؟؛;]/)[0]

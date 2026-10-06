@@ -385,19 +385,23 @@ export function findKnowledgeAnswer(text,rows,threshold=.62,{allowStatement=fals
  }
  return best&&best.confidence>=threshold?best:null;
 }
+export function scopeKnowledgeRows(rows,officeId=null){
+ const list=Array.isArray(rows)?rows:[];
+ if(!officeId)return list;
+ return list
+  .filter(row=>String(row.office_id||'')===String(officeId)||(!row.office_id&&row.source==='manual'))
+  .sort((a,b)=>{
+   const as=String(a.office_id||'')===String(officeId)?1:0,bs=String(b.office_id||'')===String(officeId)?1:0;
+   return bs-as||String(b.updated_at||'').localeCompare(String(a.updated_at||''));
+  });
+}
 export async function loadKnowledge(db,officeId=null){
  try{
   let query=db.from('masar_knowledge').select('*').eq('active',true);
   if(officeId)query=query.or('office_id.is.null,office_id.eq.'+officeId);
   const result=await query.order('updated_at',{ascending:false});
   if(result.error)throw result.error;
-  const rows=result.data||[];
-  if(!officeId)return rows;
-  const safeRows=rows.filter(row=>String(row.office_id||'')===String(officeId)||(!row.office_id&&row.source==='manual'));
-  return safeRows.sort((a,b)=>{
-   const as=String(a.office_id||'')===String(officeId)?1:0,bs=String(b.office_id||'')===String(officeId)?1:0;
-   return bs-as||String(b.updated_at||'').localeCompare(String(a.updated_at||''));
-  });
+  return scopeKnowledgeRows(result.data||[],officeId);
  }catch(e){
   if(['42703','PGRST204'].includes(e?.code||'')){
    const legacy=await db.from('masar_knowledge').select('*').eq('active',true).order('updated_at',{ascending:false});

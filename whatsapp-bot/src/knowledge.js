@@ -103,8 +103,8 @@ export function extractConversationMemory(messages,staffMessageId,{force=false}=
  const applicantMessages=before.filter(m=>messageRole(m)==='applicant'&&meaningfulContext(m.body));
  if(!applicantMessages.length)return null;
  const recent=[...applicantMessages].reverse();
- const source=recent.find(m=>looksLikeQuestion(m.body))||recent[0];
- if(!source||!isOperationalMemoryCandidate(source.body,staff.body,{force}))return null;
+ const source=recent.find(m=>isOperationalMemoryCandidate(m.body,staff.body,{force}));
+ if(!source)return null;
  const context=before.slice(-8).map(m=>{
   const role=messageRole(m);
   const label=role==='staff'?'موظف':role==='applicant'?'متقدم':role==='bot'?'بوت':'رسالة';
@@ -140,7 +140,7 @@ async function insertAuditSuggestion(db,{applicantId,candidate,staffId,status='a
   reviewed_by:staffId||null,
   reviewed_at:new Date().toISOString()
  };
- const result=await db.from('masar_learning_suggestions').insert(row).select?.('id').maybeSingle?.();
+ const result=await db.from('masar_learning_suggestions').insert(row).select('id').maybeSingle();
  if(result&&result.error){
   if(result.error.code==='23505')return null;
   throw result.error;

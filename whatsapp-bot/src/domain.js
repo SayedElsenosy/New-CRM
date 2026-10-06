@@ -43,7 +43,7 @@ export function validateAnswer(q,input,areas,media) {
   const m=digits(s).match(/^(?:(?:عمري|سني|عندي)\s*)?(\d{1,3})(?:\s*(?:سنه|سنة))?$/);
   return m&&Number(m[1])>=1&&Number(m[1])<=100?{ok:true,value:Number(m[1]),display:m[1]}:{ok:false};
  }
- if (!s||s.length>1000||/[?؟]/.test(s)||/^(هو |هي |ايه|ازاي|فين|كام|هل |ممكن|عايز اعرف|السلام|مرحبا|اهلا)/.test(norm(s))) return {ok:false};
+ if (!s||s.length>1000||/[?؟]/.test(s)||/^(هو |هي |ايه|ازاي|فين|كام|هل |ممكن|عايز اعرف|قصدي|بالنسبه|بالنسبة|السلام|مرحبا|اهلا)/.test(norm(s))) return {ok:false};
  if(q.kind==='name' && (!/^[\p{L}\s.'-]{2,100}$/u.test(s)||s.trim().split(/\s+/).length<2))return {ok:false};
  return {ok:true,value:s,display:s};
 }

@@ -111,6 +111,48 @@ test('job details are answered as a trusted overview without asking residence or
  assert.equal(r.followup_reply,undefined);
 });
 
+test('choice button saves the configured field and continues to the next missing fact',async()=>{
+ const qs=[
+  ...questions,
+  {id:'shift-type',field_key:'shift_type',kind:'choice',label:'أنهي شيفت مناسب ليك؟',options:[
+   {label:'صباحي',value:'morning'},
+   {label:'مسائي',value:'evening'},
+   {label:'أي شيفت',value:'any'}
+  ],position:6,priority:50,active:true,required:true}
+ ];
+ const a={...applicant,awaiting_id:'shift-type',answers:{
+  q2:{value:'oct',display:'أكتوبر',kind:'area',key:'preferred_work_area',work_area_eligible:true,work_area_zone:'WEST'},
+  q1:{value:true,display:'نعم',kind:'yes_no',key:'has_motorcycle'},
+  q3:{value:'محمد احمد',display:'محمد احمد',kind:'name',key:'full_name'}
+ }};
+ const r=await planTurn({applicant:a,message:{body:'choice:shift-type:1'},questions:qs,areas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers['shift-type'].value,'evening');
+ assert.equal(r.patch.answers['shift-type'].display,'مسائي');
+ assert.equal(r.patch.awaiting_id,'q4');
+ assert.equal(r.agent_action,'choice_answer');
+ assert.match(r.followup_reply,/الشيفت 9 ساعات/);
+});
+
+test('choice fact can be captured out of order from natural Egyptian wording',async()=>{
+ const qs=[
+  ...questions,
+  {id:'shift-type',field_key:'shift_type',kind:'choice',label:'أنهي شيفت مناسب ليك؟',options:[
+   {label:'صباحي',value:'morning'},
+   {label:'مسائي',value:'evening'},
+   {label:'أي شيفت',value:'any'}
+  ],position:6,priority:50,active:true,required:false}
+ ];
+ const a={...applicant,awaiting_id:'q1',answers:{
+  q2:{value:'oct',display:'أكتوبر',kind:'area',key:'preferred_work_area',work_area_eligible:true,work_area_zone:'WEST'}
+ }};
+ const r=await planTurn({applicant:a,message:{body:'انا مناسب ليا مسائي'},questions:qs,areas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers['shift-type'].value,'evening');
+ assert.equal(r.patch.answers.q1,undefined);
+ assert.equal(r.patch.awaiting_id,'q1');
+ assert.equal(r.agent_action,'out_of_order_fact');
+ assert.match(r.followup_reply,/موتوسيكل/);
+});
+
 test('work area is previewed first, saved only after confirmation, then motorcycle is asked',async()=>{
  const a={...applicant,awaiting_id:'q2',answers:{}};
  const preview=await call(a,'area_preview:oct');

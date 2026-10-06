@@ -330,11 +330,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    return {patch:stopQualification(answers,'no_eligible_work_area',{work_area:areaName}),reply:NO_ELIGIBLE_WORK_AREA_REPLY,agent_action:'qualification_fact'};
   }
  }
- const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required))
-  .sort((x,y)=>{
-   const nx=nextAgentQuestion([x,y],answers,areas,answered);
-   return nx?.id===x.id?-1:1;
-  });
+ const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
 
  const decision=settings.ai_enabled?decideConversationAction(m.body,current,areas):null;
@@ -421,8 +417,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:current?{awaiting_id:current.id}:{stage:computedStage(a,questions,areas),awaiting_id:null},reply:areaComparisonReply(comparedAreas)+continueFlow};
  }
 
+ const committedAreaInTurn=savedAgentFacts.some(x=>x.q.field_key==='preferred_work_area');
  const inquiry=areaInquiry(m.body,areas);
- if(inquiry){
+ if(inquiry&&!committedAreaInTurn){
   if(current?.kind==='area'){
    if(current.field_key==='preferred_work_area'){
     return commitAreaChoice({area:inquiry,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
@@ -562,7 +559,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const implicitAreaFact=savedAgentFacts?.find(x=>x.q.field_key==='preferred_work_area');
   if(implicitAreaFact){
    const area=areas.find(z=>String(z.id)===String(implicitAreaFact.fact.value));
-   if(area)return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:'تمام، فهمت إن منطقة العمل المناسبة ليك هي '+area.name+' ✅\n\n'+areaDetails(area),followup_reply:prompt,agent_action:'multi_fact_extract'};
+   if(area)return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:'تمام، سجلت منطقة العمل: '+area.name+' ✅\n\n'+areaDetails(area),followup_reply:prompt,agent_action:'multi_fact_extract'};
   }
   if(realAnswerCount(answers))return {patch:{...(savedAgentFacts?.length?{answers}:{}),awaiting_id:current.id},reply:'نكمل بياناتك: '+prompt,agent_action:savedAgentFacts?.length?'multi_fact_extract':undefined};
   const welcome=String(settings.welcome||'').trim();

@@ -5,7 +5,7 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
-import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,snapshotKnowledgeVersion,recordKnowledgeEvidence} from './knowledge.js';
+import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
 import {metaConfig,metaLoginUrl,metaStateHash,exchangeMetaCode,encryptMetaToken,decryptMetaToken,getMetaIdentity,listMetaAdAccounts,fetchMetaAccountSnapshot,normalizeMetaAdAccountId} from './meta.js';
@@ -550,6 +550,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  async function intelligenceState(){
   try{
    await promotePendingLearning(db);
+   await rebuildBreadfastSharedBrain(db);
    const since=new Date(Date.now()-30*24*60*60*1000).toISOString();
    let eventQuery=db.from('masar_events').select('kind,detail,created_at').gte('created_at',since).in('kind',['agent_turn','ai_handoff']).order('created_at',{ascending:false}).limit(5000);
    const [settings,knowledge,suggestions,eventResult]=await Promise.all([

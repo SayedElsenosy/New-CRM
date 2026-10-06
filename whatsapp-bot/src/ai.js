@@ -103,6 +103,80 @@ export function decideConversationAction(text,question,areas=[]){
  return {action:'unknown',confidence:0.5};
 }
 
+const MOTORCYCLE_WORDS=/(?:موتوسيكل|موتوسكل|موتسيكل|مكنه|مكنة|موتور)/;
+const SHIFT_WORDS=/(?:شيفت|شفت|ورديه|وردية|ساعات الشغل|ساعات العمل|\d+\s*ساع)/;
+const READY_WORDS=/(?:ابدا|ابدأ|بدايه|بداية|ابتدي|أبتدي|استلم الشغل|انزل الشغل)/;
+const NEGATIVE_INTENT=/(?:مش|ما|معنديش|ماعنديش|مفيش|مينفعش|ماينفعش|مش هقدر|مش قادر|لا|لاء)/;
+const POSITIVE_COMMIT=/(?:معايا|عندي|موجود|متاح|تمام|موافق|ينفع|مناسب|اقدر|أقدر|هقدر|جاهز)/;
+const AREA_COMMIT=/(?:عايز|عاوز|اختار|اختياري|هشتغل|اشتغل|اقدر اشتغل|أقدر اشتغل|التزم|ينفعلي|مناسبه ليا|مناسبة ليا)/;
+
+function explicitFullName(text){
+ const raw=String(text||'').trim();
+ const m=raw.match(/(?:^|\s)(?:انا\s+)?(?:اسمي|إسمي|اسمى|الاسم\s+هو|الاسم)\s*[:\-]?\s*([\p{L}.'-]+(?:\s+[\p{L}.'-]+){1,4})/u);
+ return m?.[1]?.trim()||null;
+}
+function factPriority(q){
+ const key=q?.field_key;
+ const special={has_motorcycle:100,preferred_work_area:95,shift_acceptance:85,full_name:80,ready_to_start:70};
+ return Number.isFinite(Number(q?.priority))?Number(q.priority):(special[key]||50);
+}
+export function nextAgentQuestion(questions,answers,areas,answeredFn){
+ const pending=(questions||[]).filter(q=>q?.active!==false)
+  .filter(q=>!answeredFn(q,answers,areas)&&!(answers?.[q.id]?.skipped&&!q.required));
+ return pending.sort((a,b)=>factPriority(b)-factPriority(a)||(a.position||0)-(b.position||0)||String(a.id).localeCompare(String(b.id)))[0]||null;
+}
+
+/**
+ * Extract several high-confidence facts from one natural Egyptian-Arabic turn.
+ * This is deliberately conservative: uncertain implications stay in conversation
+ * instead of silently becoming qualification facts.
+ */
+export function extractConversationFacts(text,questions=[],areas=[]){
+ const raw=String(text||''),n=clean(raw);
+ if(!n)return [];
+ const result=[],byKey=new Map((questions||[]).filter(q=>q.active!==false).map(q=>[q.field_key,q]));
+ const add=(q,value,display,confidence,source='explicit')=>{
+  if(!q||q.allow_inference===false||result.some(x=>x.question_id===q.id))return;
+  result.push({question_id:q.id,field_key:q.field_key,kind:q.kind,value,display,confidence,source});
+ };
+
+ const motorcycle=byKey.get('has_motorcycle');
+ if(motorcycle&&MOTORCYCLE_WORDS.test(n)){
+  if(NEGATIVE_INTENT.test(n)&&/(?:معنديش|ماعنديش|مش معايا|مش عندي|مفيش|لسه مجبتش|لسه ما جبتش)/.test(n)){
+   add(motorcycle,false,'لا',.97);
+  }else if(POSITIVE_COMMIT.test(n)){
+   add(motorcycle,true,'نعم',.96);
+  }
+ }
+
+ const workArea=byKey.get('preferred_work_area');
+ if(workArea){
+  const mentioned=areaHits(raw,areas).filter(a=>!areaRejected(raw,a));
+  const asksOnlyInfo=hasAny(n,INFO_WORDS)&&(/[?؟]/.test(raw)||/(?:كام|ايه|فين|تفاصيل|مرتب|راتب|قبض|مواعيد)/.test(n));
+  if(mentioned.length===1&&(!asksOnlyInfo||AREA_COMMIT.test(n))){
+   add(workArea,mentioned[0].id,mentioned[0].name,.96);
+  }
+ }
+
+ const fullName=byKey.get('full_name')||byKey.get('name');
+ const name=explicitFullName(raw);
+ if(fullName&&name)add(fullName,name,name,.96);
+
+ const shift=byKey.get('shift_acceptance');
+ if(shift&&SHIFT_WORDS.test(n)){
+  if(/(?:مش مناسب|مش هقدر|مينفعش|ماينفعش|مش قادر|مش موافق)/.test(n))add(shift,false,'لا',.94);
+  else if(/(?:مناسب|تمام|موافق|ينفع|اقدر|أقدر|هقدر)/.test(n))add(shift,true,'نعم',.93);
+ }
+
+ const ready=byKey.get('ready_to_start');
+ if(ready&&READY_WORDS.test(n)){
+  if(/(?:مش هقدر|مش جاهز|مش قادر|بعد فتره|بعد فترة)/.test(n))add(ready,false,'لا',.9);
+  else if(/(?:بكره|بكرة|فورا|فوراً|حالاً|حالا|النهارده|النهاردة|جاهز|من دلوقتي|من بكرة)/.test(n))add(ready,true,'نعم',.94);
+ }
+
+ return result;
+}
+
 /**
  * Local Egyptian-Arabic interpreter.
  * It intentionally handles only the structured intents the recruitment flow needs.

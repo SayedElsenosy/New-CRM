@@ -514,6 +514,28 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  });});
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/connect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.connect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
  permissionRoute('whatsapp','post','/whatsapp/accounts/:id/disconnect',async(req,res)=>{await ensureAccountAccess(req,req.params.id);await whatsapp.disconnect(req.params.id);res.json(whatsapp.snapshot(req.params.id));});
+ managerRoute('put','/office-agent',async(req,res)=>{
+  const officeId=await scopedOfficeId(req);
+  if(typeof req.body.enabled!=='boolean')throw bad('قيمة تشغيل Agent غير صحيحة');
+  try{
+   must(await db.from('masar_office_settings').upsert({office_id:officeId,agent_enabled:req.body.enabled,updated_at:new Date().toISOString()},{onConflict:'office_id'}));
+  }catch(e){
+   if(schemaMissing(e)||['42703','PGRST204'].includes(e?.code))throw bad('فعّل Agent المكاتب أولاً بتشغيل ملف supabase/017_autonomous_office_agent.sql في Supabase SQL Editor.',503);
+   throw e;
+  }
+  if(req.body.enabled===false){
+   try{
+    const applicants=must(await db.from('masar_applicants').select('id').eq('office_id',officeId));
+    const ids=applicants.map(x=>x.id);
+    for(let i=0;i<ids.length;i+=100){
+     const chunk=ids.slice(i,i+100);
+     if(chunk.length)must(await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي لأن Agent المكتب متوقف.'}).in('applicant_id',chunk).eq('direction','out').eq('sender','bot').eq('status','queued'));
+    }
+   }catch(e){if(!schemaMissing(e))throw e;}
+  }else worker.tick();
+  must(await db.from('masar_events').insert({kind:req.body.enabled?'office_agent_enabled':'office_agent_disabled',staff_id:req.user.id,detail:{office_id:officeId}}));
+  res.json({ok:true,office_id:officeId,agent_enabled:req.body.enabled});
+ });
  permissionRoute('settings','put','/settings',async(req,res)=>{
   const b=req.body,officeId=await scopedOfficeId(req);
   if(typeof b.ai_enabled!=='boolean'||!String(b.welcome||'').trim()||!String(b.completion||'').trim()||b.welcome.length>1500||b.completion.length>1500)throw bad('راجع إعدادات الرسائل');
@@ -525,11 +547,6 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   res.json({ok:true});
  });
  const cleanKeywords=value=>Array.isArray(value)?[...new Set(value.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20).map(x=>x.slice(0,80)))]:[];
- const effectiveRunMode=s=>{
-  const mode=s?.ai_run_mode||'live';
-  if(mode==='training'&&s?.ai_training_until&&Date.parse(s.ai_training_until)<=Date.now())return 'paused';
-  return mode;
- };
  async function intelligenceState(){
   try{
    await promotePendingLearning(db);
@@ -538,40 +555,31 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     db.from('masar_knowledge').select('*').order('updated_at',{ascending:false}),
     db.from('masar_learning_suggestions').select('*').order('created_at',{ascending:false}).limit(500)
    ]);
-   const s=must(settings),k=must(knowledge),sg=must(suggestions),learningModeConfigured=Object.prototype.hasOwnProperty.call(s,'ai_run_mode');
-   let runMode=effectiveRunMode(s);
-   if(learningModeConfigured&&s.ai_run_mode==='training'&&runMode==='paused'){
-    must(await db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));
+   const s=must(settings),k=must(knowledge),sg=must(suggestions);
+   if(s.ai_learning_enabled===false){
+    try{must(await db.from('masar_settings').update({ai_learning_enabled:true,ai_run_mode:'live',ai_training_started_at:null,ai_training_until:null}).eq('id',true));}
+    catch(e){if(!['42703','PGRST204'].includes(e?.code||''))throw e;}
    }
-   const started=s.ai_training_started_at||null,until=s.ai_training_until||null;
-   const trainingSuggestions=started?sg.filter(x=>{
-    const t=Date.parse(x.created_at),from=Date.parse(started),to=until?Date.parse(until):Infinity;
-    return Number.isFinite(t)&&t>=from&&t<=to;
-   }).length:0;
-   return {configured:true,learning_mode_configured:learningModeConfigured,voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:{
+   return {configured:true,learning_mode:'continuous',voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:{
     ai_knowledge_enabled:s.ai_knowledge_enabled!==false,
-    ai_learning_enabled:s.ai_learning_enabled!==false,
+    ai_learning_enabled:true,
     ai_confidence_threshold:Number(s.ai_confidence_threshold||0.62),
-    ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.',
-    ai_run_mode:runMode,
-    ai_training_started_at:started,
-    ai_training_until:until
+    ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.'
    },knowledge:k,suggestions:sg,stats:{
     active:k.filter(x=>x.active).length,total:k.length,pending:sg.filter(x=>x.status==='pending').length,
     approved:sg.filter(x=>x.status==='approved').length,skipped:sg.filter(x=>x.status==='rejected').length,
-    learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0),
-    training_suggestions:trainingSuggestions
+    learned:k.filter(x=>x.source==='staff').length,usage:k.reduce((n,x)=>n+Number(x.usage_count||0),0)
    }};
   }catch(e){
-   if(schemaMissing(e))return {configured:false,learning_mode_configured:false,voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:null,knowledge:[],suggestions:[],stats:{active:0,total:0,pending:0,learned:0,usage:0,training_suggestions:0}};
+   if(schemaMissing(e))return {configured:false,learning_mode:'continuous',voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:null,knowledge:[],suggestions:[],stats:{active:0,total:0,pending:0,approved:0,skipped:0,learned:0,usage:0}};
    throw e;
   }
  }
  adminRoute('get','/intelligence',async(_req,res)=>res.json(await intelligenceState()));
  adminRoute('put','/intelligence/settings',async(req,res)=>{
   const b=req.body,threshold=Number(b.ai_confidence_threshold),fallback=String(b.ai_fallback||'').trim();
-  if(typeof b.ai_knowledge_enabled!=='boolean'||typeof b.ai_learning_enabled!=='boolean'||!Number.isFinite(threshold)||threshold<.35||threshold>.95||!fallback||fallback.length>1500)throw bad('راجع إعدادات ذكاء البوت');
-  try{must(await db.from('masar_settings').update({ai_knowledge_enabled:b.ai_knowledge_enabled,ai_learning_enabled:b.ai_learning_enabled,ai_confidence_threshold:threshold,ai_fallback:fallback}).eq('id',true));}
+  if(typeof b.ai_knowledge_enabled!=='boolean'||!Number.isFinite(threshold)||threshold<.35||threshold>.95||!fallback||fallback.length>1500)throw bad('راجع إعدادات ذكاء البوت');
+  try{must(await db.from('masar_settings').update({ai_knowledge_enabled:b.ai_knowledge_enabled,ai_learning_enabled:true,ai_run_mode:'live',ai_training_started_at:null,ai_training_until:null,ai_confidence_threshold:threshold,ai_fallback:fallback}).eq('id',true));}
   catch(e){if(schemaMissing(e))throw bad('فعّل ذكاء البوت أولاً بتشغيل ملف supabase/004_bot_intelligence.sql في Supabase SQL Editor.',503);throw e;}
   res.json({ok:true});
  });
@@ -611,36 +619,10 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
   const result=await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي بسبب إيقاف البوت أو وضع التعلّم.'}).eq('direction','out').eq('sender','bot').eq('status','queued');
   if(result.error)throw result.error;
  }
- adminRoute('post','/intelligence/training/start',async(req,res)=>{
-  const now=new Date(),until=new Date(now.getTime()+72*60*60*1000);
-  try{
-   must(await db.from('masar_settings').update({
-    ai_run_mode:'training',ai_training_started_at:now.toISOString(),ai_training_until:until.toISOString(),ai_learning_enabled:true
-   }).eq('id',true));
-  }catch(e){if(['42703','PGRST204'].includes(e.code))throw bad('فعّل وضع التعلّم أولاً بتشغيل ملف supabase/005_learning_mode.sql في Supabase SQL Editor.',503);throw e;}
-  await suppressQueuedBotReplies();
-  must(await db.from('masar_events').insert({kind:'ai_training_started',staff_id:req.user.id,detail:{until:until.toISOString(),duration_hours:72}}));
-  res.json(await intelligenceState());
- });
- adminRoute('post','/intelligence/training/stop',async(req,res)=>{
-  try{must(await db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}
-  catch(e){if(['42703','PGRST204'].includes(e.code))throw bad('فعّل وضع التعلّم أولاً بتشغيل ملف supabase/005_learning_mode.sql في Supabase SQL Editor.',503);throw e;}
-  must(await db.from('masar_events').insert({kind:'ai_training_stopped',staff_id:req.user.id,detail:{source:'manual'}}));
-  res.json(await intelligenceState());
- });
- adminRoute('post','/intelligence/live',async(req,res)=>{
-  try{must(await db.from('masar_settings').update({ai_run_mode:'live',ai_learning_enabled:true}).eq('id',true));}
-  catch(e){if(['42703','PGRST204'].includes(e.code))throw bad('فعّل وضع التعلّم أولاً بتشغيل ملف supabase/005_learning_mode.sql في Supabase SQL Editor.',503);throw e;}
-  must(await db.from('masar_events').insert({kind:'ai_bot_live',staff_id:req.user.id,detail:{learning_continues:true}}));
-  res.json(await intelligenceState());
- });
- adminRoute('post','/intelligence/pause',async(req,res)=>{
-  try{must(await db.from('masar_settings').update({ai_run_mode:'paused'}).eq('id',true));}
-  catch(e){if(['42703','PGRST204'].includes(e.code))throw bad('فعّل وضع التعلّم أولاً بتشغيل ملف supabase/005_learning_mode.sql في Supabase SQL Editor.',503);throw e;}
-  await suppressQueuedBotReplies();
-  must(await db.from('masar_events').insert({kind:'ai_bot_paused',staff_id:req.user.id,detail:{learning_continues:true}}));
-  res.json(await intelligenceState());
- });
+ adminRoute('post','/intelligence/training/start',async(_req,res)=>res.status(410).json({error:'وضع تعلّم 3 أيام اتلغى؛ Agent بيتعلم تلقائيًا 24/7.'}));
+ adminRoute('post','/intelligence/training/stop',async(_req,res)=>res.status(410).json({error:'التعلّم أصبح مستمرًا 24/7.'}));
+ adminRoute('post','/intelligence/live',async(_req,res)=>res.status(410).json({error:'تشغيل Agent أصبح مستقل لكل مكتب من إعدادات المكتب.'}));
+ adminRoute('post','/intelligence/pause',async(_req,res)=>res.status(410).json({error:'إيقاف Agent أصبح مستقل لكل مكتب من إعدادات المكتب.'}));
  for(const type of ['areas','questions']){
   permissionRoute(type,'post','/'+type,async(req,res)=>{await serial(async()=>{
    const b=req.body,officeId=await scopedOfficeId(req);let row;
@@ -924,8 +906,8 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
     if(typeof b.bot_enabled!=='boolean')throw bad('قيمة غير صحيحة');
     patch.bot_enabled=b.bot_enabled;
     if(b.bot_enabled){
-     let settings=null;try{settings=must(await db.from('masar_settings').select('*').eq('id',true).single());}catch(e){if(!schemaMissing(e))throw e;}
-     if(effectiveRunMode(settings)!=='live')throw bad('البوت العام متوقف حاليًا. شغّله أولًا من صفحة ذكاء البوت.',409);
+     const officeCfg=await config(db,a.office_id||null);
+     if(officeCfg.settings?.agent_enabled===false)throw bad('Agent المكتب متوقف حاليًا. مدير المكتب يقدر يشغّله من إعدادات المكتب.',409);
      const answers={...(a.answers||{})};delete answers.__ai_handoff;patch.answers=answers;
      const lastOut=must(await db.from('masar_messages').select('sequence').eq('applicant_id',a.id).eq('direction','out').order('sequence',{ascending:false}).limit(1).maybeSingle());
      let q=db.from('masar_messages').select('id,sequence,status,media_error').eq('applicant_id',a.id).eq('direction','in').eq('status','processed').order('sequence',{ascending:false}).limit(1);
@@ -958,12 +940,12 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
  permissionRoute('applicants','post','/applicants/:id/reply',async(req,res)=>{
   const body=String(req.body.body||'').trim();if(!body||body.length>4000)throw bad('اكتب رسالة لا تتجاوز 4000 حرف');
   await serial(async()=>{
-   const select=whatsapp.configured?'id,contact_id,whatsapp_account_id,answers':'id,contact_id,answers';
+   const select=whatsapp.configured?'id,contact_id,whatsapp_account_id,answers,office_id':'id,contact_id,answers,office_id';
    const a=await applicantById(req,req.params.id,select);if(a.contact_id.startsWith('legacy:'))throw bad('لا يمكن الإرسال قبل وصول رسالة جديدة تكشف جهة اتصال واتساب');
    let settings=null;try{settings=must(await db.from('masar_settings').select('*').eq('id',true).single());}catch(e){if(!schemaMissing(e))throw e;}
-   const runMode=effectiveRunMode(settings),answers={...(a.answers||{})};delete answers.__ai_handoff;
+   const officeCfg=await config(db,a.office_id||null),answers={...(a.answers||{})};delete answers.__ai_handoff;
    const applicantPatch={answers,updated_at:new Date().toISOString()};
-   if(runMode==='live'){
+   if(officeCfg.settings?.agent_enabled!==false){
     applicantPatch.bot_enabled=false;
     must(await db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي بسبب رد بشري.'}).eq('applicant_id',a.id).eq('direction','out').eq('sender','bot').eq('status','queued'));
    }
@@ -972,7 +954,7 @@ export function makeApi({db,connection,connections,worker,speech=null,serial,ori
    const staffMessage=must(await db.from('masar_messages').insert(row).select('id').single());
    if(settings?.ai_learning_enabled!==false){
     try{
-     await learnFromConversation(db,{applicantId:a.id,staffMessageId:staffMessage.id,staffId:req.user.id,force:runMode==='training'});
+     await learnFromConversation(db,{applicantId:a.id,officeId:a.office_id||null,staffMessageId:staffMessage.id,staffId:req.user.id,force:true});
     }catch(e){if(!schemaMissing(e))throw e;}
    }
    await resolveApplicantAlerts(a.id,{userId:req.user.id,resolution:'crm_reply'});

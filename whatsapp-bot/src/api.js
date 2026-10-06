@@ -655,12 +655,15 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const temperature=Number(b.agent_llm_temperature),timeout=Number(b.agent_llm_timeout_ms),tokens=Number(b.agent_llm_max_tokens);
   const plannerThreshold=Number(b.agent_planner_confidence_threshold),contextMessages=Number(b.agent_context_messages);
   const tone=String(b.agent_tone||'egyptian_natural').trim(),instructions=String(b.agent_system_instructions||'').trim();
+  const memoryThreshold=Number(b.ai_confidence_threshold),fallback=String(b.ai_fallback||'').trim();
   if(!['shadow','assist','live'].includes(mode)||!provider||provider.length>100||model.length>200
     ||!Number.isFinite(temperature)||temperature<0||temperature>1
     ||!Number.isInteger(timeout)||timeout<1000||timeout>30000
     ||!Number.isInteger(tokens)||tokens<200||tokens>3000
     ||!Number.isFinite(plannerThreshold)||plannerThreshold<.5||plannerThreshold>.95
     ||!Number.isInteger(contextMessages)||contextMessages<4||contextMessages>30
+    ||!Number.isFinite(memoryThreshold)||memoryThreshold<.35||memoryThreshold>.95
+    ||!fallback||fallback.length>1500
     ||tone.length<2||tone.length>100||instructions.length>5000)throw bad('راجع إعدادات AI Agent');
   if(b.agent_llm_enabled===true&&!agentRuntime?.snapshot?.({...b,agent_llm_model:model})?.configured)throw bad('لا يمكن تشغيل عقل LLM قبل إضافة AGENT_LLM_API_URL و AGENT_LLM_API_KEY واسم الموديل في Railway.',409);
   must(await db.from('masar_settings').update({
@@ -671,7 +674,14 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    agent_llm_rerank_enabled:b.agent_llm_rerank_enabled!==false,
    agent_fact_extraction_enabled:b.agent_fact_extraction_enabled!==false,
    agent_next_best_action_enabled:b.agent_next_best_action_enabled!==false,
-   agent_context_messages:contextMessages,agent_tone:tone,agent_system_instructions:instructions
+   agent_context_messages:contextMessages,agent_tone:tone,agent_system_instructions:instructions,
+   ai_knowledge_enabled:b.ai_knowledge_enabled!==false,
+   ai_confidence_threshold:memoryThreshold,
+   ai_fallback:fallback,
+   ai_learning_enabled:true,
+   ai_run_mode:'live',
+   ai_training_started_at:null,
+   ai_training_until:null
   }).eq('id',true));
   res.json({ok:true,llm:agentRuntime?.snapshot?.({...b,agent_llm_model:model})||{configured:false}});
  });

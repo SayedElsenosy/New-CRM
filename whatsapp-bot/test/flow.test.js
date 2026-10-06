@@ -192,6 +192,16 @@ test('unknown side question stays with the agent before human escalation',async(
  assert.match(r.reply,/مش عندي إجابة مؤكدة|مش هخمن/);
 });
 
+test('knowledge retrieval excludes conflicted stale and expired memory',()=>{
+ const question='المرتب كام؟';
+ const base={id:'k',question,answer:'6200 جنيه',keywords:['مرتب'],active:true,confidence:.95,last_verified_at:new Date().toISOString()};
+ assert.equal(findKnowledgeAnswer(question,[{...base,memory_status:'conflict'}],.5),null);
+ assert.equal(findKnowledgeAnswer(question,[{...base,memory_status:'stale'}],.5),null);
+ assert.equal(findKnowledgeAnswer(question,[{...base,memory_status:'verified',valid_until:new Date(Date.now()-1000).toISOString()}],.5),null);
+ const ok=findKnowledgeAnswer(question,[{...base,memory_status:'verified',valid_until:new Date(Date.now()+86400000).toISOString()}],.5);
+ assert.equal(ok.id,'k');
+});
+
 test('only useful staff answers become learning candidates',()=>{
  assert.equal(isLearnableExchange('التأمين الطبي بيبدأ امتى؟','بيبدأ بعد استكمال إجراءات التعيين.'),true);
  assert.equal(isLearnableExchange('اسمي سيد احمد','تمام'),false);

@@ -437,10 +437,17 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     kind:'area_recommendations',
     at:new Date().toISOString()
    };
+   let sideMatch=null;
+   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+    const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.48,Number(settings.ai_confidence_threshold||.62)-.08));
+    if(candidate&&!/(منطقة|المناطق|عنوان|مكان|اقرب|أقرب)/.test(norm(candidate.question||'')))sideMatch=candidate;
+   }
    return {
     patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
-    reply:nearestWorkAreaReply(recommendation),
-    agent_action:'recommend_nearest_work_area'
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaReply(recommendation),
+    knowledge_id:sideMatch?.id||null,
+    knowledge_confidence:sideMatch?.confidence??null,
+    agent_action:sideMatch?'recommend_nearest_work_area_with_answer':'recommend_nearest_work_area'
    };
   }
  }

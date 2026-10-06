@@ -216,6 +216,147 @@ async function recordMemoryEvent(db,{applicantId,kind,detail}){
   if(result.error)throw result.error;
  }catch(e){if(!schemaMissing(e))throw e;}
 }
+function sharedAnswerRelation(previous,next){
+ const an=answerNumbers(previous),bn=answerNumbers(next);
+ if(an.size&&bn.size&&([...an].some(x=>!bn.has(x))||[...bn].some(x=>!an.has(x))))return 'conflict';
+ if(negativePolarity(previous)!==negativePolarity(next))return 'conflict';
+ const relation=answerRelation(previous,next);
+ return relation==='corrected'?'updated':relation;
+}
+async function refreshBreadfastSharedMemory(db,{candidate,officeId,applicantId=null,staffId=null}={}){
+ if(!officeId||!candidate||!isBreadfastShareableMemory(candidate.question,candidate.answer))return {action:'not_shareable'};
+ try{
+  const localsResult=await db.from('masar_knowledge').select('*')
+   .eq('active',true).eq('source','staff').not('office_id','is',null)
+   .order('updated_at',{ascending:false}).limit(1000);
+  if(localsResult.error)throw localsResult.error;
+  const topicRows=(localsResult.data||[]).filter(row=>{
+   if(['conflict','stale'].includes(String(row.memory_status||'')))return false;
+   return Boolean(findKnowledgeAnswer(candidate.question,[row],.78,{allowStatement:true}));
+  });
+  const supportive=[],conflicting=[];
+  for(const row of topicRows){
+   const relation=sharedAnswerRelation(row.answer,candidate.answer);
+   (relation==='conflict'?conflicting:supportive).push(row);
+  }
+  const supportOffices=new Set(supportive.map(row=>String(row.office_id||'')).filter(Boolean));
+  const conflictOffices=new Set(conflicting.map(row=>String(row.office_id||'')).filter(Boolean));
+
+  const sharedResult=await db.from('masar_knowledge').select('*')
+   .is('office_id',null).eq('source','staff').eq('knowledge_scope','breadfast')
+   .order('updated_at',{ascending:false}).limit(500);
+  if(sharedResult.error)throw sharedResult.error;
+  const existing=findKnowledgeAnswer(candidate.question,sharedResult.data||[],.78,{allowStatement:true});
+
+  if(conflictOffices.size){
+   if(existing){
+    await snapshotKnowledgeVersion(db,existing,{staffId,reason:'breadfast_consensus_conflict'});
+    const patch={
+     memory_status:'conflict',active:true,
+     conflict_count:Number(existing.conflict_count||0)+conflictOffices.size,
+     shared_office_count:supportOffices.size,
+     updated_at:new Date().toISOString(),
+     version:Number(existing.version||1)+1
+    };
+    const updated=await db.from('masar_knowledge').update(patch).eq('id',existing.id);
+    if(updated.error)throw updated.error;
+    await recordMemoryEvent(db,{applicantId,kind:'ai_breadfast_memory_conflict',detail:{
+     knowledge_id:existing.id,question:candidate.question,
+     support_offices:supportOffices.size,conflict_offices:conflictOffices.size
+    }});
+   }
+   return {action:'shared_conflict',support_offices:supportOffices.size,conflict_offices:conflictOffices.size};
+  }
+
+  if(supportOffices.size<2)return {action:'needs_more_offices',support_offices:supportOffices.size};
+
+  const representative=[...supportive].sort((a,b)=>
+   Number(b.evidence_count||0)-Number(a.evidence_count||0)
+   ||Number(b.confidence||0)-Number(a.confidence||0)
+   ||String(b.updated_at||'').localeCompare(String(a.updated_at||''))
+  )[0]||supportive[0];
+  if(!representative)return {action:'needs_more_offices',support_offices:supportOffices.size};
+
+  const examples=mergeExamples(
+   existing?.examples||[],existing?.question||'',
+   ...supportive.flatMap(row=>[row.question,...(row.examples||[])])
+  );
+  const keywords=[...new Set(supportive.flatMap(row=>[...(row.keywords||[]),...autoKeywords(row.question)]))].slice(0,30);
+  const confidence=Math.min(.99,.84+supportOffices.size*.04);
+  const evidenceCount=supportive.reduce((sum,row)=>sum+Math.max(1,Number(row.evidence_count||1)),0);
+  const now=new Date().toISOString();
+
+  let shared;
+  if(existing){
+   const relation=sharedAnswerRelation(existing.answer,representative.answer);
+   if(relation==='conflict'){
+    await snapshotKnowledgeVersion(db,existing,{staffId,reason:'breadfast_answer_changed'});
+    const updated=await db.from('masar_knowledge').update({
+     memory_status:'conflict',conflict_count:Number(existing.conflict_count||0)+1,
+     shared_office_count:supportOffices.size,updated_at:now,version:Number(existing.version||1)+1
+    }).eq('id',existing.id).select().single();
+    if(updated.error)throw updated.error;
+    return {action:'shared_conflict',knowledge_id:existing.id,support_offices:supportOffices.size};
+   }
+   const patch={
+    keywords,examples,active:true,memory_status:'verified',confidence,evidence_count:evidenceCount,
+    shared_office_count:supportOffices.size,last_verified_at:now,updated_at:now
+   };
+   if(relation==='updated'){
+    await snapshotKnowledgeVersion(db,existing,{staffId,reason:'breadfast_consensus_update'});
+    patch.answer=representative.answer;
+    patch.version=Number(existing.version||1)+1;
+   }
+   const updated=await db.from('masar_knowledge').update(patch).eq('id',existing.id).select().single();
+   if(updated.error)throw updated.error;
+   shared=updated.data;
+  }else{
+   const inserted=await db.from('masar_knowledge').insert({
+    question:representative.question,answer:representative.answer,keywords,examples,
+    active:true,source:'staff',office_id:null,knowledge_scope:'breadfast',
+    confidence,evidence_count:evidenceCount,conflict_count:0,memory_status:'verified',
+    last_verified_at:now,shared_office_count:supportOffices.size,created_by:staffId||null
+   }).select().single();
+   if(inserted.error)throw inserted.error;
+   shared=inserted.data;
+  }
+  await recordKnowledgeEvidence(db,{knowledgeId:shared.id,officeId,applicantId,candidate,kind:existing?'reinforced':'learned',confidence});
+  await recordMemoryEvent(db,{applicantId,kind:existing?'ai_breadfast_memory_reinforced':'ai_breadfast_memory_promoted',detail:{
+   knowledge_id:shared.id,question:shared.question,support_offices:supportOffices.size,confidence
+  }});
+  return {action:existing?'shared_reinforced':'shared_promoted',knowledge_id:shared.id,support_offices:supportOffices.size};
+ }catch(e){
+  if(schemaMissing(e)||['PGRST204','42703'].includes(e?.code||''))return {action:'shared_schema_missing'};
+  throw e;
+ }
+}
+export async function rebuildBreadfastSharedBrain(db,{limit=500}={}){
+ try{
+  const result=await db.from('masar_knowledge').select('*')
+   .eq('active',true).eq('source','staff').not('office_id','is',null)
+   .order('updated_at',{ascending:false}).limit(limit);
+  if(result.error)throw result.error;
+  let promoted=0,conflicts=0,checked=0;
+  const seen=new Set();
+  for(const row of result.data||[]){
+   if(['conflict','stale'].includes(String(row.memory_status||'')))continue;
+   const key=canonical(row.question);
+   if(!key||seen.has(key))continue;
+   seen.add(key);checked++;
+   const outcome=await refreshBreadfastSharedMemory(db,{
+    candidate:{question:row.question,answer:row.answer,context:'',source_message_id:null,staff_message_id:null},
+    officeId:row.office_id,applicantId:null,staffId:null
+   });
+   if(['shared_promoted','shared_reinforced'].includes(outcome.action))promoted++;
+   if(outcome.action==='shared_conflict')conflicts++;
+  }
+  return {checked,promoted,conflicts};
+ }catch(e){
+  if(schemaMissing(e)||['PGRST204','42703'].includes(e?.code||''))return {checked:0,promoted:0,conflicts:0};
+  throw e;
+ }
+}
+
 async function upsertOperationalMemory(db,{applicantId,officeId=null,candidate,staffId,suggestionId=null}){
  let knowledgeQuery=db.from('masar_knowledge').select('*').eq('active',true);
  if(officeId)knowledgeQuery=knowledgeQuery.or('office_id.is.null,office_id.eq.'+officeId);

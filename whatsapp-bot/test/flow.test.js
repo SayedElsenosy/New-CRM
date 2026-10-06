@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {phoneFromId,validateAnswer,computedStage,completion,csvCell,redactForAI,areaRejected,areaInquiry,questionPrompt} from '../src/domain.js';
-import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion,extractConversationMemory,isOperationalMemoryCandidate,scopeKnowledgeRows} from '../src/knowledge.js';
+import {planTurn} from '../src/flow.js';import {interpret,decideConversationAction} from '../src/ai.js';import {findKnowledgeAnswer,isLearnableExchange,looksLikeQuestion,extractConversationMemory,isOperationalMemoryCandidate,scopeKnowledgeRows,isBreadfastShareableMemory} from '../src/knowledge.js';
 const areas=[{id:'oct',name:'أكتوبر',active:true,details:'الشفت 9 ساعات. نقطة التجمع: المكتب.'},{id:'zayed',name:'الشيخ زايد',active:false,details:'تفاصيل متوقفة'}];
 const questions=[{id:'name',field_key:'name',kind:'name',label:'اسمك بالكامل؟',position:1,active:true,required:true},{id:'area',field_key:'area',kind:'area',label:'أنهي منطقة؟',position:2,active:true,required:true},{id:'bike',field_key:'bike',kind:'yes_no',label:'معاك موتوسيكل؟',position:3,active:true,required:true}];
 const settings={ai_enabled:true,welcome:'أهلاً',completion:'تم الاستلام'};
@@ -192,7 +192,29 @@ test('unknown side question stays with the agent before human escalation',async(
  assert.match(r.reply,/مش عندي إجابة مؤكدة|مش هخمن/);
 });
 
-test('office scoping excludes old global learned rows',()=>{const rows=[{id:'a',office_id:'o1',source:'staff'},{id:'m',office_id:null,source:'manual'},{id:'g',office_id:null,source:'staff'},{id:'b',office_id:'o2',source:'staff'}];assert.deepEqual(scopeKnowledgeRows(rows,'o1').map(x=>x.id),['a','m']);});
+test('office scoping uses local plus verified Breadfast shared brain and excludes legacy global staff rows',()=>{
+ const rows=[
+  {id:'a',office_id:'o1',source:'staff',knowledge_scope:'office'},
+  {id:'shared',office_id:null,source:'staff',knowledge_scope:'breadfast'},
+  {id:'m',office_id:null,source:'manual',knowledge_scope:'breadfast'},
+  {id:'g',office_id:null,source:'staff',knowledge_scope:'legacy'},
+  {id:'b',office_id:'o2',source:'staff',knowledge_scope:'office'}
+ ];
+ assert.deepEqual(scopeKnowledgeRows(rows,'o1').map(x=>x.id),['a','m','shared']);
+});
+
+test('knowledge matcher learns Egyptian phrasing examples across conversations',()=>{
+ const rows=[{id:'salary',question:'المرتب كام؟',examples:['هقبض كام في الشهر؟','نظام الفلوس عامل ازاي؟'],answer:'6200 جنيه',keywords:['مرتب','فلوس'],active:true,confidence:.95}];
+ const match=findKnowledgeAnswer('هقبض كام في الشهر؟',rows,.6);
+ assert.equal(match.id,'salary');
+ assert.ok(match.confidence>=.9);
+});
+
+test('Breadfast shared learning keeps local/area facts private',()=>{
+ assert.equal(isBreadfastShareableMemory('التأمين الطبي موجود؟','أيوه، فيه تأمين طبي.'),true);
+ assert.equal(isBreadfastShareableMemory('تفاصيل الشيخ زايد ماركت ايه؟','العنوان في الشيخ زايد والشيفت 9 ساعات.'),false);
+ assert.equal(isBreadfastShareableMemory('الانترفيو امتى؟','ميعادك بكرة الساعة 3'),false);
+});
 test('knowledge retrieval excludes conflicted stale and expired memory',()=>{
  const question='المرتب كام؟';
  const base={id:'k',question,answer:'6200 جنيه',keywords:['مرتب'],active:true,confidence:.95,last_verified_at:new Date().toISOString()};

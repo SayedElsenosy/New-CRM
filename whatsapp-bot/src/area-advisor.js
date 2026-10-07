@@ -71,6 +71,21 @@ function contextKey(answers,areas){
 function familyByKey(areas,key){
  return (areas||[]).filter(a=>a?.active===true&&areaPlaceKey(a)===key);
 }
+export function availableAreaNames(areas,{limit=18}={}){
+ const active=(areas||[]).filter(a=>a?.active===true&&a?.recruitment_eligible!==false);
+ const byKey=new Map();
+ for(const area of active){
+  const key=areaPlaceKey(area)||norm(area?.name||'');
+  if(!key)continue;
+  if(!byKey.has(key))byKey.set(key,[]);
+  byKey.get(key).push(area);
+ }
+ return [...byKey.values()]
+  .map(family=>displayPlace(family))
+  .filter(Boolean)
+  .filter((name,index,list)=>list.findIndex(x=>norm(x)===norm(name))===index)
+  .slice(0,Math.max(1,Number(limit)||18));
+}
 function numberFrom(value){
  const n=Number(String(value||'').replace(/,/g,''));
  return Number.isFinite(n)?n:null;

@@ -1,5 +1,5 @@
 import {useEffect,useState,useCallback,useRef} from 'react';
-import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown,Trash2,Bell,BellRing,CalendarDays,Building2,BriefcaseBusiness,UserPlus,Clock3,XCircle,ClipboardCheck,Grid2X2,LifeBuoy,Cpu,Activity,Database,FlaskConical,SlidersHorizontal,Shield,Zap,Network,Gauge,Play,Layers3,History,Orbit,Bike,Megaphone,FileText} from 'lucide-react';
+import {LayoutDashboard,Home,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown,Trash2,Bell,BellRing,CalendarDays,Building2,BriefcaseBusiness,UserPlus,Clock3,XCircle,ClipboardCheck,Grid2X2,LifeBuoy,Cpu,Activity,Database,FlaskConical,SlidersHorizontal,Shield,Zap,Network,Gauge,Play,Layers3,History,Orbit,Bike,Megaphone,FileText} from 'lucide-react';
 import {api,send,supabase,configured,STAGES,RECRUITMENT_STAGES,INTERVIEW_STATUSES,KINDS,personName,date,dateParams} from './api';
 import {BRAND_IMAGE} from './brandAssets';
 const PERMISSION_OPTIONS=[
@@ -11,7 +11,7 @@ const PERMISSION_OPTIONS=[
  ['whatsapp','ربط واتساب'],
  ['settings','الإعدادات']
 ];
-const PRIMARY_NAV=[['overview','الرئيسية',LayoutDashboard,null],['hiring','الطيارين',BriefcaseBusiness,'applicants'],['applicants','طلبات التوظيف',Users,'applicants'],['interviews','المقابلات',CalendarDays,'applicants'],['offices','مكاتب التوظيف',Building2,'applicants'],['reports','التقارير',BarChart3,'reports'],['agent','AI Agent',BrainCircuit,'admin']];
+const PRIMARY_NAV=[['overview','الرئيسية',Home,null],['hiring','الطيارين',BriefcaseBusiness,'applicants'],['applicants','طلبات التوظيف',Users,'applicants'],['interviews','المقابلات',CalendarDays,'applicants'],['offices','مكاتب التوظيف',Building2,'applicants'],['reports','التقارير',BarChart3,'reports'],['agent','AI Agent',BrainCircuit,'admin']];
 const UTILITY_NAV=[['profile','حسابي',UserPlus,null],['settings','الإعدادات',Settings,'settings'],['staff','المستخدمون',Users,'manager'],['support','الدعم والمساعدة',LifeBuoy,null]];
 const TOOL_NAV=[['questions','معلومات الـAgent',GitBranch,'questions'],['areas','مناطق العمل',MapPin,'areas'],['whatsapp','ربط واتساب',MessageCircle,'whatsapp'],['campaigns','الحملات الإعلانية',BarChart3,'campaigns']];
 const NAV=[...PRIMARY_NAV,...UTILITY_NAV,...TOOL_NAV];

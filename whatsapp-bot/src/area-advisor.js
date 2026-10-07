@@ -209,12 +209,27 @@ function placeComparisonBlock(family){
  }
  return '• '+place+':\n'+source.slice(0,3).map(v=>'  - '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n');
 }
-function crossPlaceRecommendation(families,text){
+function comparisonPriority(text){
+ const n=norm(text);
+ if(/(?:دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n))return 'income';
+ if(/(?:زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n))return 'distance';
+ if(/(?:ثبات|استقرار|مرتب ثابت|راتب ثابت)/.test(n))return 'stability';
+ if(/(?:مميزات|مزايا|تامين|تأمين|اجازات|إجازات|بونص|اوفر تايم|أوفر تايم)/.test(n))return 'benefits';
+ return null;
+}
+function storedComparisonKeys(answers,areas){
+ const raw=answers?.__area_comparison?.place_keys;
+ if(!Array.isArray(raw))return [];
+ const valid=new Set((areas||[]).filter(a=>a?.active===true).map(areaPlaceKey).filter(Boolean));
+ return [...new Set(raw.map(x=>norm(x)).filter(x=>valid.has(x)))].slice(0,4);
+}
+function crossPlaceRecommendation(families,text,priority=null){
  const rows=families.map(family=>({family,place:displayPlace(family),metrics:placeMetrics(family)}));
  const n=norm(text);
- const asksBenefits=/(مميزات|مزايا|تامين|تأمين|اجازات|إجازات|ثبات|استقرار)/.test(n);
- const asksIncome=/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
- const asksDistance=/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
+ const detected=priority||comparisonPriority(text);
+ const asksBenefits=['benefits','stability'].includes(detected)||/(مميزات|مزايا|تامين|تأمين|اجازات|إجازات|ثبات|استقرار)/.test(n);
+ const asksIncome=detected==='income'||/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
+ const asksDistance=detected==='distance'||/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
  if(asksBenefits){
   const winner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
   if(winner)return 'لو تركيزك على المميزات والثبات، '+winner.place+' ظاهر أقوى في البيانات المسجلة عندنا.';
@@ -242,12 +257,12 @@ function crossPlaceRecommendation(families,text){
  if(incomeWinner)return incomeWinner.place+' ظاهر أقوى من ناحية الدخل المسجل.';
  return 'مفيش منطقة أقدر أقول إنها أحسن مطلقًا من غير ما تحدد أولويتك.';
 }
-function comparePlacesReply(keys,areas,text){
+function comparePlacesReply(keys,areas,text,priority=null){
  const families=keys.map(key=>familyByKey(areas,key)).filter(x=>x.length);
  if(families.length<2)return null;
  return 'لو بنقارن '+families.map(displayPlace).join(' و ')+' حسب البيانات المسجلة عندنا:\n\n'
   +families.map(placeComparisonBlock).join('\n\n')
-  +'\n\n'+crossPlaceRecommendation(families,text)
+  +'\n\n'+crossPlaceRecommendation(families,text,priority)
   +'\n\nلو تقولي أهم حاجة عندك إيه — الدخل، المميزات، ثبات المرتب، ولا الزون — أقولك اختياري ليك بشكل أدق.';
 }
 function compareReply(items,text,place){
@@ -266,7 +281,7 @@ function generalComparison(areas){
 }
 function asksComparison(text){
  const n=norm(text);
- return /(?:الفرق|فرق|مقارنه|مقارنة|قارن|احسن|افضل|أفضل|مميزات اكتر|مميزاته اكتر)/.test(n)
+ return /(?:الفرق|فرق|مقارنه|مقارنة|قارن|احسن|افضل|أفضل|انسب|أنسب|ترشح|رشح|اختارلي|اختار لي|تنصحني|مميزات اكتر|مميزاته اكتر)/.test(n)
   ||(hasAny(text,MARKET_WORDS)&&hasAny(text,RESTAURANT_WORDS));
 }
 function asksAvailability(text){
@@ -281,9 +296,16 @@ export function conversationalAreaAdvice(text,areas,answers={}){
  if(!active.length)return null;
  const explicit=explicitKeys(text,active);
  const compare=asksComparison(text);
- if(compare&&explicit.length>=2){
-  const reply=comparePlacesReply(explicit,active,text);
-  if(reply)return {reply,action:'compare_places'};
+ const priority=comparisonPriority(text);
+ const storedKeys=storedComparisonKeys(answers,active);
+ if((compare||priority)&&explicit.length>=2){
+  const reply=comparePlacesReply(explicit,active,text,priority);
+  if(reply)return {reply,action:'compare_places',comparisonKeys:explicit,priority};
+ }
+ if((compare||priority)&&explicit.length<2&&storedKeys.length>=2){
+  const rememberedPriority=priority||answers?.__area_comparison?.priority||null;
+  const reply=comparePlacesReply(storedKeys,active,text,rememberedPriority);
+  if(reply)return {reply,action:'compare_places_followup',comparisonKeys:storedKeys,priority:rememberedPriority};
  }
  const key=explicit[0]||contextKey(answers,active);
  if(!key){

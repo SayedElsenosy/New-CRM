@@ -493,3 +493,29 @@ test('multi-turn area comparison remembers places and applicant priority without
  assert.match(second.reply,/الشيخ زايد/);
  assert.match(second.reply,/نكمل التقديم/);
 });
+
+
+test('explicit applicant priorities are remembered without changing qualification answers',async()=>{
+ const liveAreas=[
+  {id:'obour',name:'مدينة العبور',active:true,place_key:'العبور',work_mode:'general',details:'متوسط الدخل الاسبوعي 6000 جنيه'},
+  {id:'zayed',name:'الشيخ زايد',active:true,place_key:'الشيخ زايد',work_mode:'general',details:'متوسط الدخل الاسبوعي 8000 جنيه'}
+ ];
+ const first=await planTurn({
+  applicant:{...applicant,awaiting_id:'name'},
+  message:{body:'أهم حاجة عندي الدخل'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.equal(first.patch.answers.__recommendation_profile.primary,'income');
+ assert.equal(first.patch.answers.area,undefined);
+ assert.match(first.reply,/هراعي الدخل/);
+ assert.match(first.reply,/اسمك بالكامل/);
+
+ const second=await planTurn({
+  applicant:{...applicant,awaiting_id:'name',answers:first.patch.answers},
+  message:{body:'العبور ولا الشيخ زايد أنهي أنسب؟'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.match(second.reply,/الشيخ زايد/);
+ assert.match(second.reply,/سقف الدخل|الدخل/);
+ assert.equal(second.patch.answers?.area,undefined);
+});

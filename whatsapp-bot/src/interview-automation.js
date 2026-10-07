@@ -5,7 +5,15 @@ const CAIRO_TZ='Africa/Cairo';
 const SCHEMA_CODES=new Set(['PGRST205','42P01','42703','PGRST204']);
 const DAY_MS=86400000;
 const WINDOW_MS=2*60*60*1000;
-const WEEKDAYS={الاحد:0,الاثنين:1,الثلاثاء:2,الاربعاء:3,الخميس:4,الجمعه:5,السبت:6};
+const WEEKDAY_ALIASES=[
+ {day:0,names:['الاحد','الحد']},
+ {day:1,names:['الاثنين','الاتنين']},
+ {day:2,names:['الثلاثاء','التلات','التلاتاء']},
+ {day:3,names:['الاربعاء','الاربع']},
+ {day:4,names:['الخميس']},
+ {day:5,names:['الجمعه','الجمعه']},
+ {day:6,names:['السبت']}
+];
 
 function cairoParts(value){
  const date=value instanceof Date?value:new Date(value);
@@ -67,10 +75,10 @@ function parseDate(text,reference,time){
  if(n.includes('بعد بكره'))return addDays(base,2);
  if(n.includes('بكره')||n.includes('غدا'))return addDays(base,1);
  if(n.includes('النهارده')||n.includes('اليوم'))return {year:base.year,month:base.month,day:base.day};
- const weekday=Object.entries(WEEKDAYS).find(([name])=>n.includes(name));
+ const weekday=WEEKDAY_ALIASES.find(x=>x.names.some(name=>n.includes(name)));
  if(weekday){
   const current=new Date(Date.UTC(base.year,base.month-1,base.day)).getUTCDay();
-  let delta=(weekday[1]-current+7)%7;
+  let delta=(weekday.day-current+7)%7;
   if(delta===0){
    const targetMinutes=time.hour*60+time.minute,currentMinutes=base.hour*60+base.minute;
    if(targetMinutes<=currentMinutes+15)delta=7;
@@ -185,6 +193,31 @@ export async function syncInterviewFromStaffMessages(db,{applicant,source='staff
   return {applied:true,kind,interview,signal};
  }catch(e){
   if(SCHEMA_CODES.has(e?.code))return {applied:false,reason:'interviews_not_configured'};
+  throw e;
+ }
+}
+
+
+export async function reconcileRecentStaffInterviews(db,{hours=36,limit=500,source='recent_staff_reconcile'}={}){
+ const since=new Date(Date.now()-Math.max(1,Math.min(168,Number(hours)||36))*60*60*1000).toISOString();
+ try{
+  const rows=must(await db.from('masar_messages')
+   .select('applicant_id,created_at')
+   .eq('direction','out').eq('sender','staff').eq('status','sent')
+   .gte('created_at',since).order('created_at',{ascending:false}).limit(Math.max(1,Math.min(1000,Number(limit)||500))));
+  const ids=[...new Set(rows.map(x=>x.applicant_id).filter(Boolean))];
+  let applied=0;
+  for(let i=0;i<ids.length;i+=100){
+   const chunk=ids.slice(i,i+100);
+   const applicants=must(await db.from('masar_applicants').select('id,office_id,recruitment_stage').in('id',chunk));
+   for(const applicant of applicants){
+    const result=await syncInterviewFromStaffMessages(db,{applicant,source});
+    if(result.applied)applied++;
+   }
+  }
+  return {checked:ids.length,applied};
+ }catch(e){
+  if(SCHEMA_CODES.has(e?.code))return {checked:0,applied:0,reason:'interviews_not_configured'};
   throw e;
  }
 }

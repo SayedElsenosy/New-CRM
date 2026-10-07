@@ -135,19 +135,131 @@ export function compactAreaSummary(area){
 function modeLabel(mode){
  return mode==='market'?'ماركت':mode==='restaurants'?'مطاعم':'تشغيل عام';
 }
-function recommendation(items,text){
+
+const PRIORITY_LABELS={
+ income:'الدخل',
+ stability:'ثبات الدخل',
+ benefits:'المميزات',
+ distance:'القرب والزون',
+ shift:'ساعات الشيفت'
+};
+
+function preferenceStrength(text){
+ const n=norm(text);
+ if(/(?:اهم حاجه|اهم حاجة|الأهم|الاهم|اولويه|أولوية|بالنسبالي|بالنسبة لي)/.test(n))return 3;
+ if(/(?:يهمني|مهم عندي|عايز|عاوز|أفضل|افضل|بفضل|محتاج)/.test(n))return 2;
+ return 1;
+}
+function explicitPreference(text,pattern){
+ const n=norm(text);
+ if(!pattern.test(n))return null;
+ const negative=/(?:مش مهم|مش فارق|مش اولوية|مش أولوية|مش فارقه|مش فارقة|مش عايز|مش عاوز)/.test(n);
+ return {op:negative?'remove':'set',strength:preferenceStrength(text)};
+}
+export function extractRecommendationPreferences(text){
+ const n=norm(text);
+ if(!n)return [];
+ const out=[];
+ const rules=[
+  ['income',/(?:دخل|فلوس|قبض|مرتب|راتب)(?:[\s\S]{0,30})(?:اعلي|أعلى|اكتر|أكتر|مهم|اهم|أهم|يفرق|يهمني)|(?:اهم حاجه|اهم حاجة|الأهم|الاهم|اولويه|أولوية|يهمني|مهم عندي)(?:[\s\S]{0,25})(?:دخل|فلوس|قبض|مرتب|راتب)/],
+  ['stability',/(?:ثبات|استقرار|مرتب ثابت|راتب ثابت|دخل ثابت)(?:[\s\S]{0,25})(?:مهم|اهم|أهم|يهمني|عايز|عاوز|أفضل|افضل)?/],
+  ['benefits',/(?:مميزات|مزايا|تامين|تأمين|اجازات|إجازات|بونص|اوفر تايم|أوفر تايم)(?:[\s\S]{0,25})(?:مهم|اهم|أهم|يهمني|عايز|عاوز|أفضل|افضل)|(?:اهم حاجه|اهم حاجة|الأهم|الاهم|اولويه|أولوية|يهمني|مهم عندي)(?:[\s\S]{0,25})(?:مميزات|مزايا|تامين|تأمين|اجازات|إجازات|بونص)/],
+  ['distance',/(?:قريب|اقرب|أقرب|مسافه|مسافة|زون)(?:[\s\S]{0,25})(?:مهم|اهم|أهم|يهمني|عايز|عاوز|أقل|اقل)|(?:اهم حاجه|اهم حاجة|الأهم|الاهم|اولويه|أولوية|يهمني|مهم عندي)(?:[\s\S]{0,25})(?:قرب|قريب|مسافه|مسافة|زون)/],
+  ['shift',/(?:شيفت|شفت|ساعات الشغل|ساعات العمل)(?:[\s\S]{0,25})(?:اقل|أقل|قصير|أقصر|مهم|يهمني)|(?:عايز|عاوز|أفضل|افضل|يهمني)(?:[\s\S]{0,20})(?:شيفت|شفت)(?:[\s\S]{0,15})(?:اقل|أقل|قصير|أقصر)/]
+ ];
+ for(const [key,pattern] of rules){
+  const pref=explicitPreference(text,pattern);
+  if(pref)out.push({key,...pref});
+ }
+ const modeIntent=/(?:أفضل|افضل|بفضل|اميل|أميل|عايز|عاوز|مفضل|مفضّل|أنسب لي|انسب لي)/.test(n);
+ if(modeIntent){
+  const market=hasAny(text,MARKET_WORDS),restaurants=hasAny(text,RESTAURANT_WORDS);
+  if(market!==restaurants)out.push({key:'preferred_mode',value:market?'market':'restaurants',op:'set',strength:2});
+ }
+ if(/(?:مش عايز|مش عاوز|مش مفضل|مش بفضل)(?:[\s\S]{0,15})(?:ماركت|مطاعم|مطعم|restaurant)/.test(n)){
+  const market=hasAny(text,MARKET_WORDS),restaurants=hasAny(text,RESTAURANT_WORDS);
+  if(market!==restaurants)out.push({key:'preferred_mode',value:market?'market':'restaurants',op:'remove',strength:2});
+ }
+ return out;
+}
+export function mergeRecommendationProfile(current,preferences,now=new Date().toISOString()){
+ const base=current&&typeof current==='object'?current:{};
+ const priorities={...(base.priorities&&typeof base.priorities==='object'?base.priorities:{})};
+ let preferredMode=base.preferred_mode||null;
+ let primary=base.primary||null;
+ let changed=false;
+ let turnPrimary=null,turnStrength=-1;
+ for(const pref of preferences||[]){
+  if(pref.key==='preferred_mode'){
+   if(pref.op==='remove'){
+    if(preferredMode===pref.value){preferredMode=null;changed=true;}
+   }else if(pref.value&&preferredMode!==pref.value){preferredMode=pref.value;changed=true;}
+   continue;
+  }
+  if(!PRIORITY_LABELS[pref.key])continue;
+  if(pref.op==='remove'){
+   if(priorities[pref.key]){delete priorities[pref.key];changed=true;}
+   if(primary===pref.key){primary=null;changed=true;}
+   continue;
+  }
+  const nextScore=Math.min(5,Math.max(Number(priorities[pref.key]?.score||0),Number(pref.strength||1)));
+  if(!priorities[pref.key]||Number(priorities[pref.key].score)!==nextScore){
+   priorities[pref.key]={score:nextScore,updated_at:now,source:'explicit'};changed=true;
+  }else priorities[pref.key]={...priorities[pref.key],updated_at:now};
+  if(Number(pref.strength||1)>turnStrength){turnPrimary=pref.key;turnStrength=Number(pref.strength||1);}
+ }
+ if(turnPrimary&&primary!==turnPrimary){primary=turnPrimary;changed=true;}
+ if(!primary||!priorities[primary]){
+  const ranked=Object.entries(priorities).sort((a,b)=>Number(b[1]?.score||0)-Number(a[1]?.score||0)||String(b[1]?.updated_at||'').localeCompare(String(a[1]?.updated_at||'')));
+  const next=ranked[0]?.[0]||null;
+  if(primary!==next){primary=next;changed=true;}
+ }
+ return {
+  changed,
+  profile:{
+   priorities,
+   primary,
+   preferred_mode:preferredMode,
+   kind:'recommendation_profile',
+   updated_at:changed?now:(base.updated_at||now)
+  }
+ };
+}
+export function recommendationPreferenceAck(preferences,profile){
+ const setKeys=[...new Set((preferences||[]).filter(x=>x.op!=='remove'&&PRIORITY_LABELS[x.key]).map(x=>x.key))];
+ const removed=[...new Set((preferences||[]).filter(x=>x.op==='remove'&&PRIORITY_LABELS[x.key]).map(x=>x.key))];
+ const mode=(preferences||[]).find(x=>x.key==='preferred_mode'&&x.op!=='remove')?.value;
+ const bits=[];
+ if(setKeys.length)bits.push('هراعي '+setKeys.map(k=>PRIORITY_LABELS[k]).join(' و ')+' في الترشيحات الجاية');
+ if(mode)bits.push('وسجلت إنك مفضل '+(mode==='market'?'الماركت':'المطاعم'));
+ if(removed.length)bits.push('وشلت '+removed.map(k=>PRIORITY_LABELS[k]).join(' و ')+' من أولويات الترشيح');
+ if(!bits.length&&profile?.primary)bits.push('هراعي أولويتك الأساسية: '+PRIORITY_LABELS[profile.primary]);
+ return bits.length?'تمام، '+bits.join('، ')+'.':'';
+}
+function recommendationProfile(answers){
+ const p=answers?.__recommendation_profile;
+ return p&&typeof p==='object'?p:{priorities:{},primary:null,preferred_mode:null};
+}
+
+function recommendation(items,text,profile=null){
  const profiles=items.map(area=>({area,profile:areaProfile(area),mode:areaMode(area)}));
  const n=norm(text);
- const incomeIntent=/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
- const stabilityIntent=/(ثابت|استقرار|تامين|تأمين|اجازات|إجازات|مميزات)/.test(n);
- const distanceIntent=/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
+ const explicit=comparisonPriority(text);
+ const profilePriority=profile?.primary||null;
+ const priority=explicit||profilePriority;
+ const incomeIntent=priority==='income'||/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
+ const stabilityIntent=['stability','benefits'].includes(priority)||/(ثابت|استقرار|تامين|تأمين|اجازات|إجازات|مميزات)/.test(n);
+ const distanceIntent=priority==='distance'||/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
+ const shiftIntent=priority==='shift';
  let ranked=[...profiles];
  if(incomeIntent)ranked.sort((a,b)=>(b.profile.weeklyMax||b.profile.weeklyAverage||b.profile.fixedSalary||0)-(a.profile.weeklyMax||a.profile.weeklyAverage||a.profile.fixedSalary||0));
  else if(distanceIntent)ranked.sort((a,b)=>(a.profile.zoneKm||999)-(b.profile.zoneKm||999));
+ else if(shiftIntent)ranked.sort((a,b)=>(a.profile.shiftHours||999)-(b.profile.shiftHours||999));
  else if(stabilityIntent)ranked.sort((a,b)=>{
   const score=x=>(x.profile.fixedSalary?3:0)+Object.values(x.profile.benefits).filter(Boolean).length;
   return score(b)-score(a);
  });
+ else if(profile?.preferred_mode)ranked.sort((a,b)=>Number(b.mode===profile.preferred_mode)-Number(a.mode===profile.preferred_mode));
  const winner=ranked[0],runner=ranked[1];
  if(!winner||!runner)return null;
  if(incomeIntent){
@@ -157,6 +269,12 @@ function recommendation(items,text){
  }
  if(distanceIntent&&winner.profile.zoneKm&&runner.profile.zoneKm&&winner.profile.zoneKm<runner.profile.zoneKm){
   return 'لو يهمك الزون الأقصر، '+modeLabel(winner.mode)+' أنسب في البيانات المسجلة.';
+ }
+ if(shiftIntent&&winner.profile.shiftHours&&runner.profile.shiftHours&&winner.profile.shiftHours<runner.profile.shiftHours){
+  return 'بما إنك مفضل ساعات شغل أقل، '+modeLabel(winner.mode)+' أنسب حسب الشيفت المسجل.';
+ }
+ if(!explicit&&profile?.preferred_mode&&winner.mode===profile.preferred_mode&&runner.mode!==profile.preferred_mode){
+  return 'وبما إنك قلت قبل كده إنك مفضل '+modeLabel(profile.preferred_mode)+'، فهو الأقرب لتفضيلك هنا.';
  }
  const market=profiles.find(x=>x.mode==='market'),restaurants=profiles.find(x=>x.mode==='restaurants');
  if(market&&restaurants){
@@ -181,6 +299,7 @@ function placeMetrics(family){
   weeklyMax:max('weeklyMax'),
   weeklyAverage:max('weeklyAverage'),
   zoneKm:zones.length?Math.min(...zones):null,
+  shiftHours:profiles.map(x=>Number(x.profile.shiftHours||0)).filter(Boolean).sort((a,b)=>a-b)[0]||null,
   benefits,
   benefitsCount:Object.values(benefits).filter(Boolean).length,
   modeCount:new Set(profiles.map(x=>x.mode).filter(x=>x!=='general')).size
@@ -223,13 +342,14 @@ function storedComparisonKeys(answers,areas){
  const valid=new Set((areas||[]).filter(a=>a?.active===true).map(areaPlaceKey).filter(Boolean));
  return [...new Set(raw.map(x=>norm(x)).filter(x=>valid.has(x)))].slice(0,4);
 }
-function crossPlaceRecommendation(families,text,priority=null){
+function crossPlaceRecommendation(families,text,priority=null,profile=null){
  const rows=families.map(family=>({family,place:displayPlace(family),metrics:placeMetrics(family)}));
  const n=norm(text);
- const detected=priority||comparisonPriority(text);
+ const detected=priority||comparisonPriority(text)||profile?.primary||null;
  const asksBenefits=['benefits','stability'].includes(detected)||/(مميزات|مزايا|تامين|تأمين|اجازات|إجازات|ثبات|استقرار)/.test(n);
  const asksIncome=detected==='income'||/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
  const asksDistance=detected==='distance'||/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
+ const asksShift=detected==='shift';
  if(asksBenefits){
   const winner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
   if(winner)return 'لو تركيزك على المميزات والثبات، '+winner.place+' ظاهر أقوى في البيانات المسجلة عندنا.';
@@ -247,6 +367,15 @@ function crossPlaceRecommendation(families,text,priority=null){
   if(winner)return 'لو يهمك الزون الأقصر، '+winner.place+' ظاهر أنسب من البيانات المسجلة.';
   return 'من ناحية الزون، البيانات المسجلة متقاربة ومفيش فرق واضح.';
  }
+ if(asksShift){
+  const winner=uniqueBest(rows,x=>x.metrics.shiftHours||0,{lowest:true});
+  if(winner)return 'بما إن ساعات الشغل الأقل مهمة ليك، '+winner.place+' ظاهر أنسب حسب الشيفت المسجل.';
+  return 'من ناحية ساعات الشيفت، مفيش فرق واضح في البيانات المسجلة.';
+ }
+ if(!priority&&!comparisonPriority(text)&&profile?.preferred_mode){
+  const winner=uniqueBest(rows,x=>x.metrics.profiles.some(p=>p.mode===profile.preferred_mode)?1:0);
+  if(winner)return 'وبما إنك مفضل '+modeLabel(profile.preferred_mode)+'، '+winner.place+' أقرب لتفضيلك لأنه متاح فيه النظام ده.';
+ }
  const benefitsWinner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
  const incomeWinner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);
  if(benefitsWinner&&incomeWinner){
@@ -257,17 +386,17 @@ function crossPlaceRecommendation(families,text,priority=null){
  if(incomeWinner)return incomeWinner.place+' ظاهر أقوى من ناحية الدخل المسجل.';
  return 'مفيش منطقة أقدر أقول إنها أحسن مطلقًا من غير ما تحدد أولويتك.';
 }
-function comparePlacesReply(keys,areas,text,priority=null){
+function comparePlacesReply(keys,areas,text,priority=null,profile=null){
  const families=keys.map(key=>familyByKey(areas,key)).filter(x=>x.length);
  if(families.length<2)return null;
  return 'لو بنقارن '+families.map(displayPlace).join(' و ')+' حسب البيانات المسجلة عندنا:\n\n'
   +families.map(placeComparisonBlock).join('\n\n')
-  +'\n\n'+crossPlaceRecommendation(families,text,priority)
+  +'\n\n'+crossPlaceRecommendation(families,text,priority,profile)
   +'\n\nلو تقولي أهم حاجة عندك إيه — الدخل، المميزات، ثبات المرتب، ولا الزون — أقولك اختياري ليك بشكل أدق.';
 }
-function compareReply(items,text,place){
+function compareReply(items,text,place,profile=null){
  const lines=items.map(area=>'• '+modeLabel(areaMode(area))+': '+compactAreaSummary(area));
- const rec=recommendation(items,text);
+ const rec=recommendation(items,text,profile);
  return 'في '+place+' الفرق كده حسب البيانات المسجلة عندنا:\n\n'+lines.join('\n')+(rec?'\n\n'+rec:'')+'\n\nلو تقولي أهم حاجة عندك إيه — الدخل، ثبات المرتب، الزون، ولا المميزات — أقولك أنهي أنسب ليك.';
 }
 function generalComparison(areas){
@@ -296,15 +425,16 @@ export function conversationalAreaAdvice(text,areas,answers={}){
  if(!active.length)return null;
  const explicit=explicitKeys(text,active);
  const compare=asksComparison(text);
- const priority=comparisonPriority(text);
+ const profile=recommendationProfile(answers);
+ const priority=comparisonPriority(text)||profile.primary||null;
  const storedKeys=storedComparisonKeys(answers,active);
  if((compare||priority)&&explicit.length>=2){
-  const reply=comparePlacesReply(explicit,active,text,priority);
+  const reply=comparePlacesReply(explicit,active,text,priority,profile);
   if(reply)return {reply,action:'compare_places',comparisonKeys:explicit,priority};
  }
  if((compare||priority)&&explicit.length<2&&storedKeys.length>=2){
-  const rememberedPriority=priority||answers?.__area_comparison?.priority||null;
-  const reply=comparePlacesReply(storedKeys,active,text,rememberedPriority);
+  const rememberedPriority=comparisonPriority(text)||answers?.__area_comparison?.priority||profile.primary||null;
+  const reply=comparePlacesReply(storedKeys,active,text,rememberedPriority,profile);
   if(reply)return {reply,action:'compare_places_followup',comparisonKeys:storedKeys,priority:rememberedPriority};
  }
  const key=explicit[0]||contextKey(answers,active);
@@ -323,8 +453,8 @@ export function conversationalAreaAdvice(text,areas,answers={}){
 
  if(compare){
   const compareItems=variants.filter(v=>!requestedModes.length||requestedModes.includes(areaMode(v)));
-  if(compareItems.length>=2)return {reply:compareReply(compareItems,text,place),action:'compare_area_modes',previewAreaId:general?.id||null};
-  if(variants.length>=2)return {reply:compareReply(variants.slice(0,3),text,place),action:'compare_area_modes',previewAreaId:general?.id||null};
+  if(compareItems.length>=2)return {reply:compareReply(compareItems,text,place,profile),action:'compare_area_modes',previewAreaId:general?.id||null};
+  if(variants.length>=2)return {reply:compareReply(variants.slice(0,3),text,place,profile),action:'compare_area_modes',previewAreaId:general?.id||null};
   if(variants.length===1){
    return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+compactAreaSummary(variants[0])+'\n\nلو عايز أقارنه بمنطقة تانية قولّي اسم المنطقة.',action:'explain_single_area_mode',previewAreaId:general?.id||null};
   }

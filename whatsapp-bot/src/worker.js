@@ -11,13 +11,9 @@ import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
 import {questionPrompt} from './domain.js';
 
-export function shouldBrowseAreaButtons(question,body){
+export function shouldBrowseAreaButtons(_question,body){
  const text=String(body||'');
- return text.includes('اختار المنطقة من الأزرار')
-  ||text.includes('اختار منطقة العمل من الأزرار')
-  ||text.includes('اختار منطقة تانية من الأزرار')
-  ||text.includes('المناطق المتاحة موجودة في الأزرار')
-  ||(question?.field_key==='preferred_work_area'&&text.includes(String(question.label||'')));
+ return text.includes('اختيارات سريعة للمناطق');
 }
 
 export function botAreaChoices(areas){
@@ -32,18 +28,14 @@ export function recommendedAreaChoices(areas,answers,body=''){
  return ids.map(id=>active.find(area=>String(area.id)===String(id))).filter(Boolean);
 }
 
-export function shouldOfferYesNoButtons(question,body,areas=[]){
+export function shouldOfferYesNoButtons(question,body,_areas=[]){
  if(question?.kind!=='yes_no')return false;
- const text=String(body||'').trim();
- const prompt=questionPrompt(question,areas).trim();
- return Boolean(prompt)&&(text===prompt||text.endsWith(prompt));
+ return String(body||'').includes('اختيارات سريعة: نعم / لا');
 }
 
-export function shouldOfferChoiceButtons(question,body,areas=[]){
+export function shouldOfferChoiceButtons(question,body,_areas=[]){
  if(question?.kind!=='choice'||!Array.isArray(question.options)||!question.options.length)return false;
- const text=String(body||'').trim();
- const prompt=questionPrompt(question,areas).trim();
- return Boolean(prompt)&&(text===prompt||text.endsWith(prompt));
+ return String(body||'').includes('اختيارات سريعة للسؤال');
 }
 
 export function choiceButtons(question){

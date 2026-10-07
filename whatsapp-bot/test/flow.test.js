@@ -607,3 +607,29 @@ test('fresh application merges welcome and first work-area question into one mes
  assert.equal(r.followup_reply,undefined);
  assert.doesNotMatch(r.reply,/أقارن|قارن|لو محتار|وريني المناطق/);
 });
+
+
+test('opening work-area message includes available area list with operating modes',async()=>{
+ const qs=[
+  {id:'area',field_key:'preferred_work_area',kind:'area',label:'أي منطقة؟',position:1,active:true,required:true},
+  {id:'bike',field_key:'has_motorcycle',kind:'yes_no',label:'معاك موتوسيكل؟',position:2,active:true,required:true}
+ ];
+ const liveAreas=[
+  {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'market',details:'x'},
+  {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'restaurants',details:'x'},
+  {id:'obour-market',name:'العبور ماركت',active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'market',details:'x'},
+  {id:'blocked',name:'المنصورة ماركت',active:true,recruitment_eligible:false,place_key:'المنصورة',work_mode:'market',details:'x'}
+ ];
+ const r=await planTurn({
+  applicant:{stage:'new',answers:{},awaiting_id:null,bot_enabled:true},
+  message:{body:'مساء الخير'},
+  questions:qs,areas:liveAreas,settings:{...settings,welcome:'أهلاً بيك 👋'},interpret,knowledge:[]
+ });
+ assert.match(r.reply,/أهلاً بيك/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة؟/);
+ assert.match(r.reply,/• الشيخ زايد — ماركت \/ مطاعم/);
+ assert.match(r.reply,/• العبور — ماركت/);
+ assert.doesNotMatch(r.reply,/المنصورة/);
+ assert.doesNotMatch(r.reply,/أقارن|قارن|لو محتار/);
+ assert.equal(r.followup_reply,undefined);
+});

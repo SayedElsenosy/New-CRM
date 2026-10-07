@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AgentRuntime,plannerFactsForQuestions} from '../src/agent-runtime.js';
+import {AgentRuntime,plannerFactsForQuestions,canComposeAgentReply,groundedReplySafe} from '../src/agent-runtime.js';
 
 test('LLM runtime stays unavailable without provider secrets',()=>{
  const runtime=new AgentRuntime({env:{}});
@@ -62,4 +62,18 @@ test('free-tier planner payload stays compact with many areas and knowledge rows
  const size=messages.reduce((n,m)=>n+String(m.content||'').length,0);
  assert.ok(size<10000,'planner prompt too large for free tier: '+size);
  assert.match(messages[1].content,/المرتب كام/);
+});
+
+
+test('response composer is limited to grounded conversational actions',()=>{
+ assert.equal(canComposeAgentReply('compare_area_modes'),true);
+ assert.equal(canComposeAgentReply('llm_knowledge_answer'),true);
+ assert.equal(canComposeAgentReply('qualification_fact'),false);
+ assert.equal(canComposeAgentReply('llm_change_answer'),false);
+});
+
+test('grounded reply validator rejects invented numbers and accepts Arabic digit rewrites',()=>{
+ assert.equal(groundedReplySafe('ثابت 6,000 جنيه وشيفت 8 ساعات','الثابت ٦,٠٠٠ جنيه والشيفت ٨ ساعات.'),true);
+ assert.equal(groundedReplySafe('ثابت 6,000 جنيه','الثابت 7,000 جنيه.'),false);
+ assert.equal(groundedReplySafe('معلومة من غير أرقام','رد طبيعي من غير أرقام.'),true);
 });

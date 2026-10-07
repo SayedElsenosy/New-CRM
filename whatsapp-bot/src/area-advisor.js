@@ -71,7 +71,7 @@ export function areaProfile(area){
  const n=norm(raw);
  const fixed=n.match(/مرتب\s+(?:شهري\s+)?ثابت\s*[:\/-]?\s*([0-9][0-9,]*)/);
  const weeklyRange=n.match(/متوسط\s+القبض\s+الاسبوعي[\s\S]{0,80}?من\s*([0-9][0-9,]*)\s*(?:ل|لـ|الي|الى|إلى|-)+\s*([0-9][0-9,]*)/);
- const weeklyAverage=n.match(/متوسط\s+الدخل\s+الاسبوعي\s*([0-9][0-9,]*)/);
+ const weeklyAverage=n.match(/متوسط\s+الدخل(?:\s+الاسبوعي)?\s*([0-9][0-9,]*)/);
  const weeklyMax=n.match(/(?:بيوصل|يوصل)\s*(?:لي|ل|الي|الى|إلى)?\s*([0-9][0-9,]*)/);
  const shift=n.match(/(?:الشفت|الشيفت)[\s\S]{0,40}?([0-9]{1,2})\s*ساع/);
  const zone=n.match(/(?:الزون)[\s\S]{0,50}?(?:اقل\s+من|اقصي\s+مسافه\s+للزون\s*:?)\s*([0-9]{1,2})\s*كيلو/);
@@ -182,6 +182,9 @@ function asksAvailability(text){
  return /(?:ممكن|ينفع|عايز|عاوز|حابب|انزل|أنزل|اشتغل|شغل|متاح)/.test(n);
 }
 export function conversationalAreaAdvice(text,areas,answers={}){
+ const textNorm=norm(text);
+ if(/(?:^|\s)(?:مش|ما)\s+(?:عايز|عاوز|حابب|موافق|ناوي)(?:[\s\S]{0,30})(?:اشتغل|انزل|أنزل|المنطقه|المنطقة)/.test(textNorm)
+   ||/(?:مش\s+مناسب|مش\s+مناسبه|ماينفعش|مينفعش)/.test(textNorm))return null;
  const active=(areas||[]).filter(a=>a?.active===true);
  if(!active.length)return null;
  const key=explicitKey(text,active)||contextKey(answers,active);

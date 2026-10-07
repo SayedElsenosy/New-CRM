@@ -35,7 +35,7 @@ test('follow-up message repeats the exact missing question and offers help',()=>
  const body=buildFollowupMessage(applicant,questions,areas);
  assert.match(body,/يا سيد أحمد/);
  assert.match(body,/أنهي منطقة/);
- assert.match(body,/اختار المنطقة من الأزرار/);
+ assert.match(body,/قولّي اسم المنطقة بطريقتك/);
  assert.doesNotMatch(body,/• أكتوبر/);
  assert.match(body,/لو في حاجة موقفاك/);
  assert.match(body,/المرتب أو المواعيد/);

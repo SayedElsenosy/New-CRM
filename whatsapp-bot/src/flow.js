@@ -4,7 +4,7 @@ import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
 import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
-import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames} from './area-advisor.js';
+import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -185,10 +185,10 @@ function recruitmentAreas(areas){
  return areas.filter(z=>z.active);
 }
 function areaListReply(areas){
- const names=availableAreaNames(areas,{limit:18});
- if(!names.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
- const list=names.map(x=>'• '+x).join('\n');
- return 'دي مناطق الشغل المتاحة عندي حاليًا:\n\n'+list+'\n\nاكتب اسم المنطقة اللي بتفكر فيها وأنا أقولك تفاصيلها. ولو حابب أظهرلك أزرار اختيارات اكتب «الاختيارات».';
+ const items=availableAreaListItems(areas,{limit:18});
+ if(!items.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
+ const list=items.map(x=>'• '+x).join('\n');
+ return 'دي مناطق الشغل المتاحة عندي حاليًا:\n\n'+list+'\n\nلو المنطقة فيها ماركت ومطاعم، قولّي اسم المنطقة وبعدها النظام اللي يناسبك. وتقدر تكتب أي جزء مميز من اسم المنطقة؛ مثل «زايد» بدل «الشيخ زايد».';
 }
 function quickOptionsRequest(text){
  const n=norm(text);
@@ -232,6 +232,7 @@ function commitAreaChoice({area,current,answers,qs,questions,areas,settings,appl
  clearAgentState(answers);
  delete answers.__area_preview;
  delete answers.__area_page;
+ delete answers.__area_context;
  answers[current.id]={
   value:area.id,display:area.name,label:current.label,key:current.field_key,kind:current.kind,
   at:new Date().toISOString(),
@@ -472,6 +473,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!protocolAction&&!residenceOnlyWhileChoosingWorkArea(current,m.body)){
   const advice=conversationalAreaAdvice(m.body,areas,answers);
   if(advice?.reply){
+   if(advice.contextPlaceKey){
+    answers.__area_context={place_key:advice.contextPlaceKey,kind:'area_context',at:new Date().toISOString()};
+   }
    if(current?.kind==='area'&&advice.previewAreaId){
     const preview=areas.find(z=>z.active&&String(z.id)===String(advice.previewAreaId));
     if(preview)answers.__area_preview={value:preview.id,display:preview.name,kind:'area_preview',at:new Date().toISOString(),advisor:true};
@@ -490,7 +494,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
-   const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||recommendationProfileChanged||observations.length||savedAgentFacts.length);
+   const persistAdvisorAnswers=Boolean(advice.contextPlaceKey||(current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||recommendationProfileChanged||observations.length||savedAgentFacts.length);
    const compareContinuation=['compare_places','compare_places_followup'].includes(advice.action)&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},

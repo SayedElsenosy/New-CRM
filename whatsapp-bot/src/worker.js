@@ -10,7 +10,7 @@ import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
 import {questionPrompt} from './domain.js';
-import {syncInterviewFromStaffMessages} from './interview-automation.js';
+import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
 export function shouldBrowseAreaButtons(_question,body){
  const text=String(body||'');
@@ -50,13 +50,14 @@ export function choiceButtons(question){
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null,agentRuntime=null}){
   Object.assign(this,{db,connection,connections,serial,speech,agentRuntime});
-  this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;this.lastFollowupSweep=0;
+  this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;this.lastFollowupSweep=0;this.lastInterviewReconcile=0;
  }
  multi(){return Boolean(this.connections?.configured);}
  async init(){
   await fs.mkdir(this.spool,{recursive:true});
   try{await promotePendingLearning(this.db);}catch(e){if(!schemaMissing(e))console.warn('Pending memory promotion failed:',e.code||e.name||'Error');}
   try{await rebuildBreadfastSharedBrain(this.db);}catch(e){if(!schemaMissing(e))console.warn('Breadfast shared brain rebuild failed:',e.code||e.name||'Error');}
+  try{await reconcileRecentStaffInterviews(this.db,{hours:36,source:'worker_startup_reconcile'});}catch(e){console.warn('Interview reconciliation failed:',e.code||e.name||'Error');}
   must(await this.db.from('masar_messages').update({status:'uncertain',error:'الخدمة توقفت أثناء الإرسال؛ راجع واتساب قبل إعادة المحاولة.'}).eq('status','sending'));
   this.timer=setInterval(()=>this.tick(),2500);this.timer.unref();
  }
@@ -213,6 +214,13 @@ export class Worker {
   try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'applicant_message'});}
   catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
  }
+ async reconcileInterviews(){
+  const now=Date.now();
+  if(now-this.lastInterviewReconcile<60000)return;
+  this.lastInterviewReconcile=now;
+  try{await reconcileRecentStaffInterviews(this.db,{hours:36,source:'worker_periodic_reconcile'});}
+  catch(e){console.warn('Interview reconciliation failed:',e.code||e.name||'Error');}
+ }
  async queueFollowups(){
   const now=Date.now();
   if(now-this.lastFollowupSweep<60000)return;
@@ -247,6 +255,7 @@ export class Worker {
  async tick(){
   if(this.ticking)return;this.ticking=true;
   try{await this.serial(async()=>{
+   await this.reconcileInterviews();
    for(const name of (await fs.readdir(this.spool)).filter(n=>n.endsWith('.json')).sort()){
     const p=path.join(this.spool,name);await this.ingest(JSON.parse(await fs.readFile(p,'utf8')));await fs.unlink(p);
    }

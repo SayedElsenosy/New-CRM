@@ -38,6 +38,13 @@ function autoKeywords(question){
  const seen=new Set(tokens(question));
  return [...seen].slice(0,12);
 }
+function moneyTopic(value){
+ const n=norm(digits(value));
+ if(/(?:اجمالي\s+الدخل|إجمالي\s+الدخل|الدخل|دخل|ممكن\s+(?:يوصل|اوصل|أوصل)|يوصل\s+(?:الى|إلى)|اوردرات|أوردرات)/.test(n))return 'income_total';
+ if(/(?:المرتب|مرتب|الراتب|راتب|مرتب\s+ثابت|راتب\s+ثابت|الثابت)/.test(n))return 'base_salary';
+ return null;
+}
+
 export function suggestKeywords(question){return autoKeywords(question);}
 export function looksLikeQuestion(text){
  const raw=String(text||'').trim(),n=canonical(raw);
@@ -512,6 +519,10 @@ function scoreEntry(text,row){
  if(!q||!targets.length)return 0;
  let score=0;
  for(const target of targets)score=Math.max(score,scoreTextAgainstTarget(q,target));
+ const queryMoneyTopic=moneyTopic(text),rowMoneyTopic=moneyTopic(row.question);
+ if(queryMoneyTopic&&rowMoneyTopic){
+  score+=queryMoneyTopic===rowMoneyTopic?.25:-.32;
+ }
  const keywordList=[...(row.keywords||[]),...autoKeywords(row.question)].map(canonical).filter(Boolean);
  let keywordHits=0;
  for(const keyword of new Set(keywordList)){
@@ -521,11 +532,13 @@ function scoreEntry(text,row){
  else if(keywordHits===1)score+=.06;
  const rank=Number(row._scope_rank||0);
  if(rank)score+=Math.min(.04,rank*.01);
- return Math.min(1,score);
+ return Math.max(0,Math.min(1,score));
 }
 const TOPIC_GENERIC=new Set(['معاك','معايا','عندك','عندي','عنده','عندها','موجود','موجوده','متاح','مطلوب','لازم','عايز','عاوز','اه','ايوه','ايوا','نعم','لا','لاء']);
 function topicTokens(value){return tokens(value).filter(t=>!TOPIC_GENERIC.has(t));}
 export function sameKnowledgeTopic(left,right){
+ const leftMoney=moneyTopic(left),rightMoney=moneyTopic(right);
+ if(leftMoney&&rightMoney&&leftMoney!==rightMoney)return false;
  const a=new Set(topicTokens(left)),b=new Set(topicTokens(right));
  if(!a.size||!b.size)return false;
  const common=overlap(a,b);

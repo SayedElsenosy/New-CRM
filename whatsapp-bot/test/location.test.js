@@ -23,7 +23,7 @@ test('Imbaba recommends Mohandessin before farther work areas',()=>{
  const reply=nearestWorkAreaReply(result);
  assert.match(reply,/المهندسين مطاعم/);
  assert.match(reply,/الأقرب تقريبًا/);
- assert.match(reply,/اختار المنطقة من الأزرار/);
+ assert.match(reply,/قولّي اسم المنطقة/);
 });
 
 test('nearest recommendation ignores inactive areas',()=>{

@@ -4,7 +4,7 @@ import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
 import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
-import {conversationalAreaAdvice} from './area-advisor.js';
+import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck} from './area-advisor.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -411,6 +411,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const choiceButton=choiceAction(m.body);
  const protocolAction=buttonAction||choiceButton;
  const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
+ const recommendationPreferences=settings.ai_enabled&&!protocolAction?extractRecommendationPreferences(m.body):[];
+ const recommendationMerge=mergeRecommendationProfile(answers.__recommendation_profile,recommendationPreferences);
+ const recommendationProfileChanged=recommendationPreferences.length>0&&recommendationMerge.changed;
+ if(recommendationProfileChanged)answers.__recommendation_profile=recommendationMerge.profile;
  if(observations.length){
   const existing=answers.__observed_facts&&typeof answers.__observed_facts==='object'?answers.__observed_facts:{};
   for(const observation of observations){
@@ -487,7 +491,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
-   const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||observations.length||savedAgentFacts.length);
+   const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||recommendationProfileChanged||observations.length||savedAgentFacts.length);
    const compareContinuation=['compare_places','compare_places_followup'].includes(advice.action)&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
@@ -497,6 +501,16 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     agent_action:advice.action||'area_advisor'
    };
   }
+ }
+
+ if(recommendationProfileChanged){
+  const ack=recommendationPreferenceAck(recommendationPreferences,answers.__recommendation_profile);
+  const continuation=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+  return {
+   patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers,stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
+   reply:ack+continuation,
+   agent_action:'remember_recommendation_preferences'
+  };
  }
 
  if(current?.field_key==='preferred_work_area'&&!protocolAction&&(mentionsResidence(m.body)||asksForNearbyArea(m.body))){

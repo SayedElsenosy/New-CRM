@@ -604,7 +604,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     reply:String(match.answer||'').trim(),
     followup_reply:sideAnswerFollowup(a,current,areas),
     knowledge_id:match.id,
-    knowledge_confidence:match.confidence
+    knowledge_confidence:match.confidence,
+    agent_action:'knowledge_answer'
    };
   }
  }

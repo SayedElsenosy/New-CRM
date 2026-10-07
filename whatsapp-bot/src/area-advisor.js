@@ -1,4 +1,4 @@
-import {digits,norm} from './domain.js';
+import {digits,norm,areaDetails} from './domain.js';
 
 const MARKET_WORDS=['ماركت','سوبرماركت','سوبر ماركت','market'];
 const RESTAURANT_WORDS=['مطاعم','مطعم','ريستورانت','restaurant','restaurants'];
@@ -196,9 +196,17 @@ function uniqueBest(rows,scoreFn,{lowest=false}={}){
 function placeComparisonBlock(family){
  const place=displayPlace(family);
  const variants=(family||[]).filter(a=>areaMode(a)!=='general'&&String(a.details||'').trim());
- const source=variants.length?variants:(family||[]).filter(a=>String(a.details||'').trim()).slice(0,1);
- if(!source.length)return '• '+place+': المنطقة موجودة، لكن تفاصيل التشغيل المسجلة حاليًا مش كفاية للمقارنة الدقيقة.';
- if(source.length===1)return '• '+place+' — '+modeLabel(areaMode(source[0]))+': '+compactAreaSummary(source[0]);
+ const detailed=(family||[]).filter(a=>String(a.details||'').trim());
+ const source=variants.length?variants:detailed.slice(0,1);
+ if(!source.length){
+  const general=(family||[]).find(a=>areaMode(a)==='general')||family?.[0];
+  const fallback=general?areaDetails(general).replace(/^📍\s*/,''):(place+'\nتفاصيل المنطقة لسه مش مضافة. مسؤول التوظيف يقدر يوضحها ليك.');
+  return '• '+fallback;
+ }
+ if(source.length===1){
+  const raw=areaDetails(source[0]).replace(/^📍\s*/,'');
+  return '• '+raw;
+ }
  return '• '+place+':\n'+source.slice(0,3).map(v=>'  - '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n');
 }
 function crossPlaceRecommendation(families,text){

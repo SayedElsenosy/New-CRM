@@ -7,9 +7,7 @@ import {plannerFactsForQuestions} from './agent-runtime.js';
 import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
 function areaPreviewReply(area,areas){
- const others=areas.filter(z=>z.active&&z.id!==area.id);
- const choices=others.length?'\n\nولو محتار، قولّي اسم منطقة تانية وأنا أقارنهم لك.':'';
- return areaDetails(area)+`\n\nلو تفاصيل ${area.name} مناسبة ليك قولّي «مناسبة وكمل». ولو مش مناسبة قولّي المنطقة اللي بتفكر فيها.`+choices;
+ return areaDetails(area)+`\n\nلو تفاصيل ${area.name} مناسبة ليك قولّي «مناسبة وكمل». ولو مش مناسبة قولّي المنطقة اللي بتفكر فيها.`;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
 function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
@@ -54,7 +52,7 @@ function knowledgeQueryText(answers,text){
 function explainCurrentQuestion(question,areas){
  if(!question)return 'مفيش سؤال ناقص حاليًا. لو عندك سؤال عن الشغل ابعته بشكل مباشر.';
  if(question.field_key==='has_motorcycle')return 'قصدي: هل عندك موتوسيكل تقدر تستخدمه للشغل يوميًا؟ رد «نعم» أو «لا».';
- if(question.field_key==='preferred_work_area')return 'قصدي منطقة الشغل اللي تقدر تروحها وتلتزم بيها يوميًا، مش مكان سكنك. قولّي اسم المنطقة بطريقتك، ولو محتار أقدر أرشح وأقارن. ولو حابب تشوف القائمة اكتب «وريني المناطق».';
+ if(question.field_key==='preferred_work_area')return 'قصدي منطقة الشغل اللي تقدر تروحها وتلتزم بيها يوميًا، مش مكان سكنك. قولّي اسم المنطقة.';
  if(question.field_key==='full_name')return 'قصدي اكتب اسمك بالكامل علشان يتسجل في طلب التقديم، ويفضل اسمين أو أكتر.';
  if(question.field_key==='shift_acceptance')return 'قصدي هل نظام الشيفت المذكور في السؤال مناسب ليك وتقدر تلتزم بيه؟ رد «نعم» أو «لا».';
  if(question.field_key==='ready_to_start')return 'قصدي لو تم قبولك، هل تقدر تبدأ الشغل قريب؟ رد «نعم» أو «لا».';
@@ -374,7 +372,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   const welcome=String(settings.welcome||'').trim();
   const firstQuestion=questionPrompt(first,areas);
   return welcome
-   ?{patch:{awaiting_id:first.id,stage:'new'},reply:welcome,followup_reply:firstQuestion}
+   ?{patch:{awaiting_id:first.id,stage:'new'},reply:welcome+'\n\n'+firstQuestion}
    :{patch:{awaiting_id:first.id,stage:'new'},reply:firstQuestion};
  }
 
@@ -541,7 +539,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    }
    return {
     patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
-    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaReply(recommendation).replace('اختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم.','قولّي اسم المنطقة اللي حابب تعرف تفاصيلها، ولو محتار بينهم أقدر أقارنهم لك. ولو حابب أزرار اختيارات اكتب «الاختيارات».') ,
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaReply(recommendation).replace('اختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم.','قولّي اسم المنطقة اللي حابب تعرف تفاصيلها.') ,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
     agent_action:sideMatch?'recommend_nearest_work_area_with_answer':'recommend_nearest_work_area'
@@ -917,7 +915,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(realAnswerCount(answers))return {patch:{...(savedAgentFacts?.length?{answers}:{}),awaiting_id:current.id},reply:'نكمل بياناتك: '+prompt,agent_action:savedAgentFacts?.length?'multi_fact_extract':undefined};
   const welcome=String(settings.welcome||'').trim();
   return welcome
-   ?{patch:{awaiting_id:current.id},reply:welcome,followup_reply:prompt}
+   ?{patch:{awaiting_id:current.id},reply:welcome+'\n\n'+prompt}
    :{patch:{awaiting_id:current.id},reply:prompt};
  }
 

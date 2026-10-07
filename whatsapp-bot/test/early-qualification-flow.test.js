@@ -199,7 +199,7 @@ test('مدينة العبور is understood as the same place as العبور م
  const a={...applicant,awaiting_id:'q2',answers:{}};
  const preview=await planTurn({applicant:a,message:{body:'طيب ممكن انزل مدينة العبور'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
  assert.equal(preview.patch.answers.q2,undefined);
- assert.equal(preview.patch.answers.__area_preview.value,'obour');
+ assert.equal(preview.patch.answers.__area_preview.value,'obour-market');
  assert.equal(preview.patch.awaiting_id,'q2');
  assert.equal(preview.agent_action,'explain_area_family');
  assert.match(preview.reply,/العبور موجودة/);
@@ -207,9 +207,9 @@ test('مدينة العبور is understood as the same place as العبور م
  assert.match(preview.reply,/5,225/);
 
  const confirmed=await planTurn({applicant:{...a,answers:preview.patch.answers,awaiting_id:'q2'},message:{body:'مناسبة وكمل'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
- assert.equal(confirmed.patch.answers.q2.value,'obour');
+ assert.equal(confirmed.patch.answers.q2.value,'obour-market');
  assert.equal(confirmed.patch.awaiting_id,'q1');
- assert.match(confirmed.reply,/هنكمل على منطقة مدينة العبور/);
+ assert.match(confirmed.reply,/هنكمل على منطقة العبور ماركت/);
 });
 
 test('market versus restaurants is compared conversationally inside the same place',async()=>{

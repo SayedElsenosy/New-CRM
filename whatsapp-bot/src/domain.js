@@ -66,12 +66,12 @@ export function validateAnswer(q,input,areas,media) {
  return {ok:true,value:s,display:s};
 }
 export function questionPrompt(q,areas) {
+ if(q.field_key==='preferred_work_area')return 'حابب تنزل شغل في أنهي منطقة؟';
  const raw=String(q.label||'').trim();
  const alreadyQuestion=/[?؟]$/.test(raw)||/^(?:هل|ايه|إيه|فين|امتى|إمتى|كام|ازاي|إزاي|أنهي|انهي|معاك|عندك|ساكن|اكتب|ابعت|اختار)/.test(raw);
- let text=q.field_key==='preferred_work_area'?'حابب تنزل شغل في أنهي منطقة؟':raw;
- if(q.field_key!=='preferred_work_area'&&!alreadyQuestion){
+ let text=raw;
+ if(!alreadyQuestion){
   if(q.field_key==='has_motorcycle')text='معاك موتوسيكل متاح للشغل يوميًا؟';
-  else if(q.field_key==='preferred_work_area')text='حابب تنزل شغل في أنهي منطقة؟';
   else if(q.field_key==='full_name')text='اسمك بالكامل إيه؟';
   else if(q.field_key==='shift_acceptance')text='نظام الشيفت الحالي مناسب ليك وتقدر تلتزم بيه؟';
   else if(q.field_key==='ready_to_start')text='لو تم قبولك، تقدر تبدأ الشغل قريب؟';
@@ -81,10 +81,7 @@ export function questionPrompt(q,areas) {
   else if(q.kind==='image')text='ابعت '+raw+'.';
   else text='محتاج أعرف '+raw+'.';
  }
- if(q.kind==='area'){
-  if(q.field_key==='preferred_work_area') text+='\nقولّي اسم المنطقة اللي تقدر تلتزم بالشغل فيها يوميًا. لو محتار بين منطقتين أو بين ماركت ومطاعم أقدر أقارنهم لك، ولو حابب تشوف القائمة اكتب «وريني المناطق».';
-  else text+='\nقولّي اسم المنطقة بطريقتك. أقدر أوضح تفاصيلها أو أقارنها بمنطقة تانية.';
- }
+ if(q.kind==='area')text+='\nقولّي اسم المنطقة بطريقتك.';
  if(q.kind==='choice'&&Array.isArray(q.options)&&q.options.length)text+='\nتقدر تكتب اختيارك بطريقتك، ولو حابب أظهرلك الاختيارات السريعة اكتب «الاختيارات».';
  if(!q.required)text+='\n(اختياري؛ اكتب «تخطي» لو مش حابب تجاوب)';
  return text;

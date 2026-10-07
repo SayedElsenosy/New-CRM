@@ -43,6 +43,11 @@ export function extractMessageText(message){
  if(m.buttonsResponseMessage)return String(m.buttonsResponseMessage.selectedButtonId||m.buttonsResponseMessage.selectedDisplayText||'');
  if(m.listResponseMessage)return String(m.listResponseMessage.singleSelectReply?.selectedRowId||m.listResponseMessage.title||'');
  if(m.templateButtonReplyMessage)return String(m.templateButtonReplyMessage.selectedId||m.templateButtonReplyMessage.selectedDisplayText||'');
+ const location=m.locationMessage||m.liveLocationMessage;
+ if(location){
+  const lat=Number(location.degreesLatitude),lng=Number(location.degreesLongitude);
+  if(Number.isFinite(lat)&&Number.isFinite(lng))return 'https://maps.google.com/?q='+lat+','+lng;
+ }
  return String(m.conversation||m.extendedTextMessage?.text||m.imageMessage?.caption||m.documentMessage?.caption||m.videoMessage?.caption||'');
 }
 

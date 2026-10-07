@@ -583,3 +583,27 @@ test('area list labels operating modes instead of hiding market versus restauran
  assert.match(r.reply,/الشيخ زايد — ماركت \/ مطاعم/);
  assert.match(r.reply,/العبور — ماركت/);
 });
+
+
+test('preferred work area prompt is only the requested sentence',()=>{
+ const q={id:'work-area',field_key:'preferred_work_area',kind:'area',label:'أي منطقة؟',required:true,active:true};
+ assert.equal(questionPrompt(q,areas),'حابب تنزل شغل في أنهي منطقة؟');
+ assert.doesNotMatch(questionPrompt(q,areas),/أقارن|قارن|وريني|اختيارات/);
+});
+
+test('fresh application merges welcome and first work-area question into one message',async()=>{
+ const qs=[
+  {id:'work-area',field_key:'preferred_work_area',kind:'area',label:'أي منطقة؟',position:1,active:true,required:true},
+  {id:'bike',field_key:'has_motorcycle',kind:'yes_no',label:'معاك موتوسيكل؟',position:2,active:true,required:true}
+ ];
+ const liveAreas=[{id:'oct-market',name:'أكتوبر ماركت',active:true,recruitment_eligible:true,place_key:'اكتوبر',work_mode:'market',details:'x'}];
+ const r=await planTurn({
+  applicant:{stage:'new',answers:{},awaiting_id:null,bot_enabled:true},
+  message:{body:'مساء الخير'},
+  questions:qs,areas:liveAreas,settings:{...settings,welcome:'أهلاً بيك في مكتب Speed للتقديم لوظيفة دليفري لشركة Breadfast 👋'},interpret,knowledge:[]
+ });
+ assert.match(r.reply,/أهلاً بيك في مكتب Speed/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة؟/);
+ assert.equal(r.followup_reply,undefined);
+ assert.doesNotMatch(r.reply,/أقارن|قارن|لو محتار|وريني المناطق/);
+});

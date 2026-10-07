@@ -442,6 +442,46 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
 
+ if(!protocolAction&&quickOptionsRequest(m.body)&&current){
+  if(current.kind==='area'){
+   answers.__area_page={value:0,kind:'area_page',at:new Date().toISOString(),eligibility_only:current.field_key==='preferred_work_area'};
+   return {patch:{answers,awaiting_id:current.id},reply:'تمام، دي اختيارات سريعة للمناطق 👇\nولو حابب تكتب اسم المنطقة بنفسك عادي.' ,agent_action:'show_area_quick_options'};
+  }
+  if(current.kind==='yes_no'){
+   return {patch:{awaiting_id:current.id},reply:'تمام، دي اختيارات سريعة: نعم / لا 👇\nوتقدر تكتب إجابتك بطريقتك.',agent_action:'show_yes_no_quick_options'};
+  }
+  if(current.kind==='choice'){
+   return {patch:{awaiting_id:current.id},reply:'تمام، دي اختيارات سريعة للسؤال 👇\nوتقدر تكتب اختيارك بطريقتك.',agent_action:'show_choice_quick_options'};
+  }
+ }
+
+ if(!protocolAction&&current?.field_key==='preferred_work_area'&&answers.__area_preview?.value&&naturalAreaConfirmation(m.body)){
+  const area=areas.find(z=>z.active&&String(z.id)===String(answers.__area_preview.value));
+  if(area)return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+ }
+
+ if(!protocolAction){
+  const advice=conversationalAreaAdvice(m.body,areas,answers);
+  if(advice?.reply){
+   if(current?.field_key==='preferred_work_area'&&advice.previewAreaId){
+    const preview=areas.find(z=>z.active&&String(z.id)===String(advice.previewAreaId));
+    if(preview)answers.__area_preview={value:preview.id,display:preview.name,kind:'area_preview',at:new Date().toISOString(),advisor:true};
+   }
+   let sideMatch=null;
+   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+    const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
+    if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
+   }
+   return {
+    patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers,stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply,
+    knowledge_id:sideMatch?.id||null,
+    knowledge_confidence:sideMatch?.confidence??null,
+    agent_action:advice.action||'area_advisor'
+   };
+  }
+ }
+
  if(current?.field_key==='preferred_work_area'&&!protocolAction&&(mentionsResidence(m.body)||asksForNearbyArea(m.body))){
   let recommendation=nearestWorkAreas(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,limit:3});
   if(!recommendation&&asksForNearbyArea(m.body)){
@@ -467,7 +507,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    }
    return {
     patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
-    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaReply(recommendation),
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaReply(recommendation).replace('اختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم.','قولّي اسم المنطقة اللي حابب تعرف تفاصيلها، ولو محتار بينهم أقدر أقارنهم لك. ولو حابب أزرار اختيارات اكتب «الاختيارات».') ,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
     agent_action:sideMatch?'recommend_nearest_work_area_with_answer':'recommend_nearest_work_area'
@@ -644,7 +684,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
      return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
     }
     if(action.type==='confirm'){
-     if(answers.__area_preview?.value!==area.id)return {patch:{answers,awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها اضغط «✅ مناسبة وكمل».\n\n'+questionPrompt(current,areas)};
+     if(answers.__area_preview?.value!==area.id)return {patch:{answers,awaiting_id:current.id},reply:'اختار أو اكتب اسم المنطقة الأول علشان أشوفك تفاصيلها، وبعدها قول «مناسبة وكمل» لو مناسبة.\n\n'+questionPrompt(current,areas)};
      return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
     }
    }
@@ -653,12 +693,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(area,areas)};
    }
    if(action.type==='confirm'){
-    if(answers.__area_preview?.value!==area.id)return {patch:{awaiting_id:current.id},reply:'اختار المنطقة الأول علشان تشوف تفاصيلها، وبعدها أكد اختيارك النهائي.\n\n'+questionPrompt(current,areas)};
+    if(answers.__area_preview?.value!==area.id)return {patch:{awaiting_id:current.id},reply:'اختار أو اكتب اسم المنطقة الأول علشان أشوفك تفاصيلها، وبعدها أكد اختيارك النهائي.\n\n'+questionPrompt(current,areas)};
     return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
    }
   }
   if(action.type==='preview'){
-   const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'\n\nاختار منطقة تانية من الأزرار لو حابب تقارن.';
+   const continueFlow=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'\n\nلو حابب تقارن قولّي اسم منطقة تانية.';
    return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(area)+continueFlow};
   }
  }

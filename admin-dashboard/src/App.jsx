@@ -144,10 +144,12 @@ function RecruitmentDonut({stages={}}){
  return <div className="recruitment-donut-wrap"><div className="recruitment-donut" style={{background:total?'conic-gradient('+parts.join(',')+')':'#e8eef2'}}><div><strong>{total.toLocaleString('en-US')}</strong><span>مرشح</span></div></div><div className="donut-legend">{keys.map(k=><div key={k}><i style={{background:recruitmentColors[k]}}/><span>{RECRUITMENT_STAGES[k]}</span><strong>{stages[k]||0}</strong></div>)}</div></div>;
 }
 function GrowthChart({data=[]}){
- const width=620,height=220,padX=34,padTop=20,padBottom=40,max=Math.max(1,...data.map(x=>Number(x.count||0))),usableH=height-padTop-padBottom,step=data.length>1?(width-padX*2)/(data.length-1):0;
- const points=data.map((d,i)=>({x:padX+i*step,y:padTop+usableH-(Number(d.count||0)/max)*usableH,...d}));
- const line=points.map(p=>p.x+','+p.y).join(' '),area=points.length?padX+','+(height-padBottom)+' '+line+' '+points.at(-1).x+','+(height-padBottom):'';
- return <div className="growth-chart"><svg viewBox={'0 0 '+width+' '+height} role="img" aria-label="نمو عدد المرشحين">{[0,.25,.5,.75,1].map((r,i)=><line key={i} x1={padX} x2={width-padX} y1={padTop+usableH*r} y2={padTop+usableH*r} className="chart-grid"/>)}{area&&<polygon points={area} className="chart-area"/>}<polyline points={line} className="chart-line"/>{points.map((p,i)=><g key={p.key||i}><circle cx={p.x} cy={p.y} r="5" className="chart-point"/><text x={p.x} y={height-14} textAnchor="middle" className="chart-label">{p.label}</text>{p.count>0&&<text x={p.x} y={Math.max(13,p.y-11)} textAnchor="middle" className="chart-value">{p.count}</text>}</g>)}</svg></div>;
+ const width=620,height=220,padX=34,padTop=24,padBottom=40,max=Math.max(1,...data.flatMap(x=>[Number(x.count||0),Number(x.accepted||0)])),usableH=height-padTop-padBottom,step=data.length>1?(width-padX*2)/(data.length-1):0;
+ const makePoints=key=>data.map((d,i)=>({x:padX+i*step,y:padTop+usableH-(Number(d[key]||0)/max)*usableH,...d,value:Number(d[key]||0)}));
+ const applications=makePoints('count'),accepted=makePoints('accepted');
+ const path=pts=>pts.map(p=>p.x+','+p.y).join(' ');
+ const area=pts=>pts.length?padX+','+(height-padBottom)+' '+path(pts)+' '+pts.at(-1).x+','+(height-padBottom):'';
+ return <div className="growth-chart"><div className="chart-legend"><span className="legend-orange">طلبات التوظيف</span><span className="legend-cyan">المقبولين</span></div><svg viewBox={'0 0 '+width+' '+height} role="img" aria-label="أداء التوظيف">{[0,.25,.5,.75,1].map((r,i)=><line key={i} x1={padX} x2={width-padX} y1={padTop+usableH*r} y2={padTop+usableH*r} className="chart-grid"/>)}{area(applications)&&<polygon points={area(applications)} className="chart-area chart-area-orange"/>}{area(accepted)&&<polygon points={area(accepted)} className="chart-area chart-area-cyan"/>}<polyline points={path(applications)} className="chart-line chart-line-orange"/><polyline points={path(accepted)} className="chart-line chart-line-cyan"/>{applications.map((p,i)=><g key={'a'+(p.key||i)}><circle cx={p.x} cy={p.y} r="4.5" className="chart-point chart-point-orange"/><text x={p.x} y={height-14} textAnchor="middle" className="chart-label">{p.label}</text></g>)}{accepted.map((p,i)=><circle key={'c'+(p.key||i)} cx={p.x} cy={p.y} r="3.7" className="chart-point chart-point-cyan"/> )}</svg></div>;
 }
 function RecruitmentPipeline({stages={}}){
  const items=[['new','تقديم','استلام الطلب'],['review','فرز','مراجعة البيانات'],['interview','مقابلة','تحديد المقابلات'],['accepted','قبول','الموافقة النهائية'],['hired','تعيين','إتمام التوظيف']];
@@ -161,11 +163,11 @@ function MetricSparkline({tone='cyan'}){
  return <svg className={'metric-sparkline '+tone} viewBox="0 0 100 34" aria-hidden="true"><path d={paths[tone]||paths.cyan}/><circle cx="98" cy={tone==='green'?7:tone==='orange'?9:10} r="2.6"/></svg>;
 }
 function DashboardHeroArt(){
- return <div className="dashboard-hero-art" aria-hidden="true"><img className="reference-hero-image" src="/reference/hero-rider.webp" alt=""/><div className="reference-hero-fade"/></div>;
+ return <div className="dashboard-hero-art" aria-hidden="true"><div className="reference-hero-fade"/></div>;
 }
 function GeoDistributionPanel({items=[]}){
  const top=items.slice(0,5);
- return <section className="light-card geo-panel exact-geo-panel"><div className="panel-head"><div><h2>التوزيع الجغرافي</h2><p>أكثر المناطق من حيث الطيارين</p></div><span className="geo-live">LIVE</span></div><div className="exact-geo-content"><div className="exact-map-stage"><img src="/reference/geo-map.webp" alt="" aria-hidden="true"/><div className="exact-map-shade"/><span className="map-live-chip">LIVE DATA</span></div><div className="geo-ranking exact-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{top.length?top.map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{x.count}</b></div>):<small>لسه مفيش اختيارات مناطق كفاية</small>}</div></div></section>;
+ return <section className="light-card geo-panel exact-geo-panel"><div className="panel-head"><div><h2>التوزيع الجغرافي</h2><p>أكثر المناطق من حيث الطيارين</p></div><span className="geo-live">LIVE</span></div><div className="exact-geo-content"><div className="exact-map-stage"><div className="exact-map-shade"/><span className="map-live-chip">LIVE DATA</span></div><div className="geo-ranking exact-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{top.length?top.map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{x.count}</b></div>):<small>لسه مفيش اختيارات مناطق كفاية</small>}</div></div></section>;
 }
 function DashboardAlertsPanel({alerts,onAlert}){
  const items=(alerts?.items||[]).slice(0,4);

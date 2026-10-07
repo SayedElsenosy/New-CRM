@@ -466,3 +466,30 @@ test('salary and total income remain separate knowledge topics',()=>{
  assert.equal(findKnowledgeAnswer('ممكن أوصل كام مع الحوافز؟',rows,.6)?.id,'income');
  assert.equal(sameKnowledgeTopic('المرتب كام؟','الدخل كام؟'),false);
 });
+
+
+test('multi-turn area comparison remembers places and applicant priority without choosing a work area',async()=>{
+ const liveAreas=[
+  {id:'obour',name:'مدينة العبور',active:true,place_key:'العبور',work_mode:'general',details:'متوسط الدخل الاسبوعي 6000 جنيه'},
+  {id:'zayed',name:'الشيخ زايد',active:true,place_key:'الشيخ زايد',work_mode:'general',details:'متوسط الدخل الاسبوعي 8000 جنيه'}
+ ];
+ const first=await planTurn({
+  applicant:{...applicant,awaiting_id:'name'},
+  message:{body:'العبور ولا الشيخ زايد أنهي أحسن؟'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.deepEqual(first.patch.answers.__area_comparison.place_keys,['العبور','الشيخ زايد']);
+ assert.equal(first.patch.awaiting_id,'name');
+ assert.equal(first.patch.answers.area,undefined);
+
+ const second=await planTurn({
+  applicant:{...applicant,awaiting_id:'name',answers:first.patch.answers},
+  message:{body:'أهم حاجة عندي الدخل'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.equal(second.patch.answers.__area_comparison.priority,'income');
+ assert.equal(second.patch.awaiting_id,'name');
+ assert.equal(second.patch.answers.area,undefined);
+ assert.match(second.reply,/الشيخ زايد/);
+ assert.match(second.reply,/نكمل التقديم/);
+});

@@ -228,7 +228,6 @@ test('dynamic agent extracts several facts from one Egyptian message and skips d
  const a={...applicant,awaiting_id:'q1',answers:{}};
  const r=await call(a,'اه معايا موتوسيكل واسمي محمد احمد وعايز أكتوبر');
  assert.equal(r.patch.answers.q1.value,true);
- assert.equal(r.patch.answers.__observed_facts.motorcycle_license_status.value,'expired');
  assert.equal(r.patch.answers.q2,undefined);
  assert.equal(r.patch.answers.q3.value,'محمد احمد');
  assert.equal(r.patch.answers.q1.agent_extracted,true);
@@ -317,6 +316,7 @@ test('compound residence message stores motorcycle, answers salary, and recommen
   questions,areas:liveAreas,settings,interpret:noAi,knowledge
  });
  assert.equal(r.patch.answers.q1.value,true);
+ assert.equal(r.patch.answers.__observed_facts.motorcycle_license_status.value,'expired');
  assert.equal(r.patch.answers.q2,undefined);
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.agent_action,'recommend_nearest_work_area_with_answer');

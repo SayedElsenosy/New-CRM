@@ -3,6 +3,28 @@ const ALLOWED_ACTIONS=new Set([
  'change_answer','resume_flow','handoff','none'
 ]);
 
+const PLAN_FORMAT={type:'json_schema',json_schema:{name:'agent_plan',strict:true,schema:{
+ type:'object',additionalProperties:false,
+ properties:{
+  action:{type:'string',enum:[...ALLOWED_ACTIONS]},
+  confidence:{type:'number',minimum:0,maximum:1},
+  intent:{type:'string'},
+  knowledge_id:{type:['string','null']},
+  field_key:{type:['string','null']},
+  area_id:{type:['string','null']},
+  clarification:{type:['string','null']},
+  summary:{type:'string'},
+  facts:{type:'array',maxItems:12,items:{type:'object',additionalProperties:false,properties:{
+   field_key:{type:'string'},value:{type:['string','number','boolean','null']},display:{type:'string'},
+   confidence:{type:'number',minimum:0,maximum:1},source:{type:'string'}
+  },required:['field_key','value','display','confidence','source']}},
+  knowledge_ranking:{type:'array',maxItems:12,items:{type:'object',additionalProperties:false,properties:{
+   id:{type:'string'},score:{type:'number',minimum:0,maximum:1}
+  },required:['id','score']}}
+ },
+ required:['action','confidence','intent','knowledge_id','field_key','area_id','clarification','summary','facts','knowledge_ranking']
+}}};
+
 function cleanJson(text){
  const raw=String(text||'').trim();
  const fenced=raw.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/i)?.[1]||raw;

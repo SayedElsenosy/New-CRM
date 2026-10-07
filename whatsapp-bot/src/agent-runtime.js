@@ -93,6 +93,21 @@ function safePlan(value){
  };
 }
 
+
+function sanitizePlanForContext(plan,questions=[]){
+ const configured=new Map((questions||[]).filter(q=>q?.active!==false).map(q=>[String(q.field_key),q]));
+ const facts=[];
+ for(const fact of plan?.facts||[]){
+  const q=configured.get(String(fact.field_key||''));
+  if(!q)continue;
+  // Shadow/Assist analytics must never treat a recommendation or inferred area
+  // as the applicant's committed work area. Confirmation happens through the area protocol.
+  if(q.confirmation_required===true)continue;
+  facts.push(fact);
+ }
+ return {...plan,facts};
+}
+
 export class AgentRuntime{
  constructor({env=process.env}={}){
   this.env=env;
@@ -166,6 +181,8 @@ export class AgentRuntime{
    'مكان السكن معلومة مساعدة فقط ولا يحدد Qualification. preferred_work_area هو منطقة العمل.',
    'لا تغيّر قواعد التأهيل. النظام الحتمي هو صاحب القرار النهائي.',
    'لو الرسالة تحتوي عدة معلومات استخرجها كلها facts حتى لو خارج ترتيب السؤال.',
+   'facts تعني معلومات عن المتقدم فقط، وليست إجابات Knowledge مثل المرتب أو التأمين.',
+   'ممنوع وضع preferred_work_area داخل facts من مجرد السكن أو ترشيح أقرب منطقة؛ منطقة العمل لا تصبح حقيقة إلا بعد اختيار/تأكيد صريح من المتقدم.',
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
    'لو السؤال غير موثوق استخدم clarify أو handoff بدل التخمين.',
@@ -175,6 +192,7 @@ export class AgentRuntime{
    current_message:currentText.slice(0,900),
    awaiting_field:(questions||[]).find(q=>String(q.id)===String(applicant?.awaiting_id||''))?.field_key||null,
    known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,10).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,60)})),
+   observed_facts:applicant?.answers?.__observed_facts||{},
    questions:safeQuestions,areas:safeAreas,knowledge:safeKnowledge,conversation
   };
   return [
@@ -187,7 +205,8 @@ export class AgentRuntime{
   const state=this.snapshot(settings);
   if(settings.agent_llm_enabled!==true||!state.configured)return {available:false,state,plan:null};
   const result=await this.call(this.buildPlannerMessages(input),settings);
-  return {available:true,state,plan:safePlan(result.json),latency_ms:result.latency_ms,provider:result.provider,model:result.model};
+  const plan=sanitizePlanForContext(safePlan(result.json),input.questions||[]);
+  return {available:true,state,plan,latency_ms:result.latency_ms,provider:result.provider,model:result.model};
  }
  async testPlan(input){
   const result=await this.analyzeTurn(input);

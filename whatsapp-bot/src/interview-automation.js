@@ -167,7 +167,7 @@ export async function syncInterviewFromStaffMessages(db,{applicant,source='staff
   const notes=autoNotes(signal),now=new Date().toISOString();
   let interview=await previousAutoInterview(db,applicant.id),kind='auto_interview_scheduled';
   if(interview){
-   if(interview.scheduled_at!==signal.scheduled_at||String(interview.notes||'')!==notes){
+   if(Date.parse(interview.scheduled_at)!==Date.parse(signal.scheduled_at)||String(interview.notes||'')!==notes){
     interview=must(await db.from('masar_interviews').update({scheduled_at:signal.scheduled_at,notes,updated_at:now}).eq('id',interview.id).select().single());
     kind='auto_interview_updated';
    }else return {applied:false,reason:'already_synced',interview,signal};

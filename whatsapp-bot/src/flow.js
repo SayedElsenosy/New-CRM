@@ -1,7 +1,7 @@
 import {activeQuestions,answered,completion,computedStage,validateAnswer,questionPrompt,areaInquiry,areaDetails,norm} from './domain.js';
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
-import {decideConversationAction,extractConversationFacts,nextAgentQuestion} from './ai.js';
+import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
 import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 
@@ -395,6 +395,14 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const buttonAction=areaAction(m.body);
  const choiceButton=choiceAction(m.body);
  const protocolAction=buttonAction||choiceButton;
+ const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
+ if(observations.length){
+  const existing=answers.__observed_facts&&typeof answers.__observed_facts==='object'?answers.__observed_facts:{};
+  for(const observation of observations){
+   existing[observation.key]={value:observation.value,display:observation.display,confidence:observation.confidence,source:observation.source,at:new Date().toISOString()};
+  }
+  answers.__observed_facts=existing;
+ }
  const deterministicFacts=settings.ai_enabled&&!protocolAction?extractConversationFacts(m.body,qs,areas):[];
  const llmFacts=settings.agent_llm_enabled===true&&['assist','live'].includes(settings.agent_llm_mode)
   ?plannerFactsForQuestions(llmPlan,qs,areas,settings):[];

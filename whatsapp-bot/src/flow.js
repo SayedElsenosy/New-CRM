@@ -4,11 +4,12 @@ import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
 import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
+import {conversationalAreaAdvice} from './area-advisor.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
- const choices=others.length?'\n\nولو عايز تقارن بمنطقة تانية اختارها من الأزرار تحت.':'';
- return areaDetails(area)+`\n\nلو تفاصيل ${area.name} مناسبة ليك اضغط «✅ مناسبة وكمل». ولو مش مناسبة اختار منطقة تانية من الأزرار.`+choices;
+ const choices=others.length?'\n\nولو محتار، قولّي اسم منطقة تانية وأنا أقارنهم لك.':'';
+ return areaDetails(area)+`\n\nلو تفاصيل ${area.name} مناسبة ليك قولّي «مناسبة وكمل». ولو مش مناسبة قولّي المنطقة اللي بتفكر فيها.`+choices;
 }
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
 function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
@@ -53,7 +54,7 @@ function knowledgeQueryText(answers,text){
 function explainCurrentQuestion(question,areas){
  if(!question)return 'مفيش سؤال ناقص حاليًا. لو عندك سؤال عن الشغل ابعته بشكل مباشر.';
  if(question.field_key==='has_motorcycle')return 'قصدي: هل عندك موتوسيكل تقدر تستخدمه للشغل يوميًا؟ رد «نعم» أو «لا».';
- if(question.field_key==='preferred_work_area')return 'قصدي منطقة الشغل اللي تقدر تروحها وتلتزم بيها يوميًا، مش مكان سكنك. اختار منطقة من الأزرار، ولو مفيش منطقة مناسبة اختار «❌ ولا منطقة مناسبة».';
+ if(question.field_key==='preferred_work_area')return 'قصدي منطقة الشغل اللي تقدر تروحها وتلتزم بيها يوميًا، مش مكان سكنك. قولّي اسم المنطقة بطريقتك، ولو محتار أقدر أرشح وأقارن. ولو حابب تشوف القائمة اكتب «وريني المناطق».';
  if(question.field_key==='full_name')return 'قصدي اكتب اسمك بالكامل علشان يتسجل في طلب التقديم، ويفضل اسمين أو أكتر.';
  if(question.field_key==='shift_acceptance')return 'قصدي هل نظام الشيفت المذكور في السؤال مناسب ليك وتقدر تلتزم بيه؟ رد «نعم» أو «لا».';
  if(question.field_key==='ready_to_start')return 'قصدي لو تم قبولك، هل تقدر تبدأ الشغل قريب؟ رد «نعم» أو «لا».';
@@ -186,8 +187,22 @@ function recruitmentAreas(areas){
 function areaListReply(areas){
  const live=recruitmentAreas(areas);
  if(!live.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
- return 'المناطق المتاحة موجودة في الأزرار تحت 👇\nاختار المنطقة من الأزرار علشان تشوف تفاصيلها.';
+ const names=[...new Set(live.filter(x=>!/(?:ماركت|مطاعم|مطعم)/.test(norm(x.name))).map(x=>x.name))].slice(0,18);
+ const list=names.length?names.map(x=>'• '+x).join('\n'):'المناطق متاحة في النظام';
+ return 'دي مناطق الشغل المتاحة عندي حاليًا:\n\n'+list+'\n\nاكتب اسم المنطقة اللي بتفكر فيها وأنا أقولك تفاصيلها. ولو حابب أظهرلك أزرار اختيارات اكتب «الاختيارات».';
 }
+function quickOptionsRequest(text){
+ const n=norm(text);
+ return /^(?:وريني|اظهر|أظهر)?\s*(?:الاختيارات|اختيارات|الزراير|الأزرار|ازرار)$/.test(n)
+  || /(?:وريني|اظهر|أظهر).*(?:الاختيارات|الزراير|الأزرار)/.test(n);
+}
+function naturalAreaConfirmation(text){
+ const n=norm(text);
+ if(/(?:مش|لا|لاء)\s+(?:مناسب|مناسبه|كمل)/.test(n))return false;
+ return /(?:^|\s)(?:مناسب|مناسبه|تمام|ماشي|اختارها|ثبتها)(?:\s|$)/.test(n)
+  &&/(?:كمل|نكمل|ثبت|اختار|مناسب|مناسبه|تمام|ماشي)/.test(n);
+}
+
 function noWorkAreaAnswer(text){
  const n=norm(text);
  return ['مفيش','لا يوجد','ولا منطقه','ولا منطقة','مفيش منطقه','مفيش منطقة','ولا واحده','ولا واحدة','ولا واحد','مش هقدر في اي منطقه','مش هقدر في اي منطقة'].includes(n)

@@ -538,3 +538,48 @@ test('available areas list never falls back to placeholder when all rows are ope
  assert.doesNotMatch(r.reply,/• العبور ماركت/);
  assert.equal(r.patch.awaiting_id,'name');
 });
+
+
+test('short area word opens the correct place and requires mode when market and restaurants both exist',async()=>{
+ const liveAreas=[
+  {id:'zayed',name:'الشيخ زايد',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'general',details:''},
+  {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'market',details:'الشفت 9 ساعات'},
+  {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'restaurants',details:'الشفت 10 ساعات'}
+ ];
+ const first=await planTurn({
+  applicant:{...applicant,awaiting_id:'area'},
+  message:{body:'زايد'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.equal(first.patch.awaiting_id,'area');
+ assert.equal(first.patch.answers.area,undefined);
+ assert.equal(first.patch.answers.__area_context.place_key,'الشيخ زايد');
+ assert.equal(first.patch.answers.__area_preview,undefined);
+ assert.match(first.reply,/ماركت/);
+ assert.match(first.reply,/مطاعم/);
+
+ const second=await planTurn({
+  applicant:{...applicant,awaiting_id:'area',answers:first.patch.answers},
+  message:{body:'مطاعم'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.equal(second.patch.awaiting_id,'area');
+ assert.equal(second.patch.answers.__area_preview.value,'zayed-rest');
+ assert.equal(second.patch.answers.area,undefined);
+ assert.match(second.reply,/مطاعم/);
+});
+
+test('area list labels operating modes instead of hiding market versus restaurants',async()=>{
+ const liveAreas=[
+  {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'market',details:'x'},
+  {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'restaurants',details:'x'},
+  {id:'obour-market',name:'العبور ماركت',active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'market',details:'x'}
+ ];
+ const r=await planTurn({
+  applicant:{...applicant,awaiting_id:'area'},
+  message:{body:'قولي ايه المناطق المتاحة'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.match(r.reply,/الشيخ زايد — ماركت \/ مطاعم/);
+ assert.match(r.reply,/العبور — ماركت/);
+});

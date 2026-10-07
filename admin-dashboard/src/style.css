@@ -3627,3 +3627,637 @@ nav button.active .nav-dot{background:#ff8b22!important;box-shadow:0 0 8px #ff7b
 @media(max-width:430px){
  .app.app-overview .reference-metrics{grid-template-columns:1fr!important}
 }
+
+
+/* =========================================================
+   OVERVIEW V4 — clean reference layout
+   This block intentionally wins over every legacy overview pass.
+   ========================================================= */
+@media (min-width:1100px){
+  .app.app-overview{
+    --ov-side:288px;
+    min-height:100vh!important;
+    background:#020d17!important;
+  }
+  .app.app-overview>aside{
+    position:fixed!important;
+    inset:0 0 0 auto!important;
+    width:var(--ov-side)!important;
+    height:100vh!important;
+    padding:0!important;
+    display:flex!important;
+    flex-direction:column!important;
+    overflow:hidden!important;
+    background:
+      radial-gradient(circle at 50% 78%,rgba(0,195,255,.08),transparent 26%),
+      linear-gradient(180deg,#031522 0%,#020d17 62%,#03131e 100%)!important;
+    border-left:1px solid #0a4768!important;
+    box-shadow:-14px 0 46px rgba(0,0,0,.32)!important;
+    transform:none!important;
+    z-index:60!important;
+  }
+  .app.app-overview>aside:before,
+  .app.app-overview>aside:after{display:none!important}
+
+  .app.app-overview .brand{
+    flex:0 0 clamp(138px,20vh,170px)!important;
+    height:clamp(138px,20vh,170px)!important;
+    min-height:0!important;
+    width:100%!important;
+    margin:0!important;
+    padding:0!important;
+    display:block!important;
+    overflow:hidden!important;
+    border-bottom:1px solid #0a314a!important;
+    background:#03131f!important;
+    z-index:3!important;
+  }
+  .app.app-overview .brand-image,
+  .app.app-overview .reference-brand-image{
+    display:block!important;
+    opacity:1!important;
+    width:100%!important;
+    height:100%!important;
+    max-width:none!important;
+    object-fit:cover!important;
+    object-position:center!important;
+    border:0!important;
+    border-radius:0!important;
+    filter:none!important;
+    box-shadow:none!important;
+    clip-path:none!important;
+    pointer-events:none!important;
+  }
+  .app.app-overview .nav-label{
+    display:block!important;
+    flex:0 0 auto!important;
+    margin:11px 21px 7px!important;
+    color:#5b7e90!important;
+    font-size:9px!important;
+    font-weight:800!important;
+  }
+  .app.app-overview .primary-nav,
+  .app.app-overview .utility-nav{
+    position:relative!important;
+    inset:auto!important;
+    z-index:4!important;
+    display:flex!important;
+    flex-direction:column!important;
+    gap:3px!important;
+    padding:0 11px!important;
+    margin:0!important;
+    overflow:visible!important;
+    background:transparent!important;
+  }
+  .app.app-overview .primary-nav button,
+  .app.app-overview .utility-nav button{
+    flex:0 0 auto!important;
+    min-height:43px!important;
+    height:43px!important;
+    padding:8px 14px!important;
+    border-radius:8px!important;
+    border:1px solid transparent!important;
+    background:transparent!important;
+    color:#b9d0db!important;
+    font-size:12px!important;
+    font-weight:800!important;
+    justify-content:flex-start!important;
+    gap:10px!important;
+    box-shadow:none!important;
+  }
+  .app.app-overview .primary-nav button svg,
+  .app.app-overview .utility-nav button svg{
+    width:18px!important;height:18px!important;color:#88a9b9!important;
+  }
+  .app.app-overview .primary-nav button.active,
+  .app.app-overview .utility-nav button.active{
+    color:#fff!important;
+    border-color:#ff7a16!important;
+    background:linear-gradient(90deg,rgba(255,111,12,.24),rgba(255,111,12,.055))!important;
+    box-shadow:inset 3px 0 0 #ff8b2b,0 0 20px rgba(255,114,13,.14)!important;
+  }
+  .app.app-overview .primary-nav button.active svg,
+  .app.app-overview .utility-nav button.active svg{
+    color:#ffad51!important;
+    filter:drop-shadow(0 0 5px rgba(255,128,28,.5))!important;
+  }
+  .app.app-overview .sidebar-divider{display:none!important}
+  .app.app-overview .utility-nav .nav-key-profile,
+  .app.app-overview .utility-nav .nav-key-staff,
+  .app.app-overview .utility-nav .nav-key-support{display:none!important}
+  .app.app-overview .utility-nav{margin-top:3px!important}
+
+  .app.app-overview .sidebar-art-wrap{
+    position:relative!important;
+    inset:auto!important;
+    display:block!important;
+    flex:1 1 165px!important;
+    min-height:125px!important;
+    height:auto!important;
+    width:100%!important;
+    margin:5px 0 0!important;
+    overflow:hidden!important;
+    z-index:2!important;
+    background:#03121f!important;
+  }
+  .app.app-overview .sidebar-art-wrap:before{
+    content:''!important;
+    position:absolute!important;
+    inset:0!important;
+    z-index:2!important;
+    pointer-events:none!important;
+    background:linear-gradient(180deg,#020e18 0%,rgba(2,14,24,.05) 24%,rgba(2,14,24,.02) 72%,rgba(2,14,24,.22) 100%)!important;
+  }
+  .app.app-overview .sidebar-art-wrap img{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    width:100%!important;
+    height:100%!important;
+    object-fit:cover!important;
+    object-position:center 56%!important;
+    opacity:1!important;
+    filter:none!important;
+  }
+  .app.app-overview .sidebar-bottom{display:none!important}
+
+  .app.app-overview>main,
+  .app.app-overview>main.overview-main{
+    position:relative!important;
+    margin-right:var(--ov-side)!important;
+    width:calc(100% - var(--ov-side))!important;
+    min-height:100vh!important;
+    overflow-x:hidden!important;
+    background:
+      radial-gradient(circle at 83% 3%,rgba(7,172,221,.09),transparent 25%),
+      linear-gradient(180deg,#03111d,#020b14)!important;
+  }
+
+  .app.app-overview .overview-main .topbar{
+    position:absolute!important;
+    top:17px!important;
+    left:25px!important;
+    right:auto!important;
+    z-index:40!important;
+    width:min(560px,43vw)!important;
+    height:58px!important;
+    min-height:58px!important;
+    padding:0!important;
+    margin:0!important;
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:8px!important;
+    direction:ltr!important;
+    background:transparent!important;
+    border:0!important;
+    box-shadow:none!important;
+    backdrop-filter:none!important;
+  }
+  .app.app-overview .overview-main .topbar:after{display:none!important}
+  .app.app-overview .overview-main .mobile{display:none!important}
+  .app.app-overview .overview-main .top-profile{
+    order:1!important;
+    width:194px!important;
+    min-width:194px!important;
+    height:55px!important;
+    min-height:55px!important;
+    padding:5px 9px!important;
+    direction:rtl!important;
+    border-radius:9px!important;
+    border:1px solid #0d5878!important;
+    background:rgba(4,25,40,.94)!important;
+    color:#eefaff!important;
+    box-shadow:none!important;
+  }
+  .app.app-overview .overview-main .topbar-actions{
+    order:2!important;
+    display:flex!important;
+    gap:6px!important;
+    direction:rtl!important;
+  }
+  .app.app-overview .overview-main .topbar-actions .icon{
+    width:44px!important;height:44px!important;min-width:44px!important;
+    border-radius:9px!important;
+    border:1px solid #0d5878!important;
+    background:rgba(4,25,40,.94)!important;
+  }
+  .app.app-overview .overview-main .global-search{
+    order:3!important;
+    display:flex!important;
+    flex:1 1 270px!important;
+    width:auto!important;
+    min-width:235px!important;
+    max-width:300px!important;
+    height:44px!important;
+    margin:0!important;
+    direction:rtl!important;
+    background:rgba(4,25,40,.94)!important;
+    border:1px solid #0d5878!important;
+    border-radius:9px!important;
+  }
+  .app.app-overview .overview-main .global-search span{
+    white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+  }
+  .app.app-overview .overview-main .topbar-workspace{display:none!important}
+
+  .app.app-overview .overview-main .page{
+    width:100%!important;
+    max-width:none!important;
+    padding:0 22px 30px!important;
+    margin:0!important;
+  }
+
+  .app.app-overview .reference-hero{
+    position:relative!important;
+    height:202px!important;
+    min-height:202px!important;
+    width:calc(100% + 44px)!important;
+    margin:0 -22px 13px!important;
+    padding:0!important;
+    overflow:hidden!important;
+    border:0!important;
+    border-radius:0!important;
+    background:
+      radial-gradient(circle at 76% 20%,rgba(12,196,244,.15),transparent 24%),
+      radial-gradient(circle at 17% 78%,rgba(255,103,10,.11),transparent 22%),
+      linear-gradient(180deg,#052036 0%,#031321 64%,#020d18 100%)!important;
+    box-shadow:inset 0 -1px 0 #0b5677!important;
+  }
+  .app.app-overview .reference-hero:before{
+    display:block!important;
+    content:''!important;
+    position:absolute!important;
+    inset:auto 0 0 0!important;
+    height:83px!important;
+    opacity:.65!important;
+    background:
+      repeating-linear-gradient(90deg,transparent 0 32px,rgba(15,87,119,.46) 33px 61px,transparent 62px 75px),
+      linear-gradient(180deg,transparent,rgba(2,13,23,.88))!important;
+    clip-path:polygon(0 46%,5% 34%,9% 51%,13% 22%,17% 45%,22% 16%,27% 50%,31% 30%,36% 59%,41% 19%,47% 48%,52% 27%,58% 55%,63% 12%,68% 49%,74% 30%,80% 56%,85% 21%,91% 50%,96% 31%,100% 42%,100% 100%,0 100%)!important;
+  }
+  .app.app-overview .reference-hero:after{
+    display:block!important;
+    content:''!important;
+    position:absolute!important;
+    left:0!important;right:0!important;bottom:0!important;
+    height:3px!important;
+    background:linear-gradient(90deg,#ff7110 0 22%,transparent 35% 57%,#14d9ff 72% 100%)!important;
+    box-shadow:0 -8px 30px rgba(12,192,231,.10)!important;
+  }
+  .app.app-overview .dashboard-hero-art{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    z-index:1!important;
+    overflow:hidden!important;
+  }
+  .app.app-overview .hero-skyline{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    background:
+      linear-gradient(90deg,rgba(255,119,16,.12),transparent 23%,transparent 71%,rgba(14,209,250,.12)),
+      radial-gradient(ellipse at 50% 100%,rgba(7,132,178,.14),transparent 58%)!important;
+  }
+  .app.app-overview .reference-hero-rider{
+    display:block!important;
+    position:absolute!important;
+    z-index:2!important;
+    right:-6px!important;
+    top:0!important;
+    width:350px!important;
+    height:202px!important;
+    object-fit:cover!important;
+    object-position:right center!important;
+    clip-path:inset(0 0 0 68px)!important;
+    opacity:1!important;
+    filter:saturate(1.05) contrast(1.02)!important;
+  }
+  .app.app-overview .reference-hero-fade{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    z-index:2!important;
+    background:linear-gradient(90deg,rgba(2,14,24,.08) 0 44%,rgba(2,14,24,.02) 62%,rgba(2,14,24,.04) 100%)!important;
+  }
+  .app.app-overview .reference-hero-copy{
+    display:block!important;
+    position:absolute!important;
+    z-index:5!important;
+    top:70px!important;
+    right:285px!important;
+    width:min(610px,48vw)!important;
+    max-width:none!important;
+    margin:0!important;
+    padding:0!important;
+    text-align:right!important;
+  }
+  .app.app-overview .reference-hero-copy .hero-welcome{
+    display:none!important;
+  }
+  .app.app-overview .reference-hero-copy h1{
+    margin:0 0 4px!important;
+    color:#fff!important;
+    font-size:42px!important;
+    line-height:1.05!important;
+    font-weight:900!important;
+    letter-spacing:-1px!important;
+    text-shadow:0 0 22px rgba(27,209,247,.12)!important;
+  }
+  .app.app-overview .reference-hero-copy p{
+    margin:0!important;
+    color:#c2d4dc!important;
+    font-size:14px!important;
+    line-height:1.6!important;
+  }
+  .app.app-overview .reference-hero-brand{display:none!important}
+
+  .app.app-overview .reference-metrics{
+    display:grid!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:16px!important;
+    width:100%!important;
+    margin:0 0 13px!important;
+    direction:rtl!important;
+  }
+  .app.app-overview .reference-metrics article{
+    position:relative!important;
+    min-width:0!important;
+    height:120px!important;
+    min-height:120px!important;
+    aspect-ratio:auto!important;
+    padding:14px 14px 28px!important;
+    display:grid!important;
+    grid-template-columns:54px minmax(0,1fr)!important;
+    gap:12px!important;
+    align-items:center!important;
+    overflow:hidden!important;
+    border-radius:10px!important;
+    border:1px solid #0c5374!important;
+    background:linear-gradient(145deg,#061b2b,#041421)!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 9px 28px rgba(0,0,0,.18)!important;
+  }
+  .app.app-overview .reference-metrics article:nth-child(2),
+  .app.app-overview .reference-metrics article:nth-child(4){
+    border-color:#6f3b16!important;
+  }
+  .app.app-overview .reference-metrics strong{font-size:31px!important;color:#fff!important}
+  .app.app-overview .reference-metrics small{font-size:10px!important;color:#a4bdc9!important}
+  .app.app-overview .reference-metrics em{font-size:8px!important;color:#25e49f!important}
+  .app.app-overview .metric-ref-icon{
+    width:52px!important;height:52px!important;border-radius:10px!important;
+  }
+
+  .app.app-overview .reference-middle{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.04fr)!important;
+    gap:16px!important;
+    margin:0 0 14px!important;
+    width:100%!important;
+    direction:ltr!important;
+  }
+  .app.app-overview .reference-middle>.light-card{
+    min-width:0!important;
+    height:282px!important;
+    min-height:282px!important;
+    aspect-ratio:auto!important;
+    margin:0!important;
+    padding:13px 15px!important;
+    border-radius:10px!important;
+    overflow:hidden!important;
+    direction:rtl!important;
+  }
+  .app.app-overview .panel-head{margin-bottom:8px!important}
+  .app.app-overview .panel-head h2{font-size:18px!important;line-height:1.2!important}
+  .app.app-overview .panel-head p{font-size:8px!important}
+  .app.app-overview .growth-chart{
+    position:relative!important;
+    width:100%!important;
+    height:224px!important;
+    min-height:224px!important;
+    padding-top:22px!important;
+    overflow:hidden!important;
+  }
+  .app.app-overview .growth-chart svg{width:100%!important;height:100%!important}
+  .app.app-overview .chart-legend{
+    position:absolute!important;
+    top:0!important;right:8px!important;
+    display:flex!important;gap:18px!important;
+    color:#91adba!important;font-size:8px!important;
+    z-index:4!important;
+  }
+  .app.app-overview .chart-legend span{display:flex!important;align-items:center!important;gap:5px!important}
+  .app.app-overview .chart-legend span:before{content:''!important;width:7px!important;height:7px!important;border-radius:50%!important}
+  .app.app-overview .legend-orange:before{background:#ff7c16!important;box-shadow:0 0 7px #ff7c16!important}
+  .app.app-overview .legend-cyan:before{background:#17d9ff!important;box-shadow:0 0 7px #17d9ff!important}
+  .app.app-overview .chart-line-orange{fill:none!important;stroke:#ff7c16!important;stroke-width:3!important}
+  .app.app-overview .chart-line-cyan{fill:none!important;stroke:#17d9ff!important;stroke-width:3!important}
+  .app.app-overview .chart-area-orange{fill:rgba(255,124,22,.055)!important}
+  .app.app-overview .chart-area-cyan{fill:rgba(23,217,255,.055)!important}
+  .app.app-overview .chart-point-orange{fill:#ff7c16!important;stroke:#ffe0bd!important}
+  .app.app-overview .chart-point-cyan{fill:#17d9ff!important;stroke:#d3f9ff!important}
+
+  .app.app-overview .exact-geo-content{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 174px!important;
+    direction:ltr!important;
+    gap:9px!important;
+    width:100%!important;
+    height:225px!important;
+    min-height:225px!important;
+  }
+  .app.app-overview .exact-map-stage{
+    position:relative!important;
+    min-width:0!important;
+    min-height:0!important;
+    height:100%!important;
+    overflow:hidden!important;
+    border:1px solid #0b4563!important;
+    border-radius:8px!important;
+    background:#031522!important;
+    background-image:none!important;
+  }
+  .app.app-overview .reference-map-image{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    width:100%!important;
+    height:100%!important;
+    object-fit:cover!important;
+    object-position:center!important;
+    opacity:1!important;
+    filter:none!important;
+  }
+  .app.app-overview .exact-map-shade{
+    position:absolute!important;inset:0!important;
+    background:linear-gradient(180deg,transparent 68%,rgba(2,14,24,.12))!important;
+    pointer-events:none!important;
+  }
+  .app.app-overview .exact-ranking{
+    direction:rtl!important;
+    height:100%!important;
+    min-width:0!important;
+    overflow:hidden!important;
+    padding:9px!important;
+    border-radius:8px!important;
+    border:1px solid #0b4563!important;
+    background:#061725!important;
+  }
+  .app.app-overview .exact-ranking>strong{font-size:9px!important}
+  .app.app-overview .exact-ranking>div{padding:7px 0!important;font-size:8px!important}
+  .app.app-overview .geo-live{
+    font-size:7px!important;padding:4px 7px!important;
+  }
+
+  .app.app-overview .reference-bottom{
+    display:grid!important;
+    grid-template-columns:minmax(220px,.76fr) minmax(0,1.58fr) minmax(235px,.82fr)!important;
+    gap:16px!important;
+    width:100%!important;
+    margin:0!important;
+    direction:ltr!important;
+  }
+  .app.app-overview .reference-bottom>.light-card{
+    min-width:0!important;
+    min-height:250px!important;
+    height:250px!important;
+    aspect-ratio:auto!important;
+    margin:0!important;
+    padding:13px 14px!important;
+    overflow:hidden!important;
+    direction:rtl!important;
+    border-radius:10px!important;
+  }
+  .app.app-overview .dash-alert-list button{min-height:48px!important}
+  .app.app-overview .dashboard-people{height:auto!important;max-height:190px!important}
+  .app.app-overview .dashboard-people-head,
+  .app.app-overview .dashboard-people button{
+    grid-template-columns:1.22fr 1fr .9fr .78fr!important;
+  }
+  .app.app-overview .dashboard-people button{min-height:37px!important;padding:6px 8px!important}
+  .app.app-overview .reference-quick-actions{grid-template-columns:1fr 1fr!important;gap:7px!important}
+  .app.app-overview .ref-action{grid-column:1/-1!important;min-height:61px!important}
+  .app.app-overview .ref-mini{min-height:58px!important}
+
+  .app.app-overview .notice{margin-inline:0!important}
+}
+
+/* compact desktop/laptop height */
+@media (min-width:1100px) and (max-height:780px){
+  .app.app-overview .brand{flex-basis:130px!important;height:130px!important}
+  .app.app-overview .primary-nav button,
+  .app.app-overview .utility-nav button{height:39px!important;min-height:39px!important;font-size:11px!important}
+  .app.app-overview .nav-label{margin-top:7px!important;margin-bottom:4px!important}
+  .app.app-overview .sidebar-art-wrap{min-height:105px!important}
+}
+
+/* tablet + mobile */
+@media (max-width:1099px){
+  .app.app-overview>aside{
+    width:min(310px,86vw)!important;
+    right:0!important;
+    top:0!important;
+    height:100vh!important;
+    overflow-y:auto!important;
+    transform:translateX(104%)!important;
+    transition:transform .22s ease!important;
+    z-index:80!important;
+    background:#02101b!important;
+  }
+  .app.app-overview>aside.open{transform:translateX(0)!important}
+  .app.app-overview .brand{
+    height:150px!important;min-height:150px!important;padding:0!important;
+  }
+  .app.app-overview .brand-image{
+    display:block!important;opacity:1!important;width:100%!important;height:100%!important;
+    max-width:none!important;object-fit:cover!important;filter:none!important;
+  }
+  .app.app-overview .sidebar-art-wrap{
+    display:block!important;position:relative!important;height:190px!important;min-height:190px!important;margin-top:8px!important;
+  }
+  .app.app-overview .sidebar-art-wrap img{width:100%!important;height:100%!important;object-fit:cover!important}
+  .app.app-overview .sidebar-bottom{display:flex!important}
+  .app.app-overview>main{margin-right:0!important;width:100%!important}
+
+  .app.app-overview .overview-main .topbar{
+    position:sticky!important;
+    top:0!important;left:auto!important;right:auto!important;
+    width:100%!important;height:64px!important;min-height:64px!important;
+    padding:7px 10px!important;
+    background:rgba(2,14,24,.96)!important;
+    border-bottom:1px solid #0b405d!important;
+    box-shadow:0 8px 28px rgba(0,0,0,.22)!important;
+    direction:rtl!important;
+  }
+  .app.app-overview .overview-main .mobile{display:inline-flex!important}
+  .app.app-overview .overview-main .topbar-workspace{display:none!important}
+  .app.app-overview .overview-main .global-search{max-width:390px!important;flex:1!important}
+  .app.app-overview .overview-main .page{padding:10px 10px 28px!important}
+
+  .app.app-overview .reference-hero{
+    width:100%!important;
+    margin:0 0 10px!important;
+    min-height:158px!important;height:158px!important;
+    border:1px solid #0c4f70!important;border-radius:10px!important;
+    background:linear-gradient(100deg,#031522 0 52%,#061c2d 100%)!important;
+  }
+  .app.app-overview .reference-hero-rider{
+    display:block!important;position:absolute!important;right:-10px!important;top:0!important;
+    width:260px!important;height:158px!important;object-fit:cover!important;clip-path:inset(0 0 0 52px)!important;
+  }
+  .app.app-overview .reference-hero-copy{
+    display:block!important;position:absolute!important;z-index:4!important;
+    right:18px!important;top:42px!important;width:65%!important;text-align:right!important;
+  }
+  .app.app-overview .reference-hero-copy h1{font-size:30px!important;margin:0 0 5px!important}
+  .app.app-overview .reference-hero-copy p{font-size:10px!important;max-width:430px!important}
+  .app.app-overview .reference-hero-copy .hero-welcome{display:none!important}
+  .app.app-overview .reference-hero-brand{display:none!important}
+
+  .app.app-overview .reference-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:9px!important}
+  .app.app-overview .reference-middle{grid-template-columns:1fr!important;gap:10px!important;direction:rtl!important}
+  .app.app-overview .reference-middle>.light-card{height:auto!important;min-height:300px!important}
+  .app.app-overview .exact-geo-content{height:235px!important;grid-template-columns:minmax(0,1fr) 170px!important}
+  .app.app-overview .reference-bottom{grid-template-columns:1fr 1fr!important;gap:10px!important;direction:rtl!important}
+  .app.app-overview .reference-bottom>.light-card{height:auto!important;min-height:230px!important}
+  .app.app-overview .reference-recent{grid-column:1/-1!important}
+}
+
+@media (max-width:680px){
+  .app.app-overview .overview-main .global-search{display:none!important}
+  .app.app-overview .overview-main .top-profile{min-width:0!important;max-width:150px!important}
+  .app.app-overview .reference-hero{height:145px!important;min-height:145px!important}
+  .app.app-overview .reference-hero-rider{width:225px!important;height:145px!important;opacity:.75!important}
+  .app.app-overview .reference-hero-copy{right:14px!important;top:38px!important;width:72%!important}
+  .app.app-overview .reference-hero-copy h1{font-size:26px!important}
+  .app.app-overview .reference-hero-copy p{font-size:9px!important;line-height:1.55!important}
+  .app.app-overview .reference-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .app.app-overview .reference-metrics article{
+    height:104px!important;min-height:104px!important;
+    grid-template-columns:40px minmax(0,1fr)!important;gap:8px!important;padding:10px 9px 25px!important;
+  }
+  .app.app-overview .metric-ref-icon{width:39px!important;height:39px!important}
+  .app.app-overview .reference-metrics strong{font-size:24px!important}
+  .app.app-overview .reference-middle>.light-card{min-height:0!important;padding:11px!important}
+  .app.app-overview .growth-chart{height:220px!important;min-height:220px!important}
+  .app.app-overview .exact-geo-content{grid-template-columns:1fr!important;height:auto!important;min-height:0!important}
+  .app.app-overview .exact-map-stage{height:auto!important;min-height:0!important;aspect-ratio:439/235!important}
+  .app.app-overview .exact-ranking{height:auto!important;display:grid!important;grid-template-columns:1fr 1fr!important;gap:0 10px!important}
+  .app.app-overview .exact-ranking>strong{grid-column:1/-1!important}
+  .app.app-overview .reference-bottom{grid-template-columns:1fr!important}
+  .app.app-overview .reference-recent{grid-column:auto!important}
+  .app.app-overview .dashboard-people{overflow-x:auto!important}
+  .app.app-overview .dashboard-people-head,
+  .app.app-overview .dashboard-people button{min-width:520px!important}
+}
+
+@media (max-width:430px){
+  .app.app-overview .reference-metrics{grid-template-columns:1fr!important}
+  .app.app-overview .reference-metrics article{height:96px!important;min-height:96px!important}
+  .app.app-overview .reference-hero-copy{width:77%!important}
+  .app.app-overview .reference-quick-actions{grid-template-columns:1fr!important}
+  .app.app-overview .ref-action,.app.app-overview .ref-mini{grid-column:1/-1!important}
+  .app.app-overview .exact-ranking{grid-template-columns:1fr!important}
+}

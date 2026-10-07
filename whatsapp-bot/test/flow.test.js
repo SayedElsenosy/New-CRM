@@ -519,3 +519,22 @@ test('explicit applicant priorities are remembered without changing qualificatio
  assert.match(second.reply,/سقف الدخل|الدخل/);
  assert.equal(second.patch.answers?.area,undefined);
 });
+
+
+test('available areas list never falls back to placeholder when all rows are operating-mode variants',async()=>{
+ const liveAreas=[
+  {id:'obour-market',name:'العبور ماركت',active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'market',details:'تفاصيل'},
+  {id:'obour-rest',name:'العبور مطاعم',active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'restaurants',details:'تفاصيل'},
+  {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'market',details:'تفاصيل'}
+ ];
+ const r=await planTurn({
+  applicant:{...applicant,awaiting_id:'name'},
+  message:{body:'قولي ايه المناطق الموجودة'},
+  questions,areas:liveAreas,settings,interpret,knowledge:[]
+ });
+ assert.match(r.reply,/• العبور/);
+ assert.match(r.reply,/• الشيخ زايد/);
+ assert.doesNotMatch(r.reply,/المناطق متاحة في النظام/);
+ assert.doesNotMatch(r.reply,/• العبور ماركت/);
+ assert.equal(r.patch.awaiting_id,'name');
+});

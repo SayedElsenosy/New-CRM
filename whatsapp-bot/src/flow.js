@@ -473,13 +473,22 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     const preview=areas.find(z=>z.active&&String(z.id)===String(advice.previewAreaId));
     if(preview)answers.__area_preview={value:preview.id,display:preview.name,kind:'area_preview',at:new Date().toISOString(),advisor:true};
    }
+   if(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2){
+    delete answers.__area_preview;
+    answers.__area_comparison={
+     place_keys:advice.comparisonKeys.slice(0,4),
+     priority:advice.priority||answers.__area_comparison?.priority||null,
+     kind:'area_comparison',
+     at:new Date().toISOString()
+    };
+   }
    let sideMatch=null;
    if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
-   const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||observations.length||savedAgentFacts.length);
-   const compareContinuation=advice.action==='compare_places'&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+   const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||observations.length||savedAgentFacts.length);
+   const compareContinuation=['compare_places','compare_places_followup'].includes(advice.action)&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply+compareContinuation,

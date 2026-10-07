@@ -4,7 +4,7 @@ import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
 import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
-import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck} from './area-advisor.js';
+import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames} from './area-advisor.js';
 
 function areaPreviewReply(area,areas){
  const others=areas.filter(z=>z.active&&z.id!==area.id);
@@ -185,10 +185,9 @@ function recruitmentAreas(areas){
  return areas.filter(z=>z.active);
 }
 function areaListReply(areas){
- const live=recruitmentAreas(areas);
- if(!live.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
- const names=[...new Set(live.filter(x=>!/(?:ماركت|مطاعم|مطعم)/.test(norm(x.name))).map(x=>x.name))].slice(0,18);
- const list=names.length?names.map(x=>'• '+x).join('\n'):'المناطق متاحة في النظام';
+ const names=availableAreaNames(areas,{limit:18});
+ if(!names.length)return 'مفيش مناطق توظيف متاحة مضافة حاليًا. مسؤول التوظيف يقدر يوضح لك آخر الأماكن المتاحة.';
+ const list=names.map(x=>'• '+x).join('\n');
  return 'دي مناطق الشغل المتاحة عندي حاليًا:\n\n'+list+'\n\nاكتب اسم المنطقة اللي بتفكر فيها وأنا أقولك تفاصيلها. ولو حابب أظهرلك أزرار اختيارات اكتب «الاختيارات».';
 }
 function quickOptionsRequest(text){

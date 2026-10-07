@@ -9,6 +9,13 @@ import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommend
 function areaPreviewReply(area,areas){
  return areaDetails(area)+`\n\nلو تفاصيل ${area.name} مناسبة ليك قولّي «مناسبة وكمل». ولو مش مناسبة قولّي المنطقة اللي بتفكر فيها.`;
 }
+function openingQuestionPrompt(question,areas){
+ const prompt=questionPrompt(question,areas);
+ if(question?.field_key!=='preferred_work_area')return prompt;
+ const items=availableAreaListItems(areas,{limit:18});
+ if(!items.length)return prompt;
+ return prompt+'\n\n'+items.map(x=>'• '+x).join('\n');
+}
 function realAnswerCount(answers){return Object.keys(answers||{}).filter(k=>!k.startsWith('__')).length;}
 function clearAgentState(answers){delete answers.__agent_state;delete answers.__ai_handoff;return answers;}
 function applyAgentFacts({facts,questions,areas,answers}){
@@ -370,7 +377,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(isFreshApplicationStart(a,m)&&openingFacts.length===0){
   const first=nextMissing(qs,answers,areas)||qs[0];
   const welcome=String(settings.welcome||'').trim();
-  const firstQuestion=questionPrompt(first,areas);
+  const firstQuestion=openingQuestionPrompt(first,areas);
   return welcome
    ?{patch:{awaiting_id:first.id,stage:'new'},reply:welcome+'\n\n'+firstQuestion}
    :{patch:{awaiting_id:first.id,stage:'new'},reply:firstQuestion};
@@ -906,7 +913,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   return {patch:{...(savedAgentFacts.length?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:postCompletionReply()};
  }
  if(!a.awaiting_id || a.awaiting_id!==current.id){
-  const prompt=questionPrompt(current,areas);
+  const prompt=openingQuestionPrompt(current,areas);
   const implicitAreaFact=savedAgentFacts?.find(x=>x.q.field_key==='preferred_work_area');
   if(implicitAreaFact){
    const area=areas.find(z=>String(z.id)===String(implicitAreaFact.fact.value));

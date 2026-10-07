@@ -74,3 +74,26 @@ test('old unrelated staff messages are not combined with a new appointment',()=>
  ]);
  assert.equal(r,null);
 });
+
+
+test('Egyptian colloquial weekday الحد is parsed as Sunday',()=>{
+ const r=extractInterviewSchedule('هتحضر المحاضرة يوم الحد الساعة ٢ وننزل الشغل بعدها علي طول',{
+  reference:new Date('2026-10-07T21:12:00.000Z')
+ });
+ assert.ok(r);
+ const p=cairoParts(r.scheduled_at);
+ assert.equal(p.day,11);
+ assert.equal(p.hour,14);
+});
+
+test('common Egyptian weekday aliases are understood',()=>{
+ const cases=[
+  ['الاتنين',1],['التلات',2],['الاربع',3],['الخميس',4],['الجمعه',5],['السبت',6]
+ ];
+ for(const [name,day] of cases){
+  const r=extractInterviewSchedule('ميعاد المحاضرة يوم '+name+' الساعة ٢ م',{reference:new Date('2026-10-07T18:00:00.000Z')});
+  assert.ok(r,name);
+  assert.equal(new Date(r.scheduled_at).toLocaleDateString('en-US',{timeZone:'Africa/Cairo',weekday:'long'}),
+   ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][day],name);
+ }
+});

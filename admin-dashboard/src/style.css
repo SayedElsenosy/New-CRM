@@ -2752,3 +2752,440 @@ nav button.active .nav-dot{background:#ff8b22!important;box-shadow:0 0 8px #ff7b
  .reference-bottom{grid-template-columns:1fr!important}
  .sidebar-art-wrap{display:none!important}
 }
+
+
+/* =========================================================
+   Layout stabilization + responsive system
+   Prevents artwork/content collisions on desktop and mobile.
+   ========================================================= */
+.mobile-nav-backdrop{display:none}
+
+/* Sidebar: artwork never sits on top of navigation */
+.app>aside{
+ display:flex!important;
+ flex-direction:column!important;
+ overflow-y:auto!important;
+ overflow-x:hidden!important;
+}
+.app>aside .brand,
+.app>aside .nav-label,
+.app>aside nav,
+.app>aside .sidebar-divider,
+.app>aside .sidebar-bottom{position:relative;z-index:4!important}
+.sidebar-art-wrap{
+ display:none!important;
+ position:relative!important;
+ inset:auto!important;
+ flex:0 0 auto!important;
+ width:100%!important;
+ height:0!important;
+ margin:0!important;
+ overflow:hidden!important;
+ z-index:1!important;
+}
+@media (min-width:1200px) and (min-height:980px){
+ .sidebar-art-wrap{
+  display:block!important;
+  height:205px!important;
+  min-height:205px!important;
+  margin-top:auto!important;
+ }
+ .sidebar-art-wrap img{
+  width:100%!important;
+  height:100%!important;
+  right:auto!important;
+  bottom:auto!important;
+  object-fit:cover!important;
+  object-position:center 68%!important;
+ }
+ .sidebar-art-wrap:before{
+  background:linear-gradient(180deg,#020e19e8 0%,rgba(2,14,25,.08) 25%,rgba(2,14,25,.16) 70%,#020e19d8 100%)!important;
+ }
+}
+
+/* Header always owns its own row; no more collision with hero */
+.overview-main .topbar{
+ position:sticky!important;
+ top:0!important;
+ left:auto!important;
+ right:auto!important;
+ height:72px!important;
+ min-height:72px!important;
+ padding:9px 18px!important;
+ display:flex!important;
+ align-items:center!important;
+ justify-content:space-between!important;
+ gap:12px!important;
+ direction:rtl!important;
+ background:rgba(2,14,24,.96)!important;
+ border-bottom:1px solid #0c405d!important;
+ box-shadow:0 10px 28px rgba(0,0,0,.20)!important;
+ backdrop-filter:blur(15px)!important;
+}
+.overview-main .topbar:after{
+ display:block!important;
+ content:''!important;
+ position:absolute!important;
+ left:0!important;right:0!important;bottom:-1px!important;
+ height:1px!important;
+ background:linear-gradient(90deg,transparent,#18d8ff55,#ff7b1644,transparent)!important;
+}
+.overview-main .top-profile{
+ order:initial!important;
+ min-width:190px!important;
+ min-height:50px!important;
+ direction:rtl!important;
+}
+.overview-main .topbar-actions{
+ order:initial!important;
+ direction:rtl!important;
+}
+.overview-main .global-search{
+ order:initial!important;
+ width:min(360px,34vw)!important;
+ flex:0 1 360px!important;
+ height:46px!important;
+ direction:rtl!important;
+}
+.overview-main .topbar-workspace{
+ display:flex!important;
+ margin-right:auto!important;
+ min-width:0!important;
+}
+.overview-main .page{
+ padding:16px 18px 36px!important;
+}
+
+/* Hero: use reference artwork once, not duplicated text */
+.reference-hero{
+ position:relative!important;
+ width:100%!important;
+ height:190px!important;
+ min-height:190px!important;
+ padding:0!important;
+ margin:0 0 12px!important;
+ overflow:hidden!important;
+ border:1px solid #0c4e70!important;
+ border-radius:12px!important;
+ background:#03111d!important;
+}
+.reference-hero:before,
+.reference-hero:after{display:none!important}
+.dashboard-hero-art{
+ position:absolute!important;
+ inset:0!important;
+ width:100%!important;
+ height:100%!important;
+ overflow:hidden!important;
+}
+.reference-hero-image{
+ position:absolute!important;
+ inset:0!important;
+ width:100%!important;
+ height:100%!important;
+ object-fit:cover!important;
+ object-position:center!important;
+ opacity:1!important;
+ filter:saturate(1.04) contrast(1.03)!important;
+}
+.reference-hero-fade{
+ position:absolute!important;
+ inset:0!important;
+ background:linear-gradient(90deg,rgba(2,13,22,.22),rgba(2,13,22,.05) 50%,rgba(2,13,22,.04))!important;
+}
+.reference-hero-copy,
+.reference-hero-brand{display:none!important}
+
+/* Dashboard grids must never overflow their columns */
+.reference-metrics,
+.reference-middle,
+.reference-bottom{width:100%!important;min-width:0!important}
+.reference-metrics>*,
+.reference-middle>*,
+.reference-bottom>*{min-width:0!important}
+.reference-metrics{
+ grid-template-columns:repeat(4,minmax(0,1fr))!important;
+ gap:12px!important;
+}
+.reference-metrics article{
+ height:118px!important;
+ min-height:118px!important;
+ padding:14px 14px 29px!important;
+ overflow:hidden!important;
+}
+.reference-middle{
+ direction:rtl!important;
+ grid-template-columns:minmax(0,1.15fr) minmax(390px,.95fr)!important;
+ gap:12px!important;
+}
+.reference-middle>.light-card{
+ height:auto!important;
+ min-height:330px!important;
+ overflow:hidden!important;
+}
+.reference-bottom{
+ direction:rtl!important;
+ grid-template-columns:minmax(230px,.75fr) minmax(0,1.55fr) minmax(250px,.82fr)!important;
+ gap:12px!important;
+}
+.reference-bottom>.light-card{
+ height:auto!important;
+ min-height:255px!important;
+ overflow:hidden!important;
+}
+
+/* Map: preserve image ratio and keep the live ranking separate */
+.exact-geo-content{
+ display:grid!important;
+ grid-template-columns:minmax(0,1.65fr) 170px!important;
+ gap:10px!important;
+ height:auto!important;
+ min-height:250px!important;
+ align-items:stretch!important;
+}
+.exact-map-stage{
+ min-height:250px!important;
+ aspect-ratio:auto!important;
+ overflow:hidden!important;
+ background:#03131f!important;
+}
+.exact-map-stage img{
+ width:100%!important;
+ height:100%!important;
+ object-fit:cover!important;
+ object-position:center!important;
+ opacity:1!important;
+ filter:none!important;
+ transform:none!important;
+}
+.exact-map-shade{
+ background:linear-gradient(180deg,transparent 0%,rgba(2,13,22,.06) 70%,rgba(2,13,22,.20) 100%)!important;
+}
+.reference-map-filter{display:none!important}
+.geo-live{
+ display:inline-flex!important;
+ align-items:center!important;
+ justify-content:center!important;
+ font-size:8px!important;
+ padding:5px 8px!important;
+ border-radius:999px!important;
+ background:#073229!important;
+ color:#45e5a7!important;
+ border:1px solid #12604d!important;
+}
+
+/* chart stays inside its card */
+.growth-panel{min-width:0!important}
+.growth-chart{width:100%!important;height:255px!important;overflow:hidden!important}
+.growth-chart svg{display:block!important;width:100%!important;height:100%!important}
+
+/* tables/cards do not force the page wider */
+.dashboard-people{width:100%!important;min-width:0!important;overflow-x:auto!important}
+.reference-recent{min-width:0!important}
+.reference-quick-actions{min-width:0!important}
+
+/* Tablet: sidebar becomes drawer and dashboard uses one main column */
+@media(max-width:1024px){
+ .app>aside{
+  width:min(320px,86vw)!important;
+  transform:translateX(105%)!important;
+  transition:transform .22s ease!important;
+  box-shadow:none!important;
+  z-index:80!important;
+ }
+ .app>aside.open{
+  transform:translateX(0)!important;
+  box-shadow:-25px 0 80px rgba(0,0,0,.55)!important;
+ }
+ .mobile-nav-backdrop{
+  display:block!important;
+  position:fixed!important;
+  inset:0!important;
+  z-index:70!important;
+  padding:0!important;
+  margin:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:rgba(0,6,12,.65)!important;
+  backdrop-filter:blur(3px)!important;
+ }
+ main,
+ .overview-main{
+  margin-right:0!important;
+  width:100%!important;
+ }
+ .mobile{display:inline-flex!important}
+ .topbar{
+  padding:8px 12px!important;
+  gap:8px!important;
+ }
+ .overview-main .topbar{
+  position:sticky!important;
+  height:66px!important;
+  min-height:66px!important;
+ }
+ .overview-main .topbar-workspace{display:none!important}
+ .overview-main .top-profile{
+  min-width:0!important;
+  max-width:180px!important;
+ }
+ .overview-main .global-search{
+  flex:1 1 auto!important;
+  width:auto!important;
+  max-width:420px!important;
+ }
+ .overview-main .page{
+  padding:12px 12px 30px!important;
+ }
+ .reference-hero{
+  height:auto!important;
+  min-height:0!important;
+  aspect-ratio:3.6/1!important;
+ }
+ .reference-metrics{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+ }
+ .reference-middle{
+  grid-template-columns:1fr!important;
+ }
+ .reference-middle>.light-card{
+  min-height:310px!important;
+ }
+ .reference-bottom{
+  grid-template-columns:1fr 1fr!important;
+ }
+ .reference-recent{grid-column:1/-1!important}
+ .reference-quick{grid-column:auto!important}
+ .exact-geo-content{
+  grid-template-columns:minmax(0,1.7fr) 180px!important;
+ }
+}
+
+/* Mobile */
+@media(max-width:680px){
+ .overview-main .topbar,
+ .topbar{
+  height:60px!important;
+  min-height:60px!important;
+  padding:7px 9px!important;
+ }
+ .top-profile{
+  padding:5px 7px!important;
+  max-width:145px!important;
+ }
+ .top-profile>div:last-child small{display:none!important}
+ .top-profile>div:last-child strong{
+  max-width:80px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+ }
+ .topbar-actions{gap:3px!important}
+ .global-search,
+ .overview-main .global-search{display:none!important}
+ .page,
+ .overview-main .page{padding:10px 9px 28px!important}
+ .reference-hero{
+  width:100%!important;
+  aspect-ratio:3.15/1!important;
+  border-radius:10px!important;
+  margin-bottom:9px!important;
+ }
+ .reference-hero-image{
+  object-fit:cover!important;
+  object-position:center!important;
+ }
+ .reference-metrics{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:8px!important;
+ }
+ .reference-metrics article{
+  height:105px!important;
+  min-height:105px!important;
+  grid-template-columns:42px minmax(0,1fr)!important;
+  gap:8px!important;
+  padding:11px 10px 25px!important;
+ }
+ .metric-ref-icon{
+  width:40px!important;
+  height:40px!important;
+ }
+ .metric-ref-icon svg{width:20px!important;height:20px!important}
+ .reference-metrics small{font-size:8px!important}
+ .reference-metrics strong{font-size:24px!important}
+ .reference-metrics em{font-size:7px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+ .reference-middle{gap:9px!important}
+ .reference-middle>.light-card{
+  min-height:0!important;
+  padding:12px!important;
+ }
+ .growth-chart{
+  height:220px!important;
+  min-height:220px!important;
+ }
+ .exact-geo-content{
+  grid-template-columns:1fr!important;
+  gap:8px!important;
+  min-height:0!important;
+ }
+ .exact-map-stage{
+  min-height:0!important;
+  aspect-ratio:1.55/1!important;
+ }
+ .exact-ranking{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:0 12px!important;
+ }
+ .exact-ranking>strong{
+  grid-column:1/-1!important;
+ }
+ .reference-bottom{
+  grid-template-columns:1fr!important;
+  gap:9px!important;
+ }
+ .reference-bottom>.light-card{
+  min-height:0!important;
+ }
+ .reference-recent,
+ .reference-quick{grid-column:auto!important}
+ .reference-quick-actions{
+  grid-template-columns:1fr 1fr!important;
+ }
+ .ref-action{
+  grid-column:1/-1!important;
+ }
+ .dashboard-people{
+  overflow-x:auto!important;
+  -webkit-overflow-scrolling:touch!important;
+ }
+ .dashboard-people-head,
+ .dashboard-people button{
+  min-width:520px!important;
+ }
+ .panel-head{
+  gap:8px!important;
+  align-items:flex-start!important;
+ }
+ .panel-head h2{font-size:15px!important}
+ .panel-head p{font-size:8px!important}
+ .sidebar-art-wrap{display:none!important}
+}
+
+/* Small phones */
+@media(max-width:430px){
+ .reference-hero{aspect-ratio:2.85/1!important}
+ .reference-metrics{
+  grid-template-columns:1fr!important;
+ }
+ .reference-metrics article{
+  height:96px!important;
+  min-height:96px!important;
+ }
+ .reference-quick-actions{grid-template-columns:1fr!important}
+ .ref-action,.ref-mini{grid-column:1/-1!important}
+ .exact-ranking{grid-template-columns:1fr!important}
+ .top-profile>div:last-child{display:none!important}
+ .top-profile{width:43px!important;height:43px!important;padding:3px!important}
+ .top-profile-avatar{margin:0!important}
+}

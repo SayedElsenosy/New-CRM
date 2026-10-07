@@ -1242,10 +1242,16 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const newToday=rows.filter(x=>localDay(x.created_at)===todayKey).length;
   const interviewsToday=interviews.filter(x=>x.status==='scheduled'&&localDay(x.scheduled_at)===todayKey).length;
   const activeCandidates=rows.filter(x=>!['hired','rejected'].includes(recruitmentStageOf(x))).length;
+  const areaCounts=new Map();
+  for(const a of rows){
+   const name=String(a.qualification?.preferred_work_area||'').trim();
+   if(name)areaCounts.set(name,(areaCounts.get(name)||0)+1);
+  }
+  const areaDistribution=[...areaCounts.entries()].map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,8);
   res.json({
    configured:officeData.configured,offices:officeData.items,selected_office:req.query.office_id?officeMap.get(String(req.query.office_id))||null:null,
    metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:officeData.configured?(req.query.office_id?1:officeData.items.filter(x=>x.active).length):0,hired:stageCounts.hired,new_today:newToday,interviews_today:interviewsToday,active_candidates:activeCandidates},
-   recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,6).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming
+   recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,6).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming,area_distribution:areaDistribution
   });
  });
  permissionRoute('applicants','get','/interviews',async(req,res)=>{

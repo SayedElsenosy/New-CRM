@@ -307,5 +307,15 @@ test('migration, atomic turn, idempotency, protected stages and reorder',async()
  const {rows:[caseTable]}=await db.query("select to_regclass('masar_agent_eval_cases') is not null as ok");
  const {rows:[runTable]}=await db.query("select to_regclass('masar_agent_eval_runs') is not null as ok");
  assert.equal(decisionTable.ok,true);assert.equal(caseTable.ok,true);assert.equal(runTable.ok,true);
+
+ const areaAdvisorSql=await fs.readFile(new URL('../../supabase/024_conversational_area_advisor.sql',import.meta.url),'utf8');
+ await db.exec(areaAdvisorSql);await db.exec(areaAdvisorSql);
+ const {rows:[shapedArea]}=await db.query("insert into masar_areas(office_id,name,active,position) values($1,'مدينة العبور ماركت',true,777) returning place_key,work_mode",[primaryOfficeForConfig.id]);
+ assert.equal(shapedArea.place_key,'العبور');
+ assert.equal(shapedArea.work_mode,'market');
+ await db.query("update masar_areas set name='الشيخ زايد مطاعم' where office_id=$1 and position=777",[primaryOfficeForConfig.id]);
+ const {rows:[reshapedArea]}=await db.query("select place_key,work_mode from masar_areas where office_id=$1 and position=777",[primaryOfficeForConfig.id]);
+ assert.equal(reshapedArea.place_key,'الشيخ زايد');
+ assert.equal(reshapedArea.work_mode,'restaurants');
  }finally{await db.close();}
 });

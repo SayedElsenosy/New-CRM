@@ -1233,8 +1233,8 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const stageCounts=Object.fromEntries(RECRUITMENT_STAGES.map(x=>[x,rows.filter(a=>recruitmentStageOf(a)===x).length]));
   let interviews=[];
   if(officeData.configured){interviews=must(await db.from('masar_interviews').select('*').order('scheduled_at',{ascending:true}).limit(1000));const visibleOfficeIds=new Set(officeData.items.map(x=>x.id));interviews=interviews.filter(x=>visibleOfficeIds.has(x.office_id));if(req.query.office_id)interviews=interviews.filter(x=>x.office_id===String(req.query.office_id));}
-  const months=[];const now=new Date();for(let i=5;i>=0;i--){const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-i,1));months.push({key:d.toISOString().slice(0,7),label:d.toLocaleDateString('ar-EG',{month:'short',timeZone:'Africa/Cairo'}),count:0});}
-  const monthMap=new Map(months.map(x=>[x.key,x]));for(const a of rows){const key=monthKey(a.created_at);if(monthMap.has(key))monthMap.get(key).count++;}
+  const months=[];const now=new Date();for(let i=5;i>=0;i--){const d=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-i,1));months.push({key:d.toISOString().slice(0,7),label:d.toLocaleDateString('ar-EG',{month:'short',timeZone:'Africa/Cairo'}),count:0,accepted:0});}
+  const monthMap=new Map(months.map(x=>[x.key,x]));for(const a of rows){const key=monthKey(a.created_at);if(monthMap.has(key)){const bucket=monthMap.get(key);bucket.count++;if(['accepted','hired'].includes(recruitmentStageOf(a)))bucket.accepted++;}}
   const applicantById=new Map(rows.map(x=>[x.id,x]));
   const upcoming=interviews.filter(x=>x.status==='scheduled'&&Date.parse(x.scheduled_at)>=Date.now()-86400000).slice(0,5).map(x=>{const a=applicantById.get(x.applicant_id);return {...x,applicant_name:a?Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name||'مرشح':'مرشح',applicant_phone:a?.phone||null,office:officeMap.get(x.office_id)||null};});
   const todayKey=new Date().toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});
@@ -1251,7 +1251,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   res.json({
    configured:officeData.configured,offices:officeData.items,selected_office:req.query.office_id?officeMap.get(String(req.query.office_id))||null:null,
    metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:officeData.configured?(req.query.office_id?1:officeData.items.filter(x=>x.active).length):0,hired:stageCounts.hired,new_today:newToday,interviews_today:interviewsToday,active_candidates:activeCandidates},
-   recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,6).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming,area_distribution:areaDistribution
+   recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,5).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming,area_distribution:areaDistribution
   });
  });
  permissionRoute('applicants','get','/interviews',async(req,res)=>{

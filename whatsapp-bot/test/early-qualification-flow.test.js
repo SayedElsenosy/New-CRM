@@ -186,7 +186,56 @@ test('residence mention recommends nearby work areas but never becomes the final
  assert.equal(r.agent_action,'recommend_nearest_work_area');
  assert.equal(r.patch.answers.__area_recommendations.values[0],'zayed');
  assert.match(r.reply,/الشيخ زايد/);
- assert.match(r.reply,/اختار المنطقة من الأزرار/);
+ assert.match(r.reply,/قولّي اسم المنطقة|قارنهم/);
+ assert.doesNotMatch(r.reply,/اختار المنطقة من الأزرار/);
+});
+
+test('مدينة العبور is understood as the same place as العبور ماركت and waits for natural confirmation',async()=>{
+ const liveAreas=[
+  ...areas,
+  {id:'obour',name:'مدينة العبور',aliases:['مدينه العبور','العبور'],active:true,recruitment_eligible:true,zone:'NORTH_CENTRAL',place_key:'العبور',work_mode:'general',details:''},
+  {id:'obour-market',name:'العبور ماركت',aliases:[],active:true,recruitment_eligible:true,zone:'NORTH_CENTRAL',place_key:'العبور',work_mode:'market',details:'الشفت 9 ساعات فقط\nمتوسط القبض الأسبوعي من 3500 لـ 6000 جنيه\nمرتب شهري ثابت 5225 جنيه\nتأمين طبي شامل ومجاني'}
+ ];
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const preview=await planTurn({applicant:a,message:{body:'طيب ممكن انزل مدينة العبور'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(preview.patch.answers.q2,undefined);
+ assert.equal(preview.patch.answers.__area_preview.value,'obour');
+ assert.equal(preview.patch.awaiting_id,'q2');
+ assert.equal(preview.agent_action,'explain_area_family');
+ assert.match(preview.reply,/العبور موجودة/);
+ assert.match(preview.reply,/ماركت/);
+ assert.match(preview.reply,/5,225/);
+
+ const confirmed=await planTurn({applicant:{...a,answers:preview.patch.answers,awaiting_id:'q2'},message:{body:'مناسبة وكمل'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(confirmed.patch.answers.q2.value,'obour');
+ assert.equal(confirmed.patch.awaiting_id,'q1');
+ assert.match(confirmed.reply,/هنكمل على منطقة مدينة العبور/);
+});
+
+test('market versus restaurants is compared conversationally inside the same place',async()=>{
+ const liveAreas=[
+  ...areas,
+  {id:'zayed',name:'الشيخ زايد',aliases:['زايد'],active:true,recruitment_eligible:true,zone:'WEST',place_key:'الشيخ زايد',work_mode:'general',details:''},
+  {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,zone:'WEST',place_key:'الشيخ زايد',work_mode:'market',details:'الشفت 9 ساعات فقط\nمتوسط القبض الأسبوعي من 3500 لـ 6000 جنيه\nمرتب شهري ثابت 5225 جنيه\nتأمين اجتماعي\nتأمين طبي\n21 يوم إجازة سنوية'},
+  {id:'zayed-rest',name:'الشيخ زايد مطاعم',active:true,recruitment_eligible:true,zone:'WEST',place_key:'الشيخ زايد',work_mode:'restaurants',details:'متوسط الدخل الاسبوعي 4500 جنيه\nبيوصل لي 8000 جنيه\nسعر الأوردر / 42 جنيه\nالزون أقصى مسافة للزون: 10 كيلو'}
+ ];
+ const a={...applicant,awaiting_id:'q2',answers:{__area_preview:{value:'zayed',display:'الشيخ زايد',kind:'area_preview'}}};
+ const r=await planTurn({applicant:a,message:{body:'انا مش عارف انزل مطاعم ولا ماركت انهي احسن'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.agent_action,'compare_area_modes');
+ assert.match(r.reply,/ماركت:/);
+ assert.match(r.reply,/مطاعم:/);
+ assert.match(r.reply,/الثبات|الدخل/);
+ assert.doesNotMatch(r.reply,/اختار.*الأزرار/);
+});
+
+test('quick option buttons are available only when applicant asks for them',async()=>{
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await call(a,'الاختيارات');
+ assert.equal(r.agent_action,'show_area_quick_options');
+ assert.match(r.reply,/اختيارات سريعة للمناطق/);
+ assert.equal(r.patch.awaiting_id,'q2');
 });
 
 test('answering another field never gets consumed as the current pending question',async()=>{

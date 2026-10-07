@@ -27,7 +27,11 @@ export function computedStage(a,questions,areas) {
 export function validateAnswer(q,input,areas,media) {
  const s=String(input ?? '').trim();
  if(q.kind==='image') return media?.path ? {ok:true,value:media.path,display:'مرفق مستلم'} : {ok:false};
- if(q.kind==='area') { const z=areas.find(z=>z.active&&(z.id===s||norm(z.name)===norm(s)));return z?{ok:true,value:z.id,display:z.name}:{ok:false}; }
+ if(q.kind==='area') {
+  const inputNorm=norm(s);
+  const z=areas.find(z=>z.active&&(z.id===s||norm(z.name)===inputNorm||(Array.isArray(z.aliases)&&z.aliases.some(alias=>norm(alias)===inputNorm))));
+  return z?{ok:true,value:z.id,display:z.name}:{ok:false};
+ }
  if(q.kind==='choice') {
   const n=norm(s);
   const options=Array.isArray(q.options)?q.options:[];
@@ -78,10 +82,10 @@ export function questionPrompt(q,areas) {
   else text='محتاج أعرف '+raw+'.';
  }
  if(q.kind==='area'){
-  if(q.field_key==='preferred_work_area') text+='\nاختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم. ولو مفيش أي منطقة مناسبة اختار «❌ ولا منطقة مناسبة».';
-  else text+='\nاختار المنطقة من الأزرار تحت علشان تشوف تفاصيلها. تقدر تقارن بين أكتر من منطقة، ومش هنسجل اختيارك النهائي غير لما تأكده.';
+  if(q.field_key==='preferred_work_area') text+='\nقولّي اسم المنطقة اللي تقدر تلتزم بالشغل فيها يوميًا. لو محتار بين منطقتين أو بين ماركت ومطاعم أقدر أقارنهم لك، ولو حابب تشوف القائمة اكتب «وريني المناطق».';
+  else text+='\nقولّي اسم المنطقة بطريقتك. أقدر أوضح تفاصيلها أو أقارنها بمنطقة تانية.';
  }
- if(q.kind==='choice'&&Array.isArray(q.options)&&q.options.length)text+='\nاختار الإجابة من الأزرار تحت.';
+ if(q.kind==='choice'&&Array.isArray(q.options)&&q.options.length)text+='\nتقدر تكتب اختيارك بطريقتك، ولو حابب أظهرلك الاختيارات السريعة اكتب «الاختيارات».';
  if(!q.required)text+='\n(اختياري؛ اكتب «تخطي» لو مش حابب تجاوب)';
  return text;
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {areaMode,areaPlaceKey,areaProfile,conversationalAreaAdvice} from '../src/area-advisor.js';
+import {areaMode,areaPlaceKey,areaProfile,conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile} from '../src/area-advisor.js';
 
 const areas=[
  {id:'obour',name:'مدينة العبور',aliases:['مدينه العبور','العبور'],active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'general',details:''},
@@ -86,4 +86,31 @@ test('generic recommendation follow-up reuses the last comparison priority',()=>
  assert.equal(r.action,'compare_places_followup');
  assert.equal(r.priority,'income');
  assert.match(r.reply,/سقف الدخل|الدخل/);
+});
+
+
+test('recommendation profile learns only explicit applicant preferences',()=>{
+ const prefs=extractRecommendationPreferences('أهم حاجة عندي الدخل وعايز شيفت أقل');
+ assert.ok(prefs.some(x=>x.key==='income'&&x.op==='set'));
+ assert.ok(prefs.some(x=>x.key==='shift'&&x.op==='set'));
+ assert.equal(extractRecommendationPreferences('المرتب كام؟').length,0);
+});
+
+test('recommendation profile remembers preferred operating mode',()=>{
+ const prefs=extractRecommendationPreferences('أنا أفضل المطاعم');
+ const merged=mergeRecommendationProfile(null,prefs,'2026-10-07T20:00:00.000Z');
+ assert.equal(merged.changed,true);
+ assert.equal(merged.profile.preferred_mode,'restaurants');
+});
+
+test('stored recommendation profile personalizes a later comparison without repeating the preference',()=>{
+ const answers={__recommendation_profile:{
+  priorities:{income:{score:3,source:'explicit',updated_at:'2026-10-07T20:00:00.000Z'}},
+  primary:'income',preferred_mode:null,kind:'recommendation_profile'
+ }};
+ const r=conversationalAreaAdvice('العبور ولا الشيخ زايد أنهي أنسب؟',areas,answers);
+ assert.equal(r.action,'compare_places');
+ assert.equal(r.priority,'income');
+ assert.match(r.reply,/سقف الدخل|الدخل/);
+ assert.match(r.reply,/الشيخ زايد/);
 });

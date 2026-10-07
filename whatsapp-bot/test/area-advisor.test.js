@@ -18,7 +18,7 @@ test('area identity groups city name with operating-mode rows',()=>{
 
 test('مدينة العبور resolves to the available market operation naturally',()=>{
  const r=conversationalAreaAdvice('طيب ممكن انزل مدينة العبور',areas,{});
- assert.equal(r.previewAreaId,'obour');
+ assert.equal(r.previewAreaId,'obour-market');
  assert.equal(r.action,'explain_area_family');
  assert.match(r.reply,/العبور موجودة/);
  assert.match(r.reply,/ماركت/);
@@ -152,4 +152,14 @@ test('available area list items distinguish market from restaurants',()=>{
  const items=availableAreaListItems(areas);
  assert.ok(items.some(x=>/الشيخ زايد/.test(x)&&/ماركت/.test(x)&&/مطاعم/.test(x)));
  assert.ok(items.some(x=>/العبور/.test(x)&&/ماركت/.test(x)));
+});
+
+
+test('ambiguous single word never guesses between two different places',()=>{
+ const ambiguous=[
+  {id:'gardens-haram',name:'حدائق الأهرام',active:true,recruitment_eligible:true,place_key:'حدائق الاهرام',work_mode:'general',details:''},
+  {id:'gardens-october',name:'حدائق أكتوبر',active:true,recruitment_eligible:true,place_key:'حدائق اكتوبر',work_mode:'general',details:''}
+ ];
+ const r=resolveAreaReference('حدائق',ambiguous);
+ assert.equal(r.matched,false);
 });

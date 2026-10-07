@@ -1237,9 +1237,14 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const monthMap=new Map(months.map(x=>[x.key,x]));for(const a of rows){const key=monthKey(a.created_at);if(monthMap.has(key))monthMap.get(key).count++;}
   const applicantById=new Map(rows.map(x=>[x.id,x]));
   const upcoming=interviews.filter(x=>x.status==='scheduled'&&Date.parse(x.scheduled_at)>=Date.now()-86400000).slice(0,5).map(x=>{const a=applicantById.get(x.applicant_id);return {...x,applicant_name:a?Object.values(a.answers||{}).find(v=>v?.kind==='name')?.display||a.display_name||'مرشح':'مرشح',applicant_phone:a?.phone||null,office:officeMap.get(x.office_id)||null};});
+  const todayKey=new Date().toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});
+  const localDay=value=>new Date(value).toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'});
+  const newToday=rows.filter(x=>localDay(x.created_at)===todayKey).length;
+  const interviewsToday=interviews.filter(x=>x.status==='scheduled'&&localDay(x.scheduled_at)===todayKey).length;
+  const activeCandidates=rows.filter(x=>!['hired','rejected'].includes(recruitmentStageOf(x))).length;
   res.json({
    configured:officeData.configured,offices:officeData.items,selected_office:req.query.office_id?officeMap.get(String(req.query.office_id))||null:null,
-   metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:officeData.configured?(req.query.office_id?1:officeData.items.filter(x=>x.active).length):0,hired:stageCounts.hired},
+   metrics:{total:rows.length,interviews:interviews.filter(x=>x.status==='scheduled').length,offices:officeData.configured?(req.query.office_id?1:officeData.items.filter(x=>x.active).length):0,hired:stageCounts.hired,new_today:newToday,interviews_today:interviewsToday,active_candidates:activeCandidates},
    recruitment_stages:stageCounts,growth:months,recent:rows.slice(0,6).map(a=>applicantPublic(a,officeMap)),upcoming_interviews:upcoming
   });
  });

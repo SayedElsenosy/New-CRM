@@ -469,7 +469,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!protocolAction&&!residenceOnlyWhileChoosingWorkArea(current,m.body)){
   const advice=conversationalAreaAdvice(m.body,areas,answers);
   if(advice?.reply){
-   if(current?.field_key==='preferred_work_area'&&advice.previewAreaId){
+   if(current?.kind==='area'&&advice.previewAreaId){
     const preview=areas.find(z=>z.active&&String(z.id)===String(advice.previewAreaId));
     if(preview)answers.__area_preview={value:preview.id,display:preview.name,kind:'area_preview',at:new Date().toISOString(),advisor:true};
    }
@@ -478,7 +478,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
-   const persistAdvisorAnswers=Boolean((current?.field_key==='preferred_work_area'&&advice.previewAreaId)||observations.length||savedAgentFacts.length);
+   const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||observations.length||savedAgentFacts.length);
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply,

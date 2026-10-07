@@ -62,3 +62,28 @@ test('two named places can be ranked by income from recorded data only',()=>{
  assert.match(r.reply,/سقف الدخل|الدخل/);
  assert.match(r.reply,/الشيخ زايد/);
 });
+
+
+test('comparison context remembers the same places for a natural priority follow-up',()=>{
+ const first=conversationalAreaAdvice('العبور ولا الشيخ زايد أنهي أحسن؟',areas,{});
+ assert.equal(first.action,'compare_places');
+ assert.deepEqual(first.comparisonKeys,['العبور','الشيخ زايد']);
+
+ const second=conversationalAreaAdvice('أهم حاجة عندي الدخل',areas,{
+  __area_comparison:{place_keys:first.comparisonKeys,kind:'area_comparison'}
+ });
+ assert.equal(second.action,'compare_places_followup');
+ assert.deepEqual(second.comparisonKeys,['العبور','الشيخ زايد']);
+ assert.equal(second.priority,'income');
+ assert.match(second.reply,/سقف الدخل|الدخل/);
+ assert.match(second.reply,/الشيخ زايد/);
+});
+
+test('generic recommendation follow-up reuses the last comparison priority',()=>{
+ const r=conversationalAreaAdvice('طب ترشحلي أنهي؟',areas,{
+  __area_comparison:{place_keys:['العبور','الشيخ زايد'],priority:'income',kind:'area_comparison'}
+ });
+ assert.equal(r.action,'compare_places_followup');
+ assert.equal(r.priority,'income');
+ assert.match(r.reply,/سقف الدخل|الدخل/);
+});

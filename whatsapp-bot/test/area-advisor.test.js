@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {areaMode,areaPlaceKey,areaProfile,conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile} from '../src/area-advisor.js';
+import {areaMode,areaPlaceKey,areaProfile,conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,availableAreaNames} from '../src/area-advisor.js';
 
 const areas=[
  {id:'obour',name:'مدينة العبور',aliases:['مدينه العبور','العبور'],active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'general',details:''},
@@ -113,4 +113,14 @@ test('stored recommendation profile personalizes a later comparison without repe
  assert.equal(r.priority,'income');
  assert.match(r.reply,/سقف الدخل|الدخل/);
  assert.match(r.reply,/الشيخ زايد/);
+});
+
+
+test('available area names collapse market and restaurant rows into real place names',()=>{
+ const names=availableAreaNames([
+  {id:'obour-market',name:'العبور ماركت',active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'market',details:'x'},
+  {id:'obour-rest',name:'العبور مطاعم',active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'restaurants',details:'x'},
+  {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'market',details:'x'}
+ ]);
+ assert.deepEqual(names,['العبور','الشيخ زايد']);
 });

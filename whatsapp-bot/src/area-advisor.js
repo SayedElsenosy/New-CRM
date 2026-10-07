@@ -208,16 +208,21 @@ function crossPlaceRecommendation(families,text){
  const asksIncome=/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
  const asksDistance=/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
  if(asksBenefits){
-  const winner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0)+x.metrics.modeCount);
+  const winner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
   if(winner)return 'لو تركيزك على المميزات والثبات، '+winner.place+' ظاهر أقوى في البيانات المسجلة عندنا.';
+  const optionsWinner=uniqueBest(rows,x=>x.metrics.modeCount);
+  if(optionsWinner)return 'المميزات الأساسية المسجلة متقاربة، لكن '+optionsWinner.place+' عنده خيارات تشغيل أكتر حاليًا.';
+  return 'من ناحية المميزات والثبات، البيانات المسجلة متقاربة بين المناطق دي.';
  }
  if(asksIncome){
   const winner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);
   if(winner)return 'لو أهم حاجة عندك سقف الدخل، '+winner.place+' ظاهر أقوى في الأرقام المسجلة.';
+  return 'من ناحية الدخل، الأرقام المسجلة متقاربة ومفيش فائز واضح.';
  }
  if(asksDistance){
   const winner=uniqueBest(rows,x=>x.metrics.zoneKm||0,{lowest:true});
   if(winner)return 'لو يهمك الزون الأقصر، '+winner.place+' ظاهر أنسب من البيانات المسجلة.';
+  return 'من ناحية الزون، البيانات المسجلة متقاربة ومفيش فرق واضح.';
  }
  const benefitsWinner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
  const incomeWinner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);

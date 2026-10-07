@@ -210,6 +210,20 @@ export function nextAgentQuestion(questions,answers,areas,answeredFn){
  * This is deliberately conservative: uncertain implications stay in conversation
  * instead of silently becoming qualification facts.
  */
+export function extractConversationObservations(text){
+ const n=clean(text);
+ const observations=[];
+ const licenseMention=/(?:رخصه|رخصة|الرخصه|الرخصة)/.test(n);
+ if(licenseMention){
+  if(/(?:خلصانه|خلصانة|خلصت|منتهيه|منتهية|منتهي|واقفه|واقفة|مش ساريه|مش سارية)/.test(n)){
+   observations.push({key:'motorcycle_license_status',value:'expired',display:'الرخصة منتهية',confidence:.97,source:'explicit'});
+  }else if(/(?:ساريه|سارية|شغاله|شغالة|صالحة|تمام)/.test(n)){
+   observations.push({key:'motorcycle_license_status',value:'valid',display:'الرخصة سارية',confidence:.94,source:'explicit'});
+  }
+ }
+ return observations;
+}
+
 export function extractConversationFacts(text,questions=[],areas=[]){
  const raw=String(text||''),n=clean(raw);
  if(!n)return [];

@@ -10,6 +10,7 @@ import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
 import {questionPrompt} from './domain.js';
+import {syncInterviewFromStaffMessages} from './interview-automation.js';
 
 export function shouldBrowseAreaButtons(_question,body){
  const text=String(body||'');
@@ -180,6 +181,8 @@ export class Worker {
     memory=await learnFromConversation(this.db,{applicantId:a.id,officeId:a.office_id||null,staffMessageId:saved.id,staffId:null,force:true});
    }
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'staff_whatsapp_reply',detail:{message_id:saved.id,source_message_id:source?.id||null,source:'linked_whatsapp_device',memory_learned:Boolean(memory?.learned),memory_action:memory?.action||'skipped',agent_enabled:officeConfig.settings?.agent_enabled!==false,learning_mode:'continuous',voice:Boolean(prepared.is_audio),transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
+   try{await syncInterviewFromStaffMessages(this.db,{applicant:a,source:'linked_whatsapp_device'});}
+   catch(e){console.warn('Automatic interview scheduling failed:',e.code||e.name||'Error');}
    try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'linked_whatsapp_staff_reply'});}
    catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
    try{
@@ -429,6 +432,8 @@ export class Worker {
      must(await this.db.from('masar_messages').update({status:'sent',wa_id:sent?.key?.id||sent?.id?._serialized||null,error:null}).eq('id',m.id));
      must(await this.db.from('masar_applicants').update({last_message_at:sentAt,updated_at:sentAt}).eq('id',m.applicant_id));
      if(m.sender==='staff'){
+      try{await syncInterviewFromStaffMessages(this.db,{applicant:a,source:'crm_staff_reply'});}
+      catch(e){console.warn('Automatic interview scheduling failed:',e.code||e.name||'Error');}
       try{await syncRecruitmentStageFromConversation(this.db,m.applicant_id,{source:'crm_staff_reply'});}
       catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
      }

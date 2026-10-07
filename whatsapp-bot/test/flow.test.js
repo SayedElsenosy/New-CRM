@@ -10,7 +10,7 @@ test('LID is never displayed as a phone',()=>{assert.equal(phoneFromId('12345678
 test('Arabic age and negative replies are validated',()=>{assert.equal(validateAnswer({kind:'number'},'عندي ٢٨ سنة',areas).value,28);assert.equal(validateAnswer({kind:'number'},'عندي ١٢٠ سنة',areas).ok,false);assert.equal(validateAnswer({kind:'yes_no'},'معنديش',areas).value,false);});
 test('initial greeting asks first question without saving greeting',async()=>{const r=await run(applicant,'السلام عليكم');assert.equal(r.patch.awaiting_id,'name');assert.equal(r.patch.answers,undefined);});
 test('answers are saved to their question with field key and progress',async()=>{const r=await run({...applicant,awaiting_id:'name'},'سيد محمد');assert.equal(r.patch.answers.name.value,'سيد محمد');assert.equal(r.patch.answers.name.key,'name');assert.equal(r.patch.stage,'incomplete');assert.equal(r.patch.awaiting_id,'area');});
-test('area inquiry does not consume the pending answer',async()=>{const r=await run({...applicant,awaiting_id:'name'},'تفاصيل الشغل في اكتوبر؟');assert.match(r.reply,/الشفت 9 ساعات/);assert.equal(r.patch.answers,undefined);assert.equal(r.patch.awaiting_id,'name');});
+test('area inquiry does not consume the pending answer',async()=>{const r=await run({...applicant,awaiting_id:'name'},'تفاصيل الشغل في اكتوبر؟');assert.match(r.reply,/شيفت 9 ساعات|الشفت 9 ساعات/);assert.equal(r.patch.answers,undefined);assert.equal(r.patch.awaiting_id,'name');});
 test('first area inquiry remembers question to accept the next answer',async()=>{const r=await run(applicant,'تفاصيل اكتوبر');assert.equal(r.patch.awaiting_id,'name');});
 test('unknown details never become free text answer',async()=>{const r=await run({...applicant,awaiting_id:'name'},'القبض كام؟');assert.match(r.reply,/تقصد أنهي منطقة/);assert.ok(Object.keys(r.patch.answers||{}).every(k=>k.startsWith('__')));});
 test('disabled areas cannot be selected',()=>assert.equal(validateAnswer({kind:'area'},'الشيخ زايد',areas).ok,false));
@@ -122,7 +122,7 @@ test('forged confirmation without matching preview cannot choose an area',async(
  const r=await planTurn({applicant:a,message:{body:'confirm_area:zayed'},questions,areas:liveAreas,settings,interpret});
  assert.equal(r.patch.answers,undefined);
  assert.equal(r.patch.awaiting_id,'area');
- assert.match(r.reply,/اختار المنطقة الأول/);
+ assert.match(r.reply,/اختار أو اكتب اسم المنطقة الأول/);
 });
 
 test('plain text fallback previews first and confirms when repeated',async()=>{
@@ -295,7 +295,7 @@ test('disabled applicant bot stays silent until explicitly re-enabled',async()=>
 });
 
 
-test('generic available-areas question is answered directly instead of handed off',async()=>{
+test('generic available-areas question is answered conversationally instead of handed off',async()=>{
  const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
  const r=await planTurn({
   applicant:{...applicant,awaiting_id:'name'},
@@ -304,9 +304,10 @@ test('generic available-areas question is answered directly instead of handed of
   settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّلك للفريق'},
   interpret,knowledge:[]
  });
- assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
- assert.doesNotMatch(r.reply,/• أكتوبر/);
- assert.doesNotMatch(r.reply,/• الشيخ زايد/);
+ assert.match(r.reply,/دي مناطق الشغل المتاحة/);
+ assert.match(r.reply,/• أكتوبر/);
+ assert.match(r.reply,/• الشيخ زايد/);
+ assert.doesNotMatch(r.reply,/اختار المنطقة من الأزرار/);
  assert.doesNotMatch(r.reply,/اسمك بالكامل/);
  assert.equal(r.patch.awaiting_id,'name');
  assert.equal(r.handoff,undefined);
@@ -320,7 +321,7 @@ test('short "المناطق" message after completion returns area list, not com
   bike:{value:true,display:'نعم',kind:'yes_no'}
  }};
  const r=await planTurn({applicant:completeApplicant,message:{body:'المناطق'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
- assert.match(r.reply,/المناطق المتاحة موجودة في الأزرار/);
+ assert.match(r.reply,/دي مناطق الشغل المتاحة/);
  assert.doesNotMatch(r.reply,/تم الاستلام/);
 });
 
@@ -342,10 +343,11 @@ test('image question text is exactly the configured label with no automatic hint
  assert.doesNotMatch(questionPrompt(q,areas),/PDF|إخفاء الأرقام التعريفية/);
 });
 
-test('area question text never lists area names because choices are buttons only',()=>{
+test('area question is free-text first and does not dump area names',()=>{
  const liveAreas=[areas[0],{id:'zayed',name:'الشيخ زايد',active:true,details:'تفاصيل الشيخ زايد'}];
  const text=questionPrompt(questions[1],liveAreas);
- assert.match(text,/اختار المنطقة من الأزرار/);
+ assert.match(text,/قولّي اسم المنطقة بطريقتك/);
+ assert.doesNotMatch(text,/اختار المنطقة من الأزرار/);
  assert.doesNotMatch(text,/• أكتوبر/);
  assert.doesNotMatch(text,/• الشيخ زايد/);
 });
@@ -359,7 +361,7 @@ test('completed applicant can browse area details from area buttons without chan
  }};
  const r=await planTurn({applicant:completeApplicant,message:{body:'area_preview:zayed'},questions,areas:liveAreas,settings,interpret,knowledge:[]});
  assert.match(r.reply,/تفاصيل الشيخ زايد/);
- assert.match(r.reply,/اختار منطقة تانية من الأزرار/);
+ assert.match(r.reply,/قولّي اسم منطقة تانية/);
  assert.equal(r.patch.answers,undefined);
 });
 
@@ -370,7 +372,7 @@ test('area button pagination changes page without listing names in message text'
  const r=await planTurn({applicant:a,message:{body:'area_page:1'},questions,areas:manyAreas,settings,interpret,knowledge:[]});
  assert.equal(r.patch.answers.__area_page.value,1);
  assert.match(r.reply,/صفحة 2 من 3/);
- assert.match(r.reply,/اختار المنطقة من الأزرار/);
+ assert.match(r.reply,/اختيارات سريعة للمناطق/);
  assert.doesNotMatch(r.reply,/منطقة 8/);
 });
 
@@ -427,11 +429,11 @@ test('bot compares restaurant and market variants from stored area details using
   interpret,knowledge:[]
  });
  assert.equal(r.handoff,undefined);
- assert.match(r.reply,/مقارنة من التفاصيل المسجلة/);
- assert.match(r.reply,/الشفت 9 ساعات/);
- assert.match(r.reply,/الشفت 10 ساعات/);
- assert.match(r.reply,/6000 جنيه/);
- assert.match(r.reply,/7500 جنيه/);
+ assert.match(r.reply,/الفرق كده حسب البيانات المسجلة/);
+ assert.match(r.reply,/شيفت 9 ساعات/);
+ assert.match(r.reply,/شيفت 10 ساعات/);
+ assert.match(r.reply,/6,000|6000/);
+ assert.match(r.reply,/7,500|7500/);
  assert.equal(r.patch.awaiting_id,'area');
 });
 

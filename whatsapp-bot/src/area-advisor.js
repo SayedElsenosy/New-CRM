@@ -33,29 +33,102 @@ function displayPlace(family){
 function areaAliases(area){
  return [area?.name,...(Array.isArray(area?.aliases)?area.aliases:[])].filter(Boolean).map(norm).filter(Boolean);
 }
-function explicitKeys(text,areas,limit=4){
+const AREA_MATCH_STOP_WORDS=new Set([
+ 'مدينه','مدينة','منطقه','منطقة','ماركت','مطاعم','مطعم','سوبر','سوبرماركت','market','restaurant','restaurants'
+]);
+function tokenKey(value){
+ const t=norm(value).replace(/[^\p{L}\p{N}]/gu,'');
+ if(!t)return '';
+ return t.startsWith('ال')&&t.length>4?t.slice(2):t;
+}
+function phraseTokens(value){
+ return norm(value).split(/\s+/).map(tokenKey).filter(t=>t.length>=2&&!AREA_MATCH_STOP_WORDS.has(t));
+}
+function familyCandidates(family){
+ const values=[];
+ for(const area of family){
+  values.push(area?.name,areaPlaceKey(area),...(Array.isArray(area?.aliases)?area.aliases:[]));
+ }
+ return [...new Set(values.filter(Boolean).map(norm).filter(Boolean))];
+}
+function matchedPlaceKeys(text,areas,limit=4){
  const n=norm(text);
- const byKey=new Map();
- for(const area of areas||[]){
-  if(area?.active!==true)continue;
+ const active=(areas||[]).filter(a=>a?.active===true);
+ const grouped=new Map();
+ for(const area of active){
   const key=areaPlaceKey(area);
   if(!key)continue;
-  const candidates=[...areaAliases(area),key];
-  for(const alias of candidates){
-   const index=n.indexOf(alias);
-   if(index<0)continue;
-   const current=byKey.get(key);
-   if(!current||index<current.index||(index===current.index&&alias.length>current.alias.length)){
-    byKey.set(key,{key,index,alias});
-   }
+  if(!grouped.has(key))grouped.set(key,[]);
+  grouped.get(key).push(area);
+ }
+ const rows=[...grouped.entries()].map(([key,family])=>({key,family,candidates:familyCandidates(family)}));
+ const tokenOwners=new Map();
+ for(const row of rows){
+  const tokens=new Set(row.candidates.flatMap(phraseTokens));
+  row.tokens=tokens;
+  for(const token of tokens){
+   if(!tokenOwners.has(token))tokenOwners.set(token,new Set());
+   tokenOwners.get(token).add(row.key);
   }
  }
- return [...byKey.values()].sort((a,b)=>a.index-b.index||b.alias.length-a.alias.length).slice(0,limit).map(x=>x.key);
+ const inputTokens=norm(text).split(/\s+/).map((raw,index)=>({raw,key:tokenKey(raw),index}))
+  .filter(x=>x.key.length>=2&&!AREA_MATCH_STOP_WORDS.has(x.key));
+ const hits=[];
+ for(const row of rows){
+  let bestIndex=Infinity,bestScore=0;
+  for(const phrase of row.candidates){
+   const idx=n.indexOf(phrase);
+   if(idx>=0){
+    const score=1000+phrase.length;
+    if(score>bestScore||(score===bestScore&&idx<bestIndex)){bestScore=score;bestIndex=idx;}
+   }
+  }
+  for(const token of inputTokens){
+   if(!row.tokens.has(token.key))continue;
+   const owners=tokenOwners.get(token.key);
+   if(!owners||owners.size!==1)continue;
+   const score=100+token.key.length;
+   if(score>bestScore||(score===bestScore&&token.index<bestIndex)){bestScore=score;bestIndex=token.index;}
+  }
+  if(bestScore>0)hits.push({key:row.key,index:bestIndex,score:bestScore});
+ }
+ return hits.sort((a,b)=>a.index-b.index||b.score-a.score).slice(0,limit).map(x=>x.key);
+}
+export function resolveAreaReference(text,areas,{contextPlaceKey=null}={}){
+ const active=(areas||[]).filter(a=>a?.active===true);
+ const keys=matchedPlaceKeys(text,active,4);
+ const key=keys[0]||norm(contextPlaceKey||'')||null;
+ if(!key)return {matched:false,placeKeys:keys};
+ const family=familyByKey(active,key);
+ if(!family.length)return {matched:false,placeKeys:keys};
+ const requestedModes=[];
+ if(hasAny(text,MARKET_WORDS))requestedModes.push('market');
+ if(hasAny(text,RESTAURANT_WORDS))requestedModes.push('restaurants');
+ const variants=family.filter(a=>areaMode(a)!=='general');
+ const general=family.find(a=>areaMode(a)==='general')||null;
+ if(requestedModes.length===1){
+  const targets=variants.filter(a=>areaMode(a)===requestedModes[0]);
+  if(targets.length===1)return {matched:true,key,family,area:targets[0],mode:requestedModes[0],placeKeys:keys};
+  if(targets.length>1)return {matched:true,key,family,mode:requestedModes[0],ambiguous:true,reason:'duplicate_mode',placeKeys:keys};
+  return {matched:true,key,family,mode:requestedModes[0],missingMode:true,placeKeys:keys};
+ }
+ if(requestedModes.length>1)return {matched:true,key,family,ambiguous:true,reason:'multiple_modes',placeKeys:keys};
+ if(variants.length===1)return {matched:true,key,family,area:variants[0],mode:areaMode(variants[0]),placeKeys:keys};
+ if(variants.length>1)return {matched:true,key,family,ambiguous:true,reason:'mode_required',placeKeys:keys};
+ return {matched:true,key,family,area:general||family[0],mode:'general',placeKeys:keys};
+}
+
+function explicitKeys(text,areas,limit=4){
+ return matchedPlaceKeys(text,areas,limit);
 }
 function explicitKey(text,areas){
  return explicitKeys(text,areas,1)[0]||null;
 }
 function contextKey(answers,areas){
+ if(answers?.__area_context?.place_key){
+  const key=norm(answers.__area_context.place_key);
+  if((areas||[]).some(a=>a?.active===true&&areaPlaceKey(a)===key))return key;
+ }
  const ids=[];
  if(answers?.__area_preview?.value)ids.push(answers.__area_preview.value);
  const saved=Object.values(answers||{}).find(v=>v?.kind==='area'&&v?.value&&!String(v.value).startsWith('__'));
@@ -85,6 +158,24 @@ export function availableAreaNames(areas,{limit=18}={}){
   .filter(Boolean)
   .filter((name,index,list)=>list.findIndex(x=>norm(x)===norm(name))===index)
   .slice(0,Math.max(1,Number(limit)||18));
+}
+export function availableAreaListItems(areas,{limit=18}={}){
+ const active=(areas||[]).filter(a=>a?.active===true&&a?.recruitment_eligible!==false);
+ const byKey=new Map();
+ for(const area of active){
+  const key=areaPlaceKey(area)||norm(area?.name||'');
+  if(!key)continue;
+  if(!byKey.has(key))byKey.set(key,[]);
+  byKey.get(key).push(area);
+ }
+ return [...byKey.values()].slice(0,Math.max(1,Number(limit)||18)).map(family=>{
+  const place=displayPlace(family);
+  const modes=[...new Set(family.map(areaMode).filter(mode=>mode!=='general'))];
+  const suffix=modes.includes('market')&&modes.includes('restaurants')
+   ?'ماركت / مطاعم'
+   :modes.length===1?modeLabel(modes[0]):'';
+  return suffix?place+' — '+suffix:place;
+ });
 }
 function numberFrom(value){
  const n=Number(String(value||'').replace(/,/g,''));
@@ -461,30 +552,31 @@ export function conversationalAreaAdvice(text,areas,answers={}){
  if(!family.length)return null;
  const place=displayPlace(family);
  const general=family.find(a=>areaMode(a)==='general')||family[0];
- const variants=family.filter(a=>areaMode(a)!=='general'&&String(a.details||'').trim());
+ const variants=family.filter(a=>areaMode(a)!=='general');
+ const detailedVariants=variants.filter(a=>String(a.details||'').trim());
  const requestedModes=[];
  if(hasAny(text,MARKET_WORDS))requestedModes.push('market');
  if(hasAny(text,RESTAURANT_WORDS))requestedModes.push('restaurants');
 
  if(compare){
-  const compareItems=variants.filter(v=>!requestedModes.length||requestedModes.includes(areaMode(v)));
-  if(compareItems.length>=2)return {reply:compareReply(compareItems,text,place,profile),action:'compare_area_modes',previewAreaId:general?.id||null};
-  if(variants.length>=2)return {reply:compareReply(variants.slice(0,3),text,place,profile),action:'compare_area_modes',previewAreaId:general?.id||null};
+  const compareItems=detailedVariants.filter(v=>!requestedModes.length||requestedModes.includes(areaMode(v)));
+  if(compareItems.length>=2)return {reply:compareReply(compareItems,text,place,profile),action:'compare_area_modes',contextPlaceKey:key};
+  if(detailedVariants.length>=2)return {reply:compareReply(detailedVariants.slice(0,3),text,place,profile),action:'compare_area_modes',contextPlaceKey:key};
   if(variants.length===1){
-   return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+compactAreaSummary(variants[0])+'\n\nلو عايز أقارنه بمنطقة تانية قولّي اسم المنطقة.',action:'explain_single_area_mode',previewAreaId:general?.id||null};
+   return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+compactAreaSummary(variants[0])+'\n\nلو مناسب ليك قولّي «مناسبة وكمل»، ولو عايز أقارنه بمنطقة تانية قولّي اسم المنطقة.',action:'explain_single_area_mode',previewAreaId:variants[0].id,contextPlaceKey:key};
   }
  }
  if(requestedModes.length){
   const target=variants.find(v=>requestedModes.includes(areaMode(v)));
-  if(target)return {reply:'أيوه، '+place+' فيها '+modeLabel(areaMode(target))+' حسب المسجل عندنا.\n\n'+compactAreaSummary(target)+'\n\nلو مناسب ليك قولّي «مناسبة وكمل»، ولو عايز أقارنه بنظام تاني أو منطقة تانية قولّي.',action:'explain_area_mode',previewAreaId:general?.id||target.id};
-  return {reply:'بالنسبة لـ'+place+'، مش شايف '+requestedModes.map(modeLabel).join(' أو ')+' مسجل حاليًا. المتاح عندي هو '+(variants.map(v=>modeLabel(areaMode(v))).join(' و ')||'المنطقة نفسها من غير تفاصيل تشغيل كفاية')+'.',action:'missing_area_mode',previewAreaId:general?.id||null};
+  if(target)return {reply:'أيوه، '+place+' فيها '+modeLabel(areaMode(target))+' حسب المسجل عندنا.\n\n'+compactAreaSummary(target)+'\n\nلو مناسب ليك قولّي «مناسبة وكمل»، ولو عايز أقارنه بنظام تاني أو منطقة تانية قولّي.',action:'explain_area_mode',previewAreaId:target.id,contextPlaceKey:key};
+  return {reply:'بالنسبة لـ'+place+'، مش شايف '+requestedModes.map(modeLabel).join(' أو ')+' مسجل حاليًا. المتاح عندي هو '+(variants.map(v=>modeLabel(areaMode(v))).join(' و ')||'المنطقة نفسها من غير تفاصيل تشغيل كفاية')+'.',action:'missing_area_mode',contextPlaceKey:key};
  }
  if(asksAvailability(text)||explicitKey(text,active)){
   if(variants.length===1){
-   return {reply:'أيوه، '+place+' موجودة عندنا. المتاح المسجل حاليًا هناك '+modeLabel(areaMode(variants[0]))+'.\n\n'+compactAreaSummary(variants[0])+'\n\nلو ده مناسب ليك قولّي «مناسبة وكمل». ولو عايز تقارنها بمنطقة تانية قولّي اسمها.',action:'explain_area_family',previewAreaId:general?.id||variants[0].id};
+   return {reply:'أيوه، '+place+' موجودة عندنا. المتاح المسجل حاليًا هناك '+modeLabel(areaMode(variants[0]))+'.\n\n'+compactAreaSummary(variants[0])+'\n\nلو ده مناسب ليك قولّي «مناسبة وكمل». ولو عايز تقارنها بمنطقة تانية قولّي اسمها.',action:'explain_area_family',previewAreaId:variants[0].id,contextPlaceKey:key};
   }
   if(variants.length>1){
-   return {reply:'أيوه، '+place+' موجودة عندنا، وعندي فيها أكتر من نظام تشغيل:\n\n'+variants.map(v=>'• '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n')+'\n\nلو تحب أقولك أنهي أنسب ليك، قولّي إيه أهم حاجة عندك: الدخل، الثبات، الزون، ولا المميزات.',action:'explain_area_family',previewAreaId:general?.id||null};
+   return {reply:'أيوه، '+place+' موجودة عندنا، وعندي فيها نظامين منفصلين:\n\n'+variants.slice(0,3).map(v=>'• '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n')+'\n\nقولّي «ماركت» أو «مطاعم» علشان أحددلك النظام نفسه وأقولك تفاصيله، أو اسألني أقارنهم لك.',action:'choose_area_mode',contextPlaceKey:key};
   }
   if(String(general?.details||'').trim())return {reply:'أيوه، '+place+' موجودة عندنا.\n\n'+compactAreaSummary(general)+'\n\nلو مناسبة ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:general?.id||null};
  }

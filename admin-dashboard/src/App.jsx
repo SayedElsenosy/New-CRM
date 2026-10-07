@@ -163,11 +163,11 @@ function MetricSparkline({tone='cyan'}){
  return <svg className={'metric-sparkline '+tone} viewBox="0 0 100 34" aria-hidden="true"><path d={paths[tone]||paths.cyan}/><circle cx="98" cy={tone==='green'?7:tone==='orange'?9:10} r="2.6"/></svg>;
 }
 function DashboardHeroArt(){
- return <div className="dashboard-hero-art" aria-hidden="true"><div className="reference-hero-fade"/></div>;
+ return <div className="dashboard-hero-art" aria-hidden="true"><div className="hero-skyline"/><img className="reference-hero-rider" src="/reference/hero-rider.webp" alt=""/><div className="reference-hero-fade"/></div>;
 }
 function GeoDistributionPanel({items=[]}){
  const top=items.slice(0,5);
- return <section className="light-card geo-panel exact-geo-panel"><div className="panel-head"><div><h2>التوزيع الجغرافي</h2><p>أكثر المناطق من حيث الطيارين</p></div><span className="geo-live">LIVE</span></div><div className="exact-geo-content"><div className="exact-map-stage"><div className="exact-map-shade"/><span className="map-live-chip">LIVE DATA</span></div><div className="geo-ranking exact-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{top.length?top.map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{x.count}</b></div>):<small>لسه مفيش اختيارات مناطق كفاية</small>}</div></div></section>;
+ return <section className="light-card geo-panel exact-geo-panel"><div className="panel-head"><div><h2>التوزيع الجغرافي</h2><p>أكثر المناطق من حيث الطيارين</p></div><span className="geo-live">LIVE</span></div><div className="exact-geo-content"><div className="exact-map-stage"><img className="reference-map-image" src="/reference/geo-map.webp" alt="خريطة توزيع مناطق الطيارين"/><div className="exact-map-shade"/></div><div className="geo-ranking exact-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{top.length?top.map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{x.count}</b></div>):<small>لسه مفيش اختيارات مناطق كفاية</small>}</div></div></section>;
 }
 function DashboardAlertsPanel({alerts,onAlert}){
  const items=(alerts?.items||[]).slice(0,4);

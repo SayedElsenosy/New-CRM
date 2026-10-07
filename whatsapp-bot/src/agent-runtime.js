@@ -33,7 +33,7 @@ const REPLY_FORMAT={type:'json_schema',json_schema:{name:'agent_reply',strict:tr
 
 const COMPOSABLE_ACTIONS=new Set([
  'llm_knowledge_answer','knowledge_answer','area_advisor',
- 'compare_work_modes_general','compare_area_modes','compare_places','explain_single_area_mode',
+ 'compare_work_modes_general','compare_area_modes','compare_places','compare_places_followup','explain_single_area_mode',
  'explain_area_mode','missing_area_mode','explain_area_family',
  'recommend_nearest_work_area','recommend_nearest_work_area_with_answer','answer_area_list'
 ]);

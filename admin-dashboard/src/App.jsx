@@ -1,5 +1,5 @@
 import {useEffect,useState,useCallback,useRef} from 'react';
-import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown,Trash2,Bell,BellRing,CalendarDays,Building2,BriefcaseBusiness,UserPlus,Clock3,XCircle,ClipboardCheck,Grid2X2,LifeBuoy,Cpu,Activity,Database,FlaskConical,SlidersHorizontal,Shield,Zap,Network,Gauge,Play,Layers3,History,Orbit,Bike} from 'lucide-react';
+import {LayoutDashboard,Users,MapPin,MessageCircle,GitBranch,BarChart3,Settings,LogOut,ArrowLeft,RefreshCw,Plus,CheckCircle2,Search,Menu,X,ChevronUp,ChevronDown,Download,Send,Paperclip,Power,Link2,ShieldCheck,BrainCircuit,Sparkles,BookOpen,ThumbsUp,ThumbsDown,Trash2,Bell,BellRing,CalendarDays,Building2,BriefcaseBusiness,UserPlus,Clock3,XCircle,ClipboardCheck,Grid2X2,LifeBuoy,Cpu,Activity,Database,FlaskConical,SlidersHorizontal,Shield,Zap,Network,Gauge,Play,Layers3,History,Orbit,Bike,Megaphone,FileText} from 'lucide-react';
 import {api,send,supabase,configured,STAGES,RECRUITMENT_STAGES,INTERVIEW_STATUSES,KINDS,personName,date,dateParams} from './api';
 import {BRAND_IMAGE} from './brandAssets';
 const PERMISSION_OPTIONS=[

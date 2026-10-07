@@ -479,9 +479,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
    const persistAdvisorAnswers=Boolean((current?.kind==='area'&&advice.previewAreaId)||observations.length||savedAgentFacts.length);
+   const compareContinuation=advice.action==='compare_places'&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
-    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply,
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply+compareContinuation,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
     agent_action:advice.action||'area_advisor'
@@ -604,7 +605,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     reply:String(match.answer||'').trim(),
     followup_reply:sideAnswerFollowup(a,current,areas),
     knowledge_id:match.id,
-    knowledge_confidence:match.confidence
+    knowledge_confidence:match.confidence,
+    agent_action:'knowledge_answer'
    };
   }
  }

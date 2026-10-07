@@ -45,3 +45,20 @@ test('area profile extracts structured comparison facts from office details',()=
  assert.equal(restaurants.weeklyMax,8000);
  assert.equal(restaurants.orderPrice,42);
 });
+
+
+test('two named places are compared without committing either work area',()=>{
+ const r=conversationalAreaAdvice('العبور ولا الشيخ زايد احسن من ناحية المميزات؟',areas,{});
+ assert.equal(r.action,'compare_places');
+ assert.equal(r.previewAreaId,undefined);
+ assert.match(r.reply,/العبور/);
+ assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/المميزات|الثبات/);
+});
+
+test('two named places can be ranked by income from recorded data only',()=>{
+ const r=conversationalAreaAdvice('العبور ولا الشيخ زايد احسن في الدخل؟',areas,{});
+ assert.equal(r.action,'compare_places');
+ assert.match(r.reply,/سقف الدخل|الدخل/);
+ assert.match(r.reply,/الشيخ زايد/);
+});

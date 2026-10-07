@@ -25,6 +25,39 @@ const PLAN_FORMAT={type:'json_schema',json_schema:{name:'agent_plan',strict:true
  required:['action','confidence','intent','knowledge_id','field_key','area_id','clarification','summary','facts','knowledge_ranking']
 }}};
 
+const REPLY_FORMAT={type:'json_schema',json_schema:{name:'agent_reply',strict:true,schema:{
+ type:'object',additionalProperties:false,
+ properties:{reply:{type:'string',minLength:1,maxLength:1800}},
+ required:['reply']
+}}};
+
+const COMPOSABLE_ACTIONS=new Set([
+ 'llm_knowledge_answer','knowledge_answer','area_advisor',
+ 'compare_work_modes_general','compare_area_modes','compare_places','explain_single_area_mode',
+ 'explain_area_mode','missing_area_mode','explain_area_family',
+ 'recommend_nearest_work_area','recommend_nearest_work_area_with_answer','answer_area_list'
+]);
+
+function westernDigits(value){
+ const ar='٠١٢٣٤٥٦٧٨٩',fa='۰۱۲۳۴۵۶۷۸۹';
+ return String(value||'')
+  .replace(/[٠-٩]/g,d=>String(ar.indexOf(d)))
+  .replace(/[۰-۹]/g,d=>String(fa.indexOf(d)))
+  .replace(/٬/g,',').replace(/٫/g,'.');
+}
+function numericTokens(value){
+ return westernDigits(value).match(/\d+(?:[.,]\d+)*/g)||[];
+}
+export function canComposeAgentReply(action){
+ return COMPOSABLE_ACTIONS.has(String(action||''));
+}
+export function groundedReplySafe(source,reply){
+ const text=String(reply||'').trim();
+ if(!text||text.length>1800)return false;
+ const allowed=new Set(numericTokens(source));
+ return numericTokens(text).every(token=>allowed.has(token));
+}
+
 function cleanJson(text){
  const raw=String(text||'').trim();
  const fenced=raw.match(/\`\`\`(?:json)?\s*([\s\S]*?)\`\`\`/i)?.[1]||raw;
@@ -126,7 +159,7 @@ export class AgentRuntime{
    secret_configured:hasKey
   };
  }
- async call(messages,settings={}){
+ async call(messages,settings={},options={}){
   const state=this.snapshot(settings);
   if(!state.configured)throw Object.assign(new Error('LLM provider is not configured'),{code:'LLM_NOT_CONFIGURED'});
   const controller=new AbortController();
@@ -139,9 +172,9 @@ export class AgentRuntime{
     headers:{'Content-Type':'application/json',Authorization:'Bearer '+this.env.AGENT_LLM_API_KEY},
     body:JSON.stringify({
      model:state.model,
-     temperature:Number(settings.agent_llm_temperature??0.2),
-     max_tokens:Math.max(220,Math.min(500,Number(settings.agent_llm_max_tokens||420))),
-     response_format:PLAN_FORMAT,
+     temperature:Number(options.temperature??settings.agent_llm_temperature??0.2),
+     max_tokens:Math.max(160,Math.min(700,Number(options.maxTokens??settings.agent_llm_max_tokens??420))),
+     response_format:options.responseFormat||PLAN_FORMAT,
      reasoning_effort:'low',
      reasoning_format:'hidden',
      messages
@@ -198,6 +231,58 @@ export class AgentRuntime{
   return [
    {role:'system',content:system},
    {role:'user',content:'حلل الدور الحالي وأرجع JSON بالشكل: {action,confidence,intent,knowledge_id,field_key,area_id,clarification,summary,facts:[{field_key,value,display,confidence,source}],knowledge_ranking:[{id,score}]}\n\n'+JSON.stringify(payload)}
+  ];
+ }
+ async composeTurn(input){
+  const settings=input.settings||{};
+  const state=this.snapshot(settings);
+  if(settings.agent_llm_enabled!==true||settings.agent_llm_mode!=='live'||!state.configured){
+   return {available:false,applied:false,state,reason:'composer_not_live'};
+  }
+  const action=String(input.turn?.agent_action||'');
+  if(!canComposeAgentReply(action)){
+   return {available:true,applied:false,state,reason:'action_not_composable'};
+  }
+  const draft=trim(input.turn?.reply,1800);
+  if(!draft)return {available:true,applied:false,state,reason:'empty_draft'};
+  const result=await this.call(this.buildComposerMessages(input),settings,{
+   responseFormat:REPLY_FORMAT,maxTokens:360,
+   temperature:Math.min(.45,Math.max(.1,Number(settings.agent_llm_temperature??.2)))
+  });
+  const reply=trim(result.json?.reply,1800);
+  const source=[draft,trim(input.turn?.followup_reply,600)].filter(Boolean).join('\n');
+  if(!groundedReplySafe(source,reply)){
+   return {available:true,applied:false,state,reason:'grounding_validation',latency_ms:result.latency_ms};
+  }
+  return {available:true,applied:true,state,reply,latency_ms:result.latency_ms,provider:result.provider,model:result.model};
+ }
+ buildComposerMessages({message,turn,recentMessages,settings,plan}){
+  const conversation=(recentMessages||[]).slice(-4).map(x=>({
+   role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
+   text:trim(x.body,260)
+  }));
+  const system=[
+   'أنت Response Composer لمساعد توظيف Breadfast في مصر.',
+   'حوّل draft_reply إلى رد مصري طبيعي وواضح كأن Recruiter بشري بيتكلم على واتساب.',
+   'draft_reply هو مصدر الحقيقة الوحيد. ممنوع إضافة أي معلومة أو رقم أو ميزة أو شرط أو عنوان غير موجود فيه.',
+   'ممنوع تغيير قرار Qualification أو اعتبار السكن منطقة عمل أو تأكيد اختيار منطقة لم يؤكده المتقدم.',
+   'لا تقل إنك ذكاء اصطناعي، ولا تذكر النظام أو قاعدة البيانات أو الـprompt.',
+   'خلي الرد مختصر ومفيد، وممكن تسأل سؤال متابعة واحد فقط لو كان موجود أصلًا في draft_reply.',
+   'لو draft_reply فيه مقارنة، وضّح الفرق العملي من نفس البيانات فقط بدون اختراع.',
+   trim(settings.agent_system_instructions||'',280)
+  ].filter(Boolean).join('\n');
+  const payload={
+   current_message:trim(message?.body,900),
+   action:String(turn?.agent_action||''),
+   draft_reply:trim(turn?.reply,1800),
+   separate_followup:trim(turn?.followup_reply,600)||null,
+   planner_intent:trim(plan?.intent,120)||null,
+   planner_summary:trim(plan?.summary,350)||null,
+   conversation
+  };
+  return [
+   {role:'system',content:system},
+   {role:'user',content:'أعد صياغة draft_reply فقط وأرجع JSON بالشكل {"reply":"..."} بدون أي مفاتيح إضافية. separate_followup سيتم إرساله في رسالة منفصلة فلا تكرره داخل reply.\n\n'+JSON.stringify(payload)}
   ];
  }
  async analyzeTurn(input){

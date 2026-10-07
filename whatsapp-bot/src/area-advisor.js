@@ -1,4 +1,4 @@
-import {digits,norm} from './domain.js';
+import {digits,norm,areaDetails} from './domain.js';
 
 const MARKET_WORDS=['ماركت','سوبرماركت','سوبر ماركت','market'];
 const RESTAURANT_WORDS=['مطاعم','مطعم','ريستورانت','restaurant','restaurants'];
@@ -33,18 +33,27 @@ function displayPlace(family){
 function areaAliases(area){
  return [area?.name,...(Array.isArray(area?.aliases)?area.aliases:[])].filter(Boolean).map(norm).filter(Boolean);
 }
-function explicitKey(text,areas){
+function explicitKeys(text,areas,limit=4){
  const n=norm(text);
- let best=null;
+ const byKey=new Map();
  for(const area of areas||[]){
   if(area?.active!==true)continue;
-  for(const alias of areaAliases(area)){
-   if(n.includes(alias)&&(!best||alias.length>best.alias.length))best={key:areaPlaceKey(area),alias,area};
+  const key=areaPlaceKey(area);
+  if(!key)continue;
+  const candidates=[...areaAliases(area),key];
+  for(const alias of candidates){
+   const index=n.indexOf(alias);
+   if(index<0)continue;
+   const current=byKey.get(key);
+   if(!current||index<current.index||(index===current.index&&alias.length>current.alias.length)){
+    byKey.set(key,{key,index,alias});
+   }
   }
-  const base=areaPlaceKey(area);
-  if(base&&n.includes(base)&&(!best||base.length>best.alias.length))best={key:base,alias:base,area};
  }
- return best?.key||null;
+ return [...byKey.values()].sort((a,b)=>a.index-b.index||b.alias.length-a.alias.length).slice(0,limit).map(x=>x.key);
+}
+function explicitKey(text,areas){
+ return explicitKeys(text,areas,1)[0]||null;
 }
 function contextKey(answers,areas){
  const ids=[];
@@ -158,6 +167,89 @@ function recommendation(items,text){
  }
  return null;
 }
+function placeMetrics(family){
+ const variants=(family||[]).filter(a=>areaMode(a)!=='general'&&String(a.details||'').trim());
+ const source=variants.length?variants:(family||[]).filter(a=>String(a.details||'').trim());
+ const profiles=source.map(area=>({area,profile:areaProfile(area),mode:areaMode(area)}));
+ const max=key=>profiles.reduce((v,x)=>Math.max(v,Number(x.profile[key]||0)),0)||null;
+ const zones=profiles.map(x=>Number(x.profile.zoneKm||0)).filter(Boolean);
+ const benefits={social:false,medical:false,bonus:false,vacation:false,overtime:false,visa:false};
+ for(const row of profiles)for(const key of Object.keys(benefits))benefits[key]=benefits[key]||Boolean(row.profile.benefits?.[key]);
+ return {
+  profiles,
+  fixedSalary:max('fixedSalary'),
+  weeklyMax:max('weeklyMax'),
+  weeklyAverage:max('weeklyAverage'),
+  zoneKm:zones.length?Math.min(...zones):null,
+  benefits,
+  benefitsCount:Object.values(benefits).filter(Boolean).length,
+  modeCount:new Set(profiles.map(x=>x.mode).filter(x=>x!=='general')).size
+ };
+}
+function uniqueBest(rows,scoreFn,{lowest=false}={}){
+ const scored=rows.map(row=>({row,score:Number(scoreFn(row)||0)})).filter(x=>x.score>0)
+  .sort((a,b)=>lowest?a.score-b.score:b.score-a.score);
+ if(!scored.length)return null;
+ if(scored[1]&&scored[0].score===scored[1].score)return null;
+ return scored[0].row;
+}
+function placeComparisonBlock(family){
+ const place=displayPlace(family);
+ const variants=(family||[]).filter(a=>areaMode(a)!=='general'&&String(a.details||'').trim());
+ const detailed=(family||[]).filter(a=>String(a.details||'').trim());
+ const source=variants.length?variants:detailed.slice(0,1);
+ if(!source.length){
+  const general=(family||[]).find(a=>areaMode(a)==='general')||family?.[0];
+  const fallback=general?areaDetails(general).replace(/^📍\s*/,''):(place+'\nتفاصيل المنطقة لسه مش مضافة. مسؤول التوظيف يقدر يوضحها ليك.');
+  return '• '+fallback;
+ }
+ if(source.length===1){
+  const raw=areaDetails(source[0]).replace(/^📍\s*/,'');
+  return '• '+raw;
+ }
+ return '• '+place+':\n'+source.slice(0,3).map(v=>'  - '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n');
+}
+function crossPlaceRecommendation(families,text){
+ const rows=families.map(family=>({family,place:displayPlace(family),metrics:placeMetrics(family)}));
+ const n=norm(text);
+ const asksBenefits=/(مميزات|مزايا|تامين|تأمين|اجازات|إجازات|ثبات|استقرار)/.test(n);
+ const asksIncome=/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
+ const asksDistance=/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
+ if(asksBenefits){
+  const winner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
+  if(winner)return 'لو تركيزك على المميزات والثبات، '+winner.place+' ظاهر أقوى في البيانات المسجلة عندنا.';
+  const optionsWinner=uniqueBest(rows,x=>x.metrics.modeCount);
+  if(optionsWinner)return 'المميزات الأساسية المسجلة متقاربة، لكن '+optionsWinner.place+' عنده خيارات تشغيل أكتر حاليًا.';
+  return 'من ناحية المميزات والثبات، البيانات المسجلة متقاربة بين المناطق دي.';
+ }
+ if(asksIncome){
+  const winner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);
+  if(winner)return 'لو أهم حاجة عندك سقف الدخل، '+winner.place+' ظاهر أقوى في الأرقام المسجلة.';
+  return 'من ناحية الدخل، الأرقام المسجلة متقاربة ومفيش فائز واضح.';
+ }
+ if(asksDistance){
+  const winner=uniqueBest(rows,x=>x.metrics.zoneKm||0,{lowest:true});
+  if(winner)return 'لو يهمك الزون الأقصر، '+winner.place+' ظاهر أنسب من البيانات المسجلة.';
+  return 'من ناحية الزون، البيانات المسجلة متقاربة ومفيش فرق واضح.';
+ }
+ const benefitsWinner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
+ const incomeWinner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);
+ if(benefitsWinner&&incomeWinner){
+  if(benefitsWinner.place===incomeWinner.place)return 'بشكل عام من البيانات المسجلة، '+benefitsWinner.place+' ظاهر أقوى في المميزات وكمان الدخل، لكن القرار النهائي يعتمد على النظام المتاح هناك.';
+  return benefitsWinner.place+' أقوى في المميزات والثبات، بينما '+incomeWinner.place+' أقوى في سقف الدخل.';
+ }
+ if(benefitsWinner)return benefitsWinner.place+' ظاهر أقوى من ناحية المميزات المسجلة.';
+ if(incomeWinner)return incomeWinner.place+' ظاهر أقوى من ناحية الدخل المسجل.';
+ return 'مفيش منطقة أقدر أقول إنها أحسن مطلقًا من غير ما تحدد أولويتك.';
+}
+function comparePlacesReply(keys,areas,text){
+ const families=keys.map(key=>familyByKey(areas,key)).filter(x=>x.length);
+ if(families.length<2)return null;
+ return 'لو بنقارن '+families.map(displayPlace).join(' و ')+' حسب البيانات المسجلة عندنا:\n\n'
+  +families.map(placeComparisonBlock).join('\n\n')
+  +'\n\n'+crossPlaceRecommendation(families,text)
+  +'\n\nلو تقولي أهم حاجة عندك إيه — الدخل، المميزات، ثبات المرتب، ولا الزون — أقولك اختياري ليك بشكل أدق.';
+}
 function compareReply(items,text,place){
  const lines=items.map(area=>'• '+modeLabel(areaMode(area))+': '+compactAreaSummary(area));
  const rec=recommendation(items,text);
@@ -187,8 +279,13 @@ export function conversationalAreaAdvice(text,areas,answers={}){
    ||/(?:مش\s+مناسب|مش\s+مناسبه|ماينفعش|مينفعش)/.test(textNorm))return null;
  const active=(areas||[]).filter(a=>a?.active===true);
  if(!active.length)return null;
- const key=explicitKey(text,active)||contextKey(answers,active);
+ const explicit=explicitKeys(text,active);
  const compare=asksComparison(text);
+ if(compare&&explicit.length>=2){
+  const reply=comparePlacesReply(explicit,active,text);
+  if(reply)return {reply,action:'compare_places'};
+ }
+ const key=explicit[0]||contextKey(answers,active);
  if(!key){
   if(compare)return {reply:generalComparison(active),action:'compare_work_modes_general'};
   return null;

@@ -126,7 +126,9 @@ export class AgentRuntime{
      model:state.model,
      temperature:Number(settings.agent_llm_temperature??0.2),
      max_tokens:Math.max(220,Math.min(500,Number(settings.agent_llm_max_tokens||420))),
-     response_format:{type:'json_object'},
+     response_format:PLAN_FORMAT,
+     reasoning_effort:'low',
+     reasoning_format:'hidden',
      messages
     }),
     signal:controller.signal

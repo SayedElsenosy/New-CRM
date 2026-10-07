@@ -455,12 +455,18 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   }
  }
 
- if(!protocolAction&&current?.field_key==='preferred_work_area'&&answers.__area_preview?.value&&naturalAreaConfirmation(m.body)){
-  const area=areas.find(z=>z.active&&String(z.id)===String(answers.__area_preview.value));
-  if(area)return commitAreaChoice({area,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+ if(!protocolAction&&current?.kind==='area'&&answers.__area_preview?.value){
+  const previewArea=areas.find(z=>z.active&&String(z.id)===String(answers.__area_preview.value));
+  if(previewArea&&naturalAreaConfirmation(m.body)){
+   return commitAreaChoice({area:previewArea,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+  }
+  const repeated=validateAnswer(current,m.body,areas,null);
+  if(previewArea&&repeated.ok&&String(repeated.value)===String(previewArea.id)){
+   return commitAreaChoice({area:previewArea,current,answers,qs,questions,areas,settings,applicant:a,qualificationFlowEnabled});
+  }
  }
 
- if(!protocolAction){
+ if(!protocolAction&&!residenceOnlyWhileChoosingWorkArea(current,m.body)){
   const advice=conversationalAreaAdvice(m.body,areas,answers);
   if(advice?.reply){
    if(current?.field_key==='preferred_work_area'&&advice.previewAreaId){
@@ -472,8 +478,9 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
+   const persistAdvisorAnswers=Boolean((current?.field_key==='preferred_work_area'&&advice.previewAreaId)||observations.length||savedAgentFacts.length);
    return {
-    patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers,stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
+    patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
@@ -661,7 +668,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   answers.__area_page={value:page,kind:'area_page',at:new Date().toISOString(),...(eligibilityOnly?{eligibility_only:true}:{})};
   const pageNote=pages>1?'\nصفحة '+(page+1)+' من '+pages:'';
   const continueFlow=current&&current.kind!=='area'?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
-  return {patch:{answers,...(current?{awaiting_id:current.id}:{})},reply:(current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas))+pageNote+continueFlow};
+  return {patch:{answers,...(current?{awaiting_id:current.id}:{})},reply:'اختيارات سريعة للمناطق 👇\n'+(current?.kind==='area'?questionPrompt(current,areas):areaListReply(areas))+pageNote+continueFlow};
  }
  if(action){
   const area=areas.find(z=>z.active&&z.id===action.id);

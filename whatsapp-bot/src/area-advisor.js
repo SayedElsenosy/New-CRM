@@ -563,20 +563,20 @@ export function conversationalAreaAdvice(text,areas,answers={}){
   if(compareItems.length>=2)return {reply:compareReply(compareItems,text,place,profile),action:'compare_area_modes',contextPlaceKey:key};
   if(detailedVariants.length>=2)return {reply:compareReply(detailedVariants.slice(0,3),text,place,profile),action:'compare_area_modes',contextPlaceKey:key};
   if(variants.length===1){
-   return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+compactAreaSummary(variants[0])+'\n\nلو مناسب ليك قولّي «مناسبة وكمل»، ولو عايز أقارنه بمنطقة تانية قولّي اسم المنطقة.',action:'explain_single_area_mode',previewAreaId:variants[0].id,contextPlaceKey:key};
+   return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+compactAreaSummary(variants[0])+'\n\nلو مناسب ليك قولّي «مناسبة وكمل».',action:'explain_single_area_mode',previewAreaId:variants[0].id,contextPlaceKey:key};
   }
  }
  if(requestedModes.length){
   const target=variants.find(v=>requestedModes.includes(areaMode(v)));
-  if(target)return {reply:'أيوه، '+place+' فيها '+modeLabel(areaMode(target))+' حسب المسجل عندنا.\n\n'+compactAreaSummary(target)+'\n\nلو مناسب ليك قولّي «مناسبة وكمل»، ولو عايز أقارنه بنظام تاني أو منطقة تانية قولّي.',action:'explain_area_mode',previewAreaId:target.id,contextPlaceKey:key};
+  if(target)return {reply:'أيوه، '+place+' فيها '+modeLabel(areaMode(target))+' حسب المسجل عندنا.\n\n'+compactAreaSummary(target)+'\n\nلو مناسب ليك قولّي «مناسبة وكمل».',action:'explain_area_mode',previewAreaId:target.id,contextPlaceKey:key};
   return {reply:'بالنسبة لـ'+place+'، مش شايف '+requestedModes.map(modeLabel).join(' أو ')+' مسجل حاليًا. المتاح عندي هو '+(variants.map(v=>modeLabel(areaMode(v))).join(' و ')||'المنطقة نفسها من غير تفاصيل تشغيل كفاية')+'.',action:'missing_area_mode',contextPlaceKey:key};
  }
  if(asksAvailability(text)||explicitKey(text,active)){
   if(variants.length===1){
-   return {reply:'أيوه، '+place+' موجودة عندنا. المتاح المسجل حاليًا هناك '+modeLabel(areaMode(variants[0]))+'.\n\n'+compactAreaSummary(variants[0])+'\n\nلو ده مناسب ليك قولّي «مناسبة وكمل». ولو عايز تقارنها بمنطقة تانية قولّي اسمها.',action:'explain_area_family',previewAreaId:variants[0].id,contextPlaceKey:key};
+   return {reply:'أيوه، '+place+' موجودة عندنا. المتاح المسجل حاليًا هناك '+modeLabel(areaMode(variants[0]))+'.\n\n'+compactAreaSummary(variants[0])+'\n\nلو ده مناسب ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:variants[0].id,contextPlaceKey:key};
   }
   if(variants.length>1){
-   return {reply:'أيوه، '+place+' موجودة عندنا، وعندي فيها نظامين منفصلين:\n\n'+variants.slice(0,3).map(v=>'• '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n')+'\n\nقولّي «ماركت» أو «مطاعم» علشان أحددلك النظام نفسه وأقولك تفاصيله، أو اسألني أقارنهم لك.',action:'choose_area_mode',contextPlaceKey:key};
+   return {reply:'أيوه، '+place+' موجودة عندنا، وعندي فيها نظامين منفصلين:\n\n'+variants.slice(0,3).map(v=>'• '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n')+'\n\nقولّي «ماركت» أو «مطاعم» علشان أحددلك النظام نفسه وأقولك تفاصيله.',action:'choose_area_mode',contextPlaceKey:key};
   }
   if(String(general?.details||'').trim())return {reply:'أيوه، '+place+' موجودة عندنا.\n\n'+compactAreaSummary(general)+'\n\nلو مناسبة ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:general?.id||null};
  }

@@ -266,13 +266,15 @@ export class Worker {
      }
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
+     let recentMessages=[];
      if(this.agentRuntime&&c.settings?.agent_llm_enabled===true){
       try{
        const recent=must(await this.db.from('masar_messages').select('direction,sender,body,created_at')
         .eq('applicant_id',a.id).order('sequence',{ascending:false}).limit(Math.max(4,Math.min(30,Number(c.settings.agent_context_messages||12)))));
+       recentMessages=[...recent].reverse();
        llmAnalysis=await this.agentRuntime.analyzeTurn({
         applicant:a,message:m,questions:c.questions,areas:c.areas,settings:c.settings,
-        knowledge,recentMessages:[...recent].reverse()
+        knowledge,recentMessages
        });
        if(llmAnalysis?.available&&['assist','live'].includes(c.settings.agent_llm_mode)){
         knowledge=this.agentRuntime.reorderKnowledge(knowledge,llmAnalysis.plan,c.settings);
@@ -282,7 +284,17 @@ export class Worker {
        console.warn('AI Agent LLM planner failed:',e.code||e.name||'Error');
       }
      }
-     const turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
+     let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
+     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'){
+      try{
+       const composed=await this.agentRuntime.composeTurn({
+        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages
+       });
+       if(composed?.applied)turn={...turn,reply:composed.reply,agent_composed:true};
+      }catch(e){
+       console.warn('AI Agent response composer failed:',e.code||e.name||'Error');
+      }
+     }
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.followup_reply){
       try{

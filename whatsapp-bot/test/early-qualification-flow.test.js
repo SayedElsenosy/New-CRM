@@ -33,6 +33,10 @@ test('welcome and work-area choice are sent in one opening message',async()=>{
  assert.equal(r.patch.awaiting_id,'q2');
  assert.match(r.reply,/Breadfast/);
  assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة؟/);
+ assert.match(r.reply,/• أكتوبر/);
+ assert.match(r.reply,/• مدينة نصر|• نصر/);
+ assert.match(r.reply,/• التجمع/);
+ assert.doesNotMatch(r.reply,/المنصورة/);
  assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا|لو محتار|أقارن|قارن/);
  assert.equal(r.followup_reply,undefined);
 });
@@ -60,6 +64,9 @@ test('Meta ad default opener starts application without knowledge handoff or con
  assert.equal(r.knowledge_id,undefined);
  assert.match(r.reply,/Breadfast/);
  assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة؟/);
+ assert.match(r.reply,/• أكتوبر/);
+ assert.match(r.reply,/• التجمع/);
+ assert.doesNotMatch(r.reply,/المنصورة/);
  assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا|رد Knowledge|لو محتار|أقارن|قارن/);
  assert.equal(r.followup_reply,undefined);
  assert.deepEqual(a.answers.__attribution,attribution);
@@ -86,6 +93,9 @@ test('clear application openers start the flow even when Meta referral is missin
   assert.equal(r.knowledge_id,undefined,body);
   assert.match(r.reply,/Breadfast/,body);
   assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة؟/,body);
+  assert.match(r.reply,/• أكتوبر/,body);
+  assert.match(r.reply,/• التجمع/,body);
+  assert.doesNotMatch(r.reply,/المنصورة/,body);
   assert.doesNotMatch(r.reply,/هل معاك موتوسيكل متاح للشغل يوميًا|لو محتار|أقارن|قارن/,body);
   assert.equal(r.followup_reply,undefined,body);
  }

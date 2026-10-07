@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {areaMode,areaPlaceKey,areaProfile,conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,availableAreaNames} from '../src/area-advisor.js';
+import {areaMode,areaPlaceKey,areaProfile,conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,availableAreaNames,availableAreaListItems,resolveAreaReference} from '../src/area-advisor.js';
 
 const areas=[
  {id:'obour',name:'مدينة العبور',aliases:['مدينه العبور','العبور'],active:true,recruitment_eligible:true,place_key:'العبور',work_mode:'general',details:''},
@@ -123,4 +123,33 @@ test('available area names collapse market and restaurant rows into real place n
   {id:'zayed-market',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true,place_key:'الشيخ زايد',work_mode:'market',details:'x'}
  ]);
  assert.deepEqual(names,['العبور','الشيخ زايد']);
+});
+
+
+test('short unique area tokens resolve to the same place family',()=>{
+ assert.equal(resolveAreaReference('زايد',areas).key,'الشيخ زايد');
+ assert.equal(resolveAreaReference('عبور',areas).key,'العبور');
+ assert.equal(resolveAreaReference('الشيخ',areas).key,'الشيخ زايد');
+});
+
+test('plain place with market and restaurants asks for operating mode instead of previewing general row',()=>{
+ const r=conversationalAreaAdvice('زايد',areas,{});
+ assert.equal(r.action,'choose_area_mode');
+ assert.equal(r.contextPlaceKey,'الشيخ زايد');
+ assert.equal(r.previewAreaId,undefined);
+ assert.match(r.reply,/ماركت/);
+ assert.match(r.reply,/مطاعم/);
+});
+
+test('mode follow-up resolves the exact operating row from remembered place context',()=>{
+ const r=conversationalAreaAdvice('مطاعم',areas,{__area_context:{place_key:'الشيخ زايد',kind:'area_context'}});
+ assert.equal(r.action,'explain_area_mode');
+ assert.equal(r.previewAreaId,'zayed-rest');
+ assert.match(r.reply,/مطاعم/);
+});
+
+test('available area list items distinguish market from restaurants',()=>{
+ const items=availableAreaListItems(areas);
+ assert.ok(items.some(x=>/الشيخ زايد/.test(x)&&/ماركت/.test(x)&&/مطاعم/.test(x)));
+ assert.ok(items.some(x=>/العبور/.test(x)&&/ماركت/.test(x)));
 });

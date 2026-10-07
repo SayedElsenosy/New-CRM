@@ -4261,3 +4261,131 @@ nav button.active .nav-dot{background:#ff8b22!important;box-shadow:0 0 8px #ff7b
   .app.app-overview .ref-action,.app.app-overview .ref-mini{grid-column:1/-1!important}
   .app.app-overview .exact-ranking{grid-template-columns:1fr!important}
 }
+
+
+/* =========================================================
+   OVERVIEW V5 — exact reference hero/map
+   Uses crops taken directly from the approved master artwork.
+   ========================================================= */
+@media (min-width:1100px){
+  .app.app-overview .reference-hero{
+    position:relative!important;
+    width:calc(100% + 44px)!important;
+    height:auto!important;
+    min-height:0!important;
+    aspect-ratio:1382/212!important;
+    margin:0 -22px 13px!important;
+    padding:0!important;
+    overflow:hidden!important;
+    border:0!important;
+    border-radius:0!important;
+    background-image:url('/reference/hero-master.webp')!important;
+    background-repeat:no-repeat!important;
+    background-position:center center!important;
+    background-size:100% 100%!important;
+    box-shadow:none!important;
+  }
+  .app.app-overview .reference-hero:before,
+  .app.app-overview .reference-hero:after,
+  .app.app-overview .dashboard-hero-art,
+  .app.app-overview .reference-hero-copy,
+  .app.app-overview .reference-hero-brand{
+    display:none!important;
+  }
+
+  /* keep the real interactive header over the exact artwork */
+  .app.app-overview .overview-main .topbar{
+    top:18px!important;
+    left:24px!important;
+    width:570px!important;
+    height:58px!important;
+    min-height:58px!important;
+    gap:8px!important;
+  }
+  .app.app-overview .overview-main .top-profile{
+    width:205px!important;
+    min-width:205px!important;
+    height:56px!important;
+    min-height:56px!important;
+  }
+  .app.app-overview .overview-main .topbar-actions .icon{
+    width:45px!important;
+    min-width:45px!important;
+    height:45px!important;
+  }
+  .app.app-overview .overview-main .global-search{
+    min-width:250px!important;
+    max-width:300px!important;
+    height:45px!important;
+  }
+
+  /* exact map crop, no synthetic overlay and no compression stretching */
+  .app.app-overview .exact-map-stage{
+    position:relative!important;
+    overflow:hidden!important;
+    background:#03131f!important;
+    background-image:none!important;
+  }
+  .app.app-overview .reference-map-image{
+    display:block!important;
+    position:absolute!important;
+    inset:0!important;
+    width:100%!important;
+    height:100%!important;
+    max-width:none!important;
+    object-fit:cover!important;
+    object-position:center center!important;
+    opacity:1!important;
+    filter:none!important;
+    transform:none!important;
+    image-rendering:auto!important;
+  }
+  .app.app-overview .exact-map-shade{display:none!important}
+
+  /* tune the whole desktop grid to the master screenshot proportions */
+  .app.app-overview .reference-metrics{
+    gap:16px!important;
+    margin-bottom:14px!important;
+  }
+  .app.app-overview .reference-metrics article{
+    height:122px!important;
+    min-height:122px!important;
+  }
+  .app.app-overview .reference-middle{
+    grid-template-columns:minmax(0,1.02fr) minmax(0,1fr)!important;
+    gap:17px!important;
+    margin-bottom:15px!important;
+  }
+  .app.app-overview .reference-middle>.light-card{
+    height:266px!important;
+    min-height:266px!important;
+  }
+  .app.app-overview .growth-chart{
+    height:208px!important;
+    min-height:208px!important;
+  }
+  .app.app-overview .exact-geo-content{
+    height:209px!important;
+    min-height:209px!important;
+    grid-template-columns:minmax(0,1fr) 168px!important;
+  }
+  .app.app-overview .reference-bottom{
+    grid-template-columns:minmax(235px,.82fr) minmax(0,1.62fr) minmax(240px,.88fr)!important;
+    gap:17px!important;
+  }
+  .app.app-overview .reference-bottom>.light-card{
+    min-height:246px!important;
+    height:246px!important;
+  }
+}
+
+/* mobile keeps live text instead of the desktop baked artwork */
+@media (max-width:1099px){
+  .app.app-overview .reference-hero{
+    background-image:none!important;
+  }
+  .app.app-overview .dashboard-hero-art,
+  .app.app-overview .reference-hero-copy{
+    display:block!important;
+  }
+}

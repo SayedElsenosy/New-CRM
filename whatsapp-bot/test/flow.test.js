@@ -451,3 +451,16 @@ test('bot compares two explicitly named areas without inventing missing details'
  assert.match(r.reply,/تفاصيل المنطقة لسه مش مضافة/);
  assert.match(r.reply,/اسمك بالكامل/);
 });
+
+
+test('salary and total income remain separate knowledge topics',()=>{
+ const rows=[
+  {id:'salary',question:'المرتب كام؟',answer:'المرتب الثابت 6200 جنيه.',keywords:['مرتب','راتب','6200'],examples:['الراتب الثابت كام؟'],active:true,confidence:1},
+  {id:'income',question:'الدخل كام؟',answer:'إجمالي الدخل ممكن يوصل إلى 25,000 جنيه.',keywords:['دخل','25000'],examples:['ممكن أوصل كام مع الحوافز؟'],active:true,confidence:1}
+ ];
+ assert.equal(findKnowledgeAnswer('المرتب كام؟',rows,.6)?.id,'salary');
+ assert.equal(findKnowledgeAnswer('الراتب الثابت كام؟',rows,.6)?.id,'salary');
+ assert.equal(findKnowledgeAnswer('الدخل كام؟',rows,.6)?.id,'income');
+ assert.equal(findKnowledgeAnswer('ممكن أوصل كام مع الحوافز؟',rows,.6)?.id,'income');
+ assert.equal(sameKnowledgeTopic('المرتب كام؟','الدخل كام؟'),false);
+});

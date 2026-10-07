@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {shouldBrowseAreaButtons,botAreaChoices,recommendedAreaChoices,shouldOfferYesNoButtons,shouldOfferChoiceButtons,choiceButtons} from '../src/worker.js';
 import {normalizeWorkAreas} from '../src/db.js';
 
-test('work-area qualification prompt renders area buttons',()=>{
- const q={field_key:'preferred_work_area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟ اختار المنطقة اللي تقدر تلتزم بالشغل فيها بشكل مستمر.'};
- const body=q.label+'\nاختار منطقة العمل من الأزرار تحت. أول ما تختارها هنسجلها ونكمل التقديم.';
- assert.equal(shouldBrowseAreaButtons(q,body),true);
+test('work-area prompt is conversation-first and does not render buttons automatically',()=>{
+ const q={field_key:'preferred_work_area',label:'أنهي منطقة تقدر تشتغل فيها يوميًا؟'};
+ assert.equal(shouldBrowseAreaButtons(q,'حابب تنزل شغل في أنهي منطقة؟'),false);
+ assert.equal(shouldBrowseAreaButtons(q,'تمام، دي اختيارات سريعة للمناطق 👇'),true);
 });
 
 test('knowledge reply while waiting for work area does not attach area buttons',()=>{
@@ -14,8 +14,9 @@ test('knowledge reply while waiting for work area does not attach area buttons',
  assert.equal(shouldBrowseAreaButtons(q,'المرتب الثابت 6200 جنيه.'),false);
 });
 
-test('legacy area browser prompts still render area buttons',()=>{
- assert.equal(shouldBrowseAreaButtons(null,'المناطق المتاحة موجودة في الأزرار تحت 👇'),true);
+test('legacy area text no longer forces buttons unless quick options are requested',()=>{
+ assert.equal(shouldBrowseAreaButtons(null,'المناطق المتاحة موجودة في الأزرار تحت 👇'),false);
+ assert.equal(shouldBrowseAreaButtons(null,'اختيارات سريعة للمناطق 👇'),true);
 });
 
 
@@ -61,10 +62,10 @@ test('nearest-area recommendation renders only recommended work-area buttons fir
  assert.deepEqual(recommendedAreaChoices(areas,answers,body).map(x=>x.id),['moh','haram']);
 });
 
-test('yes-no recruitment question gets quick reply buttons only when its prompt is being sent',()=>{
+test('yes-no buttons are optional and appear only on explicit quick-options request',()=>{
  const q={id:'bike',field_key:'has_motorcycle',kind:'yes_no',label:'هل معاك موتوسيكل متاح للشغل يوميًا؟',active:true,required:true};
- assert.equal(shouldOfferYesNoButtons(q,'هل معاك موتوسيكل متاح للشغل يوميًا؟',[]),true);
- assert.equal(shouldOfferYesNoButtons(q,'المرتب الثابت 6200 جنيه.',[]),false);
+ assert.equal(shouldOfferYesNoButtons(q,'هل معاك موتوسيكل متاح للشغل يوميًا؟',[]),false);
+ assert.equal(shouldOfferYesNoButtons(q,'تمام، دي اختيارات سريعة: نعم / لا 👇',[]),true);
 });
 
 
@@ -74,8 +75,9 @@ test('choice question renders configured WhatsApp buttons',()=>{
   {label:'مسائي',value:'evening'},
   {label:'أي شيفت',value:'any'}
  ]};
- const body='أنهي شيفت مناسب ليك؟\nاختار الإجابة من الأزرار تحت.';
- assert.equal(shouldOfferChoiceButtons(q,body,[]),true);
+ const body='أنهي شيفت مناسب ليك؟';
+ assert.equal(shouldOfferChoiceButtons(q,body,[]),false);
+ assert.equal(shouldOfferChoiceButtons(q,'تمام، دي اختيارات سريعة للسؤال 👇',[]),true);
  assert.deepEqual(choiceButtons(q).map(x=>x.text),['صباحي','مسائي','أي شيفت']);
  assert.deepEqual(choiceButtons(q).map(x=>x.id),['choice:shift-type:0','choice:shift-type:1','choice:shift-type:2']);
 });

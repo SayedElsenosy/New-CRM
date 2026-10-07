@@ -114,3 +114,9 @@ test('WhatsApp history append messages are ignored so deleted applicants are not
  assert.equal(liveInbound.upsert_type,'notify');
  assert.ok(Date.parse(liveInbound.received_at));
 });
+
+
+test('shared WhatsApp location pins are stored as map links',()=>{
+ const text=extractMessageText({locationMessage:{degreesLatitude:30.0444,degreesLongitude:31.2357}});
+ assert.equal(text,'https://maps.google.com/?q=30.0444,31.2357');
+});

@@ -143,3 +143,31 @@ test('disabled feature flag uses old deterministic advisor, no CRM tool side eff
  assert.notEqual(r.agent_action,'crm_tools_multi_step');
  assert.equal(r.tool_calls,undefined);
 });
+
+
+test('a foreign-office area record is inaccessible even if accidentally supplied',async()=>{
+ const foreign={id:'secret-other-office',name:'الدقي ماركت',work_mode:'market',
+  office_id:'office-2',place_key:'الدقي',active:true,recruitment_eligible:true,
+  details:'راتب سري 200000 جنيه'};
+ const self={...applicant,office_id:'office-1'};
+ const r=await runCrmTools({
+  text:'ناقصني ايه في التقديم؟ وعايز تفاصيل الدقي ماركت',
+  applicant:self,answers:self.answers,questions,areas:[...areas.map(x=>({...x,office_id:'office-1'})),foreign],
+  settings,knowledge:[]
+ });
+ assert.equal(r.tools[1].ok,false);
+ assert.doesNotMatch(r.reply,/200000|راتب سري/);
+});
+
+test('a different office knowledge row cannot be retrieved',async()=>{
+ const self={...applicant,office_id:'office-1'};
+ const r=await runCrmTools({
+  text:'المرتب كام وناقصني ايه؟',applicant:self,answers:self.answers,
+  questions,areas,settings,knowledge:[
+   {id:'k-other',office_id:'office-2',question:'المرتب كام؟',answer:'مرتب 88888 جنيه',active:true,source:'manual'},
+   {id:'k-local',office_id:'office-1',question:'المرتب كام؟',answer:'مرتب 4500 جنيه حسب سياسة المكتب',active:true,source:'manual'}
+  ]
+ });
+ assert.doesNotMatch(r.reply,/88888/);
+ assert.match(r.reply,/4500/);
+});

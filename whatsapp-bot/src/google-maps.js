@@ -30,7 +30,8 @@ export function extractResidenceLocation(value){
  const text=trimLocation(value);
  if(!text||text.length>110)return null;
  // Prefer the place after a residence phrase, not the surrounding recruiting question.
- const match=text.match(/(?:^|\s)(?:(?:انا|أنا)\s+)?(?:ساكنة?|عايشة?|سكني|السكن|مقيم|من)\s+(?:في\s+|ب\s+)?(.+)/i);
+ const match=text.match(/(?:^|\s)(?:(?:انا|أنا)\s+)?(?:ساكنة?|عايشة?|سكني|السكن|مقيم|من)\s+(?:في\s+|ب\s+)?(.+)/i)
+  ||text.match(/(?:^|\s)(?:انا|أنا|احنا|إحنا)\s+في\s+(.+)/i);
  let place=match?.[1]||null;
  if(!place&&!mentionsResidence(text)&&!asksForNearbyArea(text)&&!/[؟?]/.test(text))place=text;
  if(!place)return null;

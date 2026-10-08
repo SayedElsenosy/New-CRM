@@ -79,8 +79,28 @@ function compareTool({text,areas,answers}){
  if(!result?.reply||!['compare_area_modes','compare_places','compare_places_followup'].includes(result.action)){
   return {ok:false,reply:'علشان المقارنة تكون دقيقة، حدّد اسم المنطقة أو المنطقتين اللي عايز تقارن بينهم، أو قولّي «قارن الماركت والمطاعم».'};
  }
+ // When comparing market and restaurant systems within a confirmed
+ // office place, use the *original two area descriptions* rather than
+ // paraphrasing potentially unparseable salary numbers.
+ let grounded=result.reply;
+ if(result.action==='compare_area_modes'
+   &&/(?:ماركت|market)/.test(norm(text))
+   &&/(?:مطاعم|مطعم|restaurants)/.test(norm(text))
+   &&result.contextPlaceKey){
+  const family=areas.filter(a=>a?.active===true
+    &&areaPlaceKey(a)===result.contextPlaceKey
+    &&['market','restaurants'].includes(areaMode(a))
+    &&String(a.details||'').trim());
+  const market=family.find(a=>areaMode(a)==='market');
+  const restaurants=family.find(a=>areaMode(a)==='restaurants');
+  if(market&&restaurants){
+   grounded='علشان المقارنة تكون دقيقة، دي التفاصيل المسجلة لنظام الماركت والمطاعم في نفس المنطقة:\\n\\n'
+    +areaDetails(market)+'\\n\\n────────\\n\\n'+areaDetails(restaurants)
+    +'\\n\\nلو عايز أرجحلك واحد حسب الدخل أو ساعات الشغل قولّي أولويتك.';
+  }
+ }
  return {
-  ok:true,reply:result.reply,
+  ok:true,reply:grounded,
   meta:{comparison_action:result.action},
   context:{
    ...(result.contextPlaceKey?{place_key:result.contextPlaceKey}:{}),

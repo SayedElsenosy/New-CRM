@@ -1279,3 +1279,258 @@
 .app-v2-overview .webv2-hero-art img{
   object-position:center 45%!important;
 }
+
+
+/* =========================================================
+   Web V2 comfort pass — stop squeezing desktop into one viewport
+   ========================================================= */
+@media (min-width:1100px){
+  .app-v2-overview{
+    height:auto!important;
+    min-height:100vh!important;
+    overflow:visible!important;
+  }
+  .app-v2-overview main.reference-main{
+    height:100vh!important;
+    min-height:100vh!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    scrollbar-gutter:stable!important;
+  }
+  .app-v2-overview .page{
+    flex:none!important;
+    min-height:auto!important;
+    overflow:visible!important;
+    padding:0 18px 28px!important;
+  }
+  .webv2-home{
+    height:auto!important;
+    min-height:930px!important;
+    display:grid!important;
+    grid-template-rows:205px 108px 600px!important;
+    gap:13px!important;
+  }
+
+  /* roomier hero */
+  .webv2-hero{
+    height:205px!important;
+    min-height:205px!important;
+    border-radius:14px!important;
+  }
+  .webv2-hero-copy{
+    padding:24px 28px!important;
+  }
+  .webv2-hero-copy h1{
+    font-size:36px!important;
+    line-height:1.22!important;
+    letter-spacing:-.4px!important;
+  }
+  .webv2-hero-copy p{
+    margin:9px 0 18px!important;
+    font-size:16px!important;
+  }
+  .webv2-hero-actions button{
+    height:46px!important;
+    min-width:175px!important;
+    font-size:11.5px!important;
+  }
+
+  /* KPI cards breathe */
+  .webv2-kpis{
+    gap:12px!important;
+  }
+  .webv2-kpi{
+    height:108px!important;
+    min-height:108px!important;
+    grid-template-columns:1fr 60px!important;
+    gap:14px!important;
+    padding:14px 16px!important;
+    border-radius:11px!important;
+  }
+  .webv2-kpi-icon{
+    width:58px!important;
+    height:58px!important;
+  }
+  .webv2-kpi-copy span{
+    font-size:12.5px!important;
+  }
+  .webv2-kpi-copy strong{
+    margin-top:8px!important;
+    font-size:32px!important;
+  }
+
+  /* lower dashboard: bigger panels instead of forced shrink */
+  .webv2-main-grid{
+    height:600px!important;
+    min-height:600px!important;
+    grid-template-columns:36% minmax(0,64%)!important;
+    gap:13px!important;
+  }
+  .webv2-left-stack{
+    grid-template-rows:215px 78px 281px!important;
+    gap:13px!important;
+  }
+  .webv2-right-stack{
+    grid-template-rows:325px 262px!important;
+    gap:13px!important;
+  }
+  .webv2-card{
+    border-radius:11px!important;
+  }
+  .webv2-card>header{
+    min-height:50px!important;
+    padding:11px 15px 7px!important;
+  }
+  .webv2-card>header h2{
+    font-size:17px!important;
+  }
+  .webv2-card>header p{
+    font-size:8px!important;
+  }
+
+  /* work areas */
+  .webv2-area-list{
+    padding:7px 15px 12px!important;
+    gap:13px!important;
+  }
+  .webv2-area-row{
+    grid-template-columns:92px 1fr 40px!important;
+    gap:11px!important;
+    font-size:11px!important;
+  }
+  .webv2-area-row .bar{
+    height:14px!important;
+  }
+  .webv2-area-row b{
+    font-size:11px!important;
+  }
+
+  /* AI tile */
+  .webv2-agent-tile{
+    height:78px!important;
+    min-height:78px!important;
+    grid-template-columns:58px 1fr 40px!important;
+    padding:10px 16px!important;
+  }
+  .webv2-agent-tile .agent-icon{
+    width:49px!important;
+    height:49px!important;
+  }
+  .webv2-agent-tile strong{
+    font-size:18px!important;
+  }
+  .webv2-agent-tile small{
+    font-size:8.5px!important;
+  }
+
+  /* recruiting chart */
+  .webv2-performance{
+    padding:0 10px 9px!important;
+  }
+  .webv2-performance .v2-chart{
+    height:calc(100% - 52px)!important;
+    padding-top:27px!important;
+  }
+  .webv2-performance .v2-chart-legend{
+    font-size:9px!important;
+    gap:18px!important;
+  }
+  .webv2-performance .v2-chart svg text{
+    font-size:9px!important;
+  }
+
+  /* latest applicants */
+  .webv2-table{
+    height:calc(100% - 54px)!important;
+    margin:0 12px!important;
+  }
+  .webv2-table .head{
+    height:35px!important;
+    font-size:9px!important;
+    padding:7px 12px!important;
+  }
+  .webv2-table .row{
+    height:calc((100% - 35px)/4)!important;
+    min-height:46px!important;
+    padding:8px 12px!important;
+    font-size:9.5px!important;
+  }
+  .webv2-table .candidate i{
+    width:32px!important;
+    height:32px!important;
+  }
+  .webv2-table .stage{
+    min-width:78px!important;
+    padding:5px 9px!important;
+    font-size:7.5px!important;
+  }
+  .webv2-table .row button{
+    padding:6px 10px!important;
+    font-size:7.5px!important;
+  }
+
+  /* today card */
+  .webv2-today>header{
+    min-height:45px!important;
+  }
+  .webv2-needs-reply{
+    height:45px!important;
+    min-height:45px!important;
+    font-size:10px!important;
+  }
+  .webv2-today-list>button{
+    height:51px!important;
+    min-height:51px!important;
+  }
+  .webv2-today-list strong{
+    font-size:9.5px!important;
+  }
+  .webv2-today-list small{
+    font-size:7.2px!important;
+  }
+  .webv2-today-actions button{
+    height:40px!important;
+    min-height:40px!important;
+    font-size:8px!important;
+  }
+
+  /* specifically defeat the old short-screen compression rule */
+  .app-v2-overview .topbar{
+    height:70px!important;
+    min-height:70px!important;
+    flex-basis:70px!important;
+  }
+  .app-v2-overview .office-switch,
+  .app-v2-overview .global-search{
+    top:13px!important;
+    height:44px!important;
+  }
+  .app-v2-overview .topbar-actions{
+    top:13px!important;
+  }
+  .app-v2-overview .topbar-path{
+    top:27px!important;
+  }
+}
+
+/* only truly tiny desktop heights use a mild compact mode */
+@media (min-width:1100px) and (max-height:620px){
+  .webv2-home{
+    min-height:850px!important;
+    grid-template-rows:185px 100px 540px!important;
+  }
+  .webv2-hero{
+    height:185px!important;
+    min-height:185px!important;
+  }
+  .webv2-main-grid{
+    height:540px!important;
+    min-height:540px!important;
+  }
+  .webv2-left-stack{
+    grid-template-rows:195px 70px 249px!important;
+  }
+  .webv2-right-stack{
+    grid-template-rows:295px 232px!important;
+  }
+}

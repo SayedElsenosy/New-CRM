@@ -47,6 +47,11 @@ test('real CRM tools combine Geoapify-ready nearest suggestions with official mo
  assert.match(r.reply,/الماركت/);
  assert.match(r.reply,/المطاعم/);
  assert.match(r.reply,/عين شمس/);
+ // The comparison must use actual market+restaurant records from one family,
+ // never aggregate the highest salary from a different office neighborhood.
+ assert.match(r.reply,/مرتب ماركت العبور/);
+ assert.match(r.reply,/أجر أوردر مطاعم العبور/);
+ assert.doesNotMatch(r.reply,/7000 جنيه/);
  assert.doesNotMatch(r.reply,/99999|منطقة غير متاحة/);
  assert.ok(r.context.recommendations?.values?.length>=1);
  assert.ok(!r.context.recommendations.values.includes('bad'));

@@ -675,3 +675,32 @@ test('residence in Sayeda Aisha recommends nearby work areas and never commits p
  assert.equal(second.patch.answers.__area_recommendations.origin_key,'sayeda_aisha');
  assert.match(second.reply,/المقطم مطاعم/);
 });
+
+
+test('asking about restaurant operation returns exact Areas details without selecting work area',async()=>{
+ const original='الدخل أسبوعيًا حسب النظام\nالزون: 8 كم\nالقبض بيوم الثلاثاء\nملحوظة داخلية للتشغيل: متاحة للمتقدم';
+ const restaurant={id:'rest-zayed',name:'الشيخ زايد مطاعم',place_key:'الشيخ زايد',work_mode:'restaurants',
+  active:true,recruitment_eligible:true,zone:'WEST',details:original};
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({
+  applicant:a,message:{body:'قولّي تفاصيل مطاعم الشيخ زايد'},
+  questions,areas:[restaurant],settings,interpret:noAi,knowledge:[]
+ });
+ assert.equal(r.agent_action,'explain_area_mode');
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,restaurant.id);
+ assert.ok(r.reply.includes('📍 '+restaurant.name+'\n'+original));
+});
+
+test('WhatsApp restaurant area preview sends original details unchanged',async()=>{
+ const details='التفاصيل كما سجلها المكتب:\n- راتب خاص\n- قبض أسبوعي\n- بدون تعديل';
+ const rest={id:'rest-oct',name:'أكتوبر مطاعم',place_key:'أكتوبر',work_mode:'restaurants',
+  active:true,recruitment_eligible:true,zone:'WEST',details};
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'area_preview:rest-oct'},
+  questions,areas:[rest],settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.ok(r.reply.includes('📍 '+rest.name+'\n'+details));
+});

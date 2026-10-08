@@ -25,7 +25,7 @@ function MetricCard({title,value,caption,Icon,tone='cyan',trend=''}) {
   </article>;
 }
 
-function LineChart({data=[]}){
+export function LineChart({data=[]}){
   const clean=data.length?data:[{label:'مايو',count:0,accepted:0},{label:'يونيو',count:0,accepted:0},{label:'يوليو',count:0,accepted:0},{label:'أغسطس',count:0,accepted:0},{label:'سبتمبر',count:0,accepted:0},{label:'أكتوبر',count:0,accepted:0}];
   const width=620,height=220,padX=36,padTop=24,padBottom=38;
   const max=Math.max(1,...clean.flatMap(x=>[n(x.count),n(x.accepted)]));

@@ -94,9 +94,9 @@ function compareTool({text,areas,answers}){
   const market=family.find(a=>areaMode(a)==='market');
   const restaurants=family.find(a=>areaMode(a)==='restaurants');
   if(market&&restaurants){
-   grounded='علشان المقارنة تكون دقيقة، دي التفاصيل المسجلة لنظام الماركت والمطاعم في نفس المنطقة:\\n\\n'
-    +areaDetails(market)+'\\n\\n────────\\n\\n'+areaDetails(restaurants)
-    +'\\n\\nلو عايز أرجحلك واحد حسب الدخل أو ساعات الشغل قولّي أولويتك.';
+   grounded='علشان المقارنة تكون دقيقة، دي التفاصيل المسجلة لنظام الماركت والمطاعم في نفس المنطقة:\n\n'
+    +areaDetails(market)+'\n\n────────\n\n'+areaDetails(restaurants)
+    +'\n\nلو عايز أرجحلك واحد حسب الدخل أو ساعات الشغل قولّي أولويتك.';
   }
  }
  return {

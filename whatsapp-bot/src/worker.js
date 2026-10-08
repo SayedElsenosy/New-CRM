@@ -370,7 +370,7 @@ export class Worker {
       }catch(traceError){if(!schemaMissing(traceError)&&traceError.code!=='PGRST204')console.warn('Agent decision trace failed:',traceError.code||traceError.name||'Error');}
      }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')console.warn('Agent turn audit failed:',e.code||e.name||'Error');}
      if(turn.handoff){
-      const question=String(m.body||'').slice(0,1000);
+      const question=String(turn.handoff_note||m.body||'').slice(0,1000);
       must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ai_handoff',detail:{message_id:m.id,question,reason:turn.handoff_reason||'low_confidence'}}));
       try{
        const row={

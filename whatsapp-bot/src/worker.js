@@ -3,7 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
-import {updateBrainMemory} from './brain-memory.js';
+import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
@@ -289,7 +289,7 @@ export class Worker {
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
      let recentMessages=[];
-     if(this.agentRuntime&&c.settings?.agent_llm_enabled===true){
+     if(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m)){
       try{
        const recent=must(await this.db.from('masar_messages').select('direction,sender,body,created_at')
         .eq('applicant_id',a.id).order('sequence',{ascending:false}).limit(Math.max(4,Math.min(30,Number(c.settings.agent_context_messages||12)))));

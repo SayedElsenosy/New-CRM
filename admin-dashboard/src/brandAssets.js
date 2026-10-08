@@ -1,18 +1,25 @@
 const logoSvg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 300" role="img" aria-label="Sayed Elsenosy Tech">
 <defs>
- <linearGradient id="sgrad" x1="0" x2="1"><stop stop-color="#ff7a16"/><stop offset=".48" stop-color="#ff9a2c"/><stop offset=".55" stop-color="#39dfff"/><stop offset="1" stop-color="#13bfe7"/></linearGradient>
- <linearGradient id="orange" x1="0" x2="1"><stop stop-color="#ff6b08"/><stop offset="1" stop-color="#ffab38"/></linearGradient>
- <linearGradient id="cyan" x1="0" x2="1"><stop stop-color="#0bc7ee"/><stop offset="1" stop-color="#70efff"/></linearGradient>
- <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+    <stop stop-color="#21ecff"/><stop offset=".35" stop-color="#0b9cff"/><stop offset=".7" stop-color="#1757ff"/><stop offset="1" stop-color="#70f7ff"/>
+  </linearGradient>
+  <linearGradient id="blue2" x1="0" y1="0" x2="1" y2="0">
+    <stop stop-color="#0fe7ff"/><stop offset=".5" stop-color="#0e7cff"/><stop offset="1" stop-color="#24dcff"/>
+  </linearGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
-<g transform="translate(24 18)" filter="url(#glow)">
- <path d="M220 72C172 34 119 34 67 55c38 5 67 17 95 34-48-13-90-7-132 17 53 1 92 13 128 36-43-6-78 1-114 24 56-1 97 13 137 39" fill="none" stroke="url(#orange)" stroke-width="16" stroke-linecap="round"/>
- <path d="M292 72c48-38 101-38 153-17-38 5-67 17-95 34 48-13 90-7 132 17-53 1-92 13-128 36 43-6 78 1 114 24-56-1-97 13-137 39" fill="none" stroke="url(#cyan)" stroke-width="16" stroke-linecap="round"/>
- <text x="203" y="176" font-family="Arial Black,Arial,sans-serif" font-size="160" font-style="italic" font-weight="900" fill="url(#sgrad)">S</text>
+<g transform="translate(28 26) skewX(-10)" filter="url(#glow)">
+  <path d="M40 72h178l-28 34H72l-17 21h124l-27 33H18l-18-33z" fill="url(#blue)"/>
+  <path d="M210 72h156l-26 33h-91l-20 24h94l-25 32H166z" fill="url(#blue)"/>
+  <path d="M354 72h148l-26 34h-52l-48 55h-50l48-55h-47z" fill="url(#blue)"/>
+  <rect x="485" y="31" width="19" height="19" rx="3" fill="#11dfff"/>
+  <rect x="511" y="18" width="15" height="15" rx="3" fill="#0d9cff"/>
+  <rect x="510" y="43" width="22" height="22" rx="3" fill="#20efff"/>
+  <rect x="535" y="34" width="13" height="13" rx="2" fill="#0d7cff"/>
 </g>
-<text x="84" y="248" font-family="Arial,Helvetica,sans-serif" font-size="36" font-weight="900" fill="#ff8b24">Sayed</text>
-<text x="206" y="248" font-family="Arial,Helvetica,sans-serif" font-size="36" font-weight="800" fill="#eaf8ff">Elsenosy</text>
-<text x="380" y="248" font-family="Arial,Helvetica,sans-serif" font-size="36" font-weight="900" fill="#27d8f2">Tech</text>
-<text x="142" y="282" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#84a7b7">DELIVERY RECRUITMENT PLATFORM</text>
+<text x="280" y="220" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="36" font-weight="800" fill="url(#blue2)">Sayed Elsenosy Tech</text>
+<g fill="#1edcff" transform="translate(235 244) skewX(-20)">
+ <rect width="28" height="8" rx="3"/><rect x="34" width="28" height="8" rx="3"/><rect x="68" width="28" height="8" rx="3"/>
+</g>
 </svg>`;
 export const BRAND_IMAGE='data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(logoSvg);

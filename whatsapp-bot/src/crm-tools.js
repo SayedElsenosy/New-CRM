@@ -151,7 +151,7 @@ export async function runCrmTools({
     // market row from one district against restaurants in another.
     const closest=updates.recommendations.values?.[0];
     const chosen=context.areas.find(a=>String(a.id)===String(closest));
-    if(chosen&&!context.answers.__area_context?.place_key){
+    if(chosen){
      context.answers={...context.answers,__area_context:{place_key:areaPlaceKey(chosen)}};
     }
    }

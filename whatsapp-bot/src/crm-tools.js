@@ -153,7 +153,12 @@ export async function runCrmTools({
  if(!allow||!settings.ai_enabled)return null;
  const toolNames=planCrmToolCalls(text,{hasOrigin:Boolean(answers.__area_recommendations?.origin_key)});
  if(!toolNames.length)return null;
- const context={text,applicant,answers,questions,areas:areas.filter(x=>x?.active===true),knowledge,settings,mapsOptions};
+ const permittedAreas=(areas||[]).filter(x=>x?.active===true
+  &&(!applicant?.office_id||!x.office_id||String(x.office_id)===String(applicant.office_id)));
+ const permittedKnowledge=(knowledge||[]).filter(x=>x?.active!==false
+  &&(!applicant?.office_id||!x.office_id||String(x.office_id)===String(applicant.office_id))
+  &&!['stale','conflict'].includes(String(x.memory_status||'')));
+ const context={text,applicant,answers,questions,areas:permittedAreas,knowledge:permittedKnowledge,settings,mapsOptions};
  const outputs=[],trace=[],updates={};
  for(const name of toolNames.slice(0,MAX_TOOLS_PER_TURN)){
   if(!ALLOWED.has(name))continue;

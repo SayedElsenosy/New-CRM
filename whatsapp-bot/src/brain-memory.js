@@ -20,12 +20,11 @@ function explicitShift(text){
  const negated=/(?:مش عايز|مش عاوز|مش بفضل|مش افضل|مبفضلش|مش مناسب)/.test(n);
  if(!context&&!preference)return null;
  if(!preference)return null;
- if(morning===evening)return null;
- const shift=morning?'morning':'evening';
- // For contrastive correction like "قصدي مسائي مش صباحي", pick the
- // explicitly preferred shift, not the merely negated alternative.
+ // Prefer the explicitly corrected value even if both shifts were mentioned.
  const correction=n.match(/(?:قصدي|اقصد|انا اقصد)\s+(?:الشيفت\s+|الشفت\s+)?(صباحي|الصبح|مسائي|بالليل|المساء)/);
  if(correction)return {op:'set',value:/(?:صباحي|الصبح)/.test(correction[1])?'morning':'evening'};
+ if(morning===evening)return null;
+ const shift=morning?'morning':'evening';
  if(negated)return {op:'remove',value:shift};
  return {op:'set',value:shift};
 }

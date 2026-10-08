@@ -312,7 +312,7 @@ export class Worker {
      if(brain.changed&&turn.reply&&turn.patch){
       turn={...turn,patch:{...turn.patch,answers:{...(turn.patch.answers||a.answers||{}),__brain_memory:brain.memory}}};
      }
-     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
+     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,
@@ -351,7 +351,8 @@ export class Worker {
         handoff:Boolean(turn.handoff),handoff_reason:turn.handoff_reason||null,
         knowledge_id:turn.knowledge_id||null,knowledge_confidence:turn.knowledge_confidence??null,
         extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null,
-        brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[]
+        brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[],
+        crm_tools:Array.isArray(turn.tool_calls)?turn.tool_calls.map(x=>({name:x.tool,ok:x.ok})):[]
        }
       });
       if(eventResult.error)throw eventResult.error;
@@ -363,7 +364,7 @@ export class Worker {
        const trace=await this.db.from('masar_agent_decisions').insert({
         applicant_id:a.id,office_id:a.office_id||null,message_id:m.id,planner_mode:plannerMode,
         input_text:String(m.body||'').slice(0,4000),
-        intents:decision?.intent?[decision.intent,...(decision.steps||[]).map(step=>'planned:'+step)]:[],
+        intents:[...(decision?.intent?[decision.intent,...(decision.steps||[]).map(step=>'planned:'+step)]:[]),...(turn.tool_calls||[]).map(x=>'tool:'+x.tool)],
         facts:decision?.facts||[],
         action:decision?.action||action,
         confidence:decision?.confidence??turn.agent_confidence??turn.knowledge_confidence??null,

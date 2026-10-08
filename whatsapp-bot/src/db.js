@@ -22,8 +22,11 @@ export async function config(db,officeId=null){
  // Keep older installations working until migration 012 is applied.
  if(officeId&&['42703','PGRST204'].includes(qr.error?.code||''))qr=await db.from('masar_questions').select('*').order('position');
  if(officeId&&['42703','PGRST204'].includes(ar.error?.code||''))ar=await db.from('masar_areas').select('*').order('position');
- let officeSettings=null;
+ let officeSettings=null,office=null;
  if(officeId){
+  const officeRow=await db.from('masar_offices').select('id,name').eq('id',officeId).maybeSingle();
+  if(!officeRow.error&&officeRow.data)office={id:officeRow.data.id,name:String(officeRow.data.name||'').trim().slice(0,90)};
+  else if(officeRow.error&&!['PGRST205','42P01','42703','PGRST204'].includes(officeRow.error.code))throw officeRow.error;
   const r=await db.from('masar_office_settings').select('*').eq('office_id',officeId).maybeSingle();
   if(!r.error)officeSettings=r.data;
   else if(!['PGRST205','42P01','42703','PGRST204'].includes(r.error.code))throw r.error;
@@ -38,5 +41,5 @@ export async function config(db,officeId=null){
  settings.ai_learning_enabled=true;
  settings.ai_confidence_threshold=Number(baseSettings.ai_confidence_threshold||0.62);
  settings.ai_fallback=baseSettings.ai_fallback;
- return {questions:must(qr),areas,settings};
+ return {questions:must(qr),areas,settings,office};
 }

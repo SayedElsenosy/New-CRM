@@ -81,7 +81,7 @@ test('status tool never turns answered or incomplete applicant into hired / appr
  const r=await tool('حالة طلبي وصلت لفين؟');
  assert.equal(r.tools[0].tool,'read_candidate_progress');
  assert.match(r.reply,/لسه في أسئلة مطلوبة/);
- assert.match(r.reply,/أنهي منطقة تقدر تشتغل/);
+ assert.match(r.reply,/حابب تنزل شغل في أنهي منطقة/);
  assert.doesNotMatch(r.reply,/تم القبول|اتقبلت|تم التعيين/);
 });
 

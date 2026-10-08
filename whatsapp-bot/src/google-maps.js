@@ -36,6 +36,8 @@ export function extractResidenceLocation(value){
  if(!place)return null;
  place=place.split(/[،,؛.!؟?]|\s+(?:وعايز|وعاوز|وايه|وإيه|ايه|إيه|فين|ازاي|ازاى|بس|اقرب|أقرب|عشان|علشان|محتاج|قولي|قولّي|ورشح)/i)[0];
  place=trimLocation(place).replace(/^(?:في|ب|من|منطقة|المنطقة|حي|الحي)\s+/,'');
+ // Use neighborhood/city names only; do not send an applicant's full street address.
+ if(/(?:شارع|عمارة|عماره|شقة|شقه|منزل|برج|بيت رقم|الدور)\s+/i.test(place))return null;
  if(place.length<3||place.length>85||/^(?:ايه|إيه|فين|اقرب|أقرب|الاختيارات|ممكن|انا|أنا)/i.test(place))return null;
  return place;
 }
@@ -155,7 +157,7 @@ export async function nearestWorkAreasWithGoogleMaps(value,areas,options={}){
  const local=nearestWorkAreas(value,areas,options);
  const config=requestConfig(options);
  if(!config.key)return local;
- const explicit=resolveKnownPlace(value);
+ const explicit=resolveKnownPlace(extractResidenceLocation(value)||value);
  const fallbackKnown=options.fallbackOriginKey?resolveKnownPlace(
   // Existing key stays in the local advisor; derive its origin when user follows up.
   local?.origin?.label||''

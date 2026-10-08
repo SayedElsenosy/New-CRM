@@ -3268,3 +3268,93 @@
     width:100%;
   }
 }
+
+
+/* =========================================================
+   Mobile drawer / iOS Safari: keep sidebar above its backdrop.
+   A blur backdrop combined with a translated, composited fixed
+   drawer can visually blur the drawer itself on Safari.  Only
+   darken the PAGE underneath; never filter the open navigation.
+   ========================================================= */
+@media (max-width:1099px){
+  .app.app-v2{
+    isolation:isolate;
+  }
+  .app.app-v2>.mobile-nav-backdrop{
+    display:block!important;
+    position:fixed!important;
+    inset:0!important;
+    z-index:110!important;
+    width:100%!important;
+    height:100dvh!important;
+    padding:0!important;
+    margin:0!important;
+    border:0!important;
+    border-radius:0!important;
+    background:rgba(0,8,17,.73)!important;
+    /* Do not use a blurred backdrop: iOS Safari may blur the drawer too. */
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    filter:none!important;
+    -webkit-filter:none!important;
+    transform:none!important;
+    opacity:1!important;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  .app.app-v2>aside{
+    position:fixed!important;
+    inset:0 0 0 auto!important;
+    top:0!important;
+    right:0!important;
+    left:auto!important;
+    width:min(310px,86vw)!important;
+    height:100vh!important;
+    height:100dvh!important;
+    max-height:100dvh!important;
+    z-index:120!important;
+    background-color:#031522!important;
+    filter:none!important;
+    -webkit-filter:none!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    opacity:1!important;
+    isolation:isolate;
+    overflow:hidden!important;
+    display:flex!important;
+    flex-direction:column!important;
+    transform:translate3d(105%,0,0)!important;
+    transition:transform .22s ease!important;
+    box-shadow:none!important;
+  }
+  .app.app-v2>aside.open{
+    transform:translate3d(0,0,0)!important;
+    box-shadow:-18px 0 46px rgba(0,0,0,.55)!important;
+    pointer-events:auto!important;
+  }
+  .app.app-v2>aside .sidebar-scroll{
+    flex:1 1 auto!important;
+    min-height:0!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    overscroll-behavior:contain!important;
+    -webkit-overflow-scrolling:touch;
+    position:relative;
+    z-index:2;
+  }
+  .app.app-v2>aside .brand,
+  .app.app-v2>aside .sidebar-bottom{
+    position:relative;
+    z-index:2!important;
+    flex-shrink:0!important;
+  }
+  .app.app-v2>main{
+    position:relative;
+    z-index:1;
+  }
+}
+@media (min-width:1100px){
+  .app.app-v2>.mobile-nav-backdrop{
+    display:none!important;
+  }
+}

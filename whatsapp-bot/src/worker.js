@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
+import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
@@ -288,14 +289,14 @@ export class Worker {
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
      let recentMessages=[];
-     if(this.agentRuntime&&c.settings?.agent_llm_enabled===true){
+     if(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m)){
       try{
        const recent=must(await this.db.from('masar_messages').select('direction,sender,body,created_at')
         .eq('applicant_id',a.id).order('sequence',{ascending:false}).limit(Math.max(4,Math.min(30,Number(c.settings.agent_context_messages||12)))));
        recentMessages=[...recent].reverse();
        llmAnalysis=await this.agentRuntime.analyzeTurn({
         applicant:a,message:m,questions:c.questions,areas:c.areas,settings:c.settings,
-        knowledge,recentMessages
+        knowledge,recentMessages,office:c.office
        });
        if(llmAnalysis?.available&&['assist','live'].includes(c.settings.agent_llm_mode)){
         knowledge=this.agentRuntime.reorderKnowledge(knowledge,llmAnalysis.plan,c.settings);
@@ -306,10 +307,16 @@ export class Worker {
       }
      }
      let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
+     // Persist only explicit preferences, not freeform conversation or guesses.
+     const brain=updateBrainMemory(a.answers?.__brain_memory,m.body);
+     if(brain.changed&&turn.reply&&turn.patch){
+      turn={...turn,patch:{...turn.patch,answers:{...(turn.patch.answers||a.answers||{}),__brain_memory:brain.memory}}};
+     }
      if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
-        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages
+        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,
+        office:c.office,applicant:{...a,answers:turn.patch?.answers||a.answers}
        });
        if(composed?.applied)turn={...turn,reply:composed.reply,agent_composed:true};
       }catch(e){
@@ -343,7 +350,8 @@ export class Worker {
         message_id:m.id,office_id:a.office_id||null,action,
         handoff:Boolean(turn.handoff),handoff_reason:turn.handoff_reason||null,
         knowledge_id:turn.knowledge_id||null,knowledge_confidence:turn.knowledge_confidence??null,
-        extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null
+        extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null,
+        brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[]
        }
       });
       if(eventResult.error)throw eventResult.error;
@@ -355,7 +363,7 @@ export class Worker {
        const trace=await this.db.from('masar_agent_decisions').insert({
         applicant_id:a.id,office_id:a.office_id||null,message_id:m.id,planner_mode:plannerMode,
         input_text:String(m.body||'').slice(0,4000),
-        intents:decision?.intent?[decision.intent]:[],
+        intents:decision?.intent?[decision.intent,...(decision.steps||[]).map(step=>'planned:'+step)]:[],
         facts:decision?.facts||[],
         action:decision?.action||action,
         confidence:decision?.confidence??turn.agent_confidence??turn.knowledge_confidence??null,

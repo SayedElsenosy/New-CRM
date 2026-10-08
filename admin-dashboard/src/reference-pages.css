@@ -3011,3 +3011,260 @@
     grid-template-columns:1fr;
   }
 }
+
+
+/* =========================================================
+   Applicant dialog: full WEB / desktop contrast and layout.
+   This extends the mobile-first applicant profile treatment,
+   without changing non-applicant modals or other CRM pages.
+   ========================================================= */
+.app-v2 .modal.applicant-profile-modal{
+  color-scheme:dark;
+}
+.app-v2 .applicant-profile-modal .profile-header .person,
+.app-v2 .applicant-profile-modal .answer-grid,
+.app-v2 .applicant-profile-modal .qualification-grid,
+.app-v2 .applicant-profile-modal .recruitment-stage-buttons{
+  min-width:0;
+}
+.app-v2 .applicant-profile-modal .profile-header .person .avatar{
+  flex:0 0 55px;
+}
+.app-v2 .applicant-profile-modal .profile-header .person strong,
+.app-v2 .applicant-profile-modal .profile-header .person h2,
+.app-v2 .applicant-profile-modal .answer-grid>div>strong,
+.app-v2 .applicant-profile-modal .completion strong{
+  color:#f4fcff!important;
+  opacity:1!important;
+}
+.app-v2 .applicant-profile-modal .profile-header .badge,
+.app-v2 .applicant-profile-modal .profile-header .recruitment-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:30px;
+  padding:6px 11px;
+  font-size:12px!important;
+  font-weight:800;
+  line-height:1.3;
+  white-space:normal;
+  text-align:center;
+}
+.app-v2 .applicant-profile-modal .profile-header .badge.incomplete{
+  background:#3d2b0e!important;
+  border:1px solid #a97122!important;
+  color:#ffdb91!important;
+}
+.app-v2 .applicant-profile-modal .attribution-card{
+  background:#09263a!important;
+  border:1px solid #1b5970!important;
+  color:#e9f7ff!important;
+  border-radius:13px;
+  padding:17px 19px;
+}
+.app-v2 .applicant-profile-modal .attribution-card .eyebrow{
+  color:#56def5!important;
+  font-size:12px;
+}
+.app-v2 .applicant-profile-modal .attribution-card strong{
+  color:#f4fcff!important;
+  font-size:15px;
+  font-weight:800;
+  overflow-wrap:anywhere;
+}
+.app-v2 .applicant-profile-modal .attribution-card small{
+  color:#b3cfde!important;
+  font-size:12px;
+  overflow-wrap:anywhere;
+}
+.app-v2 .applicant-profile-modal .qualification-reasons{
+  color:#314c54!important;
+  background:#fff3ef;
+  border:1px solid #ebc6bb;
+  border-radius:10px;
+  padding:11px 13px;
+}
+.app-v2 .applicant-profile-modal .qualification-reasons strong,
+.app-v2 .applicant-profile-modal .qualification-reasons span{
+  color:#773f36!important;
+}
+.app-v2 .applicant-profile-modal .bot-control-row strong{
+  color:#f4fcff!important;
+  font-weight:800;
+}
+.app-v2 .applicant-profile-modal .bot-control-row small{
+  color:#bbd4df!important;
+  font-size:12px;
+}
+.app-v2 .applicant-profile-modal .chat{
+  background:#081c2d!important;
+  border:1px solid #14455e!important;
+  border-radius:14px;
+  color:#e5f4fc!important;
+  padding:15px!important;
+  min-width:0;
+}
+.app-v2 .applicant-profile-modal .chat .bubble{
+  border:1px solid #1e506b!important;
+  background:#0a263b!important;
+  color:#ebf8ff!important;
+  max-width:min(84%,680px);
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+.app-v2 .applicant-profile-modal .chat .bubble.out{
+  border-color:#176779!important;
+  background:#0c3442!important;
+}
+.app-v2 .applicant-profile-modal .chat .bubble>strong{
+  color:#63e7f9!important;
+  font-size:13px;
+  font-weight:800;
+}
+.app-v2 .applicant-profile-modal .chat .bubble p{
+  color:#e2f2fa!important;
+  font-size:14px;
+  line-height:1.75;
+  overflow-wrap:anywhere;
+}
+.app-v2 .applicant-profile-modal .chat .bubble>small{
+  color:#b2cbda!important;
+  font-size:11px;
+}
+.app-v2 .applicant-profile-modal .chat .bubble a{
+  color:#6ae7ff!important;
+}
+.app-v2 .applicant-profile-modal .reply-form{
+  min-width:0;
+  gap:12px;
+}
+.app-v2 .applicant-profile-modal .reply-form textarea{
+  min-width:0;
+  flex:1 1 auto;
+  border-radius:11px;
+}
+.app-v2 .applicant-profile-modal .reply-form button{
+  min-height:48px;
+}
+.app-v2 .applicant-profile-modal .danger-zone{
+  background:#fff3f1!important;
+  border:1px solid #edb8b2!important;
+  color:#5e3030!important;
+}
+.app-v2 .applicant-profile-modal .danger-zone strong{
+  color:#982c25!important;
+}
+.app-v2 .applicant-profile-modal .danger-zone small{
+  color:#734d49!important;
+}
+@media(min-width:961px){
+  .app-v2 .modal.wide.applicant-profile-modal{
+    width:min(1040px,calc(100vw - 72px))!important;
+    max-width:calc(100vw - 72px)!important;
+    max-height:calc(100dvh - 58px)!important;
+    padding:26px 30px!important;
+    border-radius:19px!important;
+  }
+  .app-v2 .applicant-profile-modal>header{
+    position:sticky;
+    top:-26px;
+    z-index:6;
+    margin-bottom:22px;
+    padding:16px 0 14px!important;
+    background:#071827!important;
+    border-bottom:1px solid #1b536c!important;
+  }
+  .app-v2 .applicant-profile-modal .profile-header{
+    align-items:center;
+    gap:25px;
+    margin:0 0 22px;
+  }
+  .app-v2 .applicant-profile-modal .profile-header h2{
+    font-size:23px;
+  }
+  .app-v2 .applicant-profile-modal .profile-header .person>div:last-child>span{
+    font-size:14px;
+  }
+  .app-v2 .applicant-profile-modal .profile-stage-stack{
+    align-items:flex-end;
+  }
+  .app-v2 .applicant-profile-modal .tabs{
+    gap:25px;
+    margin-bottom:22px;
+  }
+  .app-v2 .applicant-profile-modal .tabs button{
+    padding:12px 12px!important;
+    font-size:14px;
+    min-height:45px;
+  }
+  .app-v2 .applicant-profile-modal .qualification-card,
+  .app-v2 .applicant-profile-modal .recruitment-stage-control{
+    padding:22px 24px!important;
+    margin:20px 0;
+  }
+  .app-v2 .applicant-profile-modal .qualification-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:13px;
+  }
+  .app-v2 .applicant-profile-modal .qualification-grid>div{
+    min-height:101px;
+    justify-content:center;
+    padding:16px!important;
+  }
+  .app-v2 .applicant-profile-modal .qualification-grid strong{
+    font-size:17px;
+  }
+  .app-v2 .applicant-profile-modal .recruitment-stage-buttons{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+  }
+  .app-v2 .applicant-profile-modal .recruitment-stage-buttons button:not(.primary):not(.danger):not(.icon):not(.text-button):not(.table-person-button){
+    min-height:49px;
+    font-size:13px;
+  }
+  .app-v2 .applicant-profile-modal .answer-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:15px;
+  }
+  .app-v2 .applicant-profile-modal .answer-grid>div{
+    min-height:108px;
+    padding:18px!important;
+  }
+  .app-v2 .applicant-profile-modal .answer-grid>div>strong{
+    font-size:17px;
+  }
+}
+@media(min-width:701px) and (max-width:960px){
+  .app-v2 .modal.wide.applicant-profile-modal{
+    width:calc(100vw - 42px)!important;
+    max-width:calc(100vw - 42px)!important;
+    padding:22px!important;
+  }
+  .app-v2 .applicant-profile-modal .qualification-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .app-v2 .applicant-profile-modal .recruitment-stage-buttons{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media(max-width:700px){
+  .app-v2 .applicant-profile-modal .profile-header .person .avatar{
+    flex-basis:50px;
+  }
+  .app-v2 .applicant-profile-modal .chat .bubble{
+    max-width:96%;
+  }
+  .app-v2 .applicant-profile-modal .chat{
+    padding:10px!important;
+  }
+  .app-v2 .applicant-profile-modal .reply-form{
+    flex-wrap:wrap;
+  }
+  .app-v2 .applicant-profile-modal .reply-form textarea{
+    width:100%;
+    flex-basis:100%;
+  }
+  .app-v2 .applicant-profile-modal .reply-form button{
+    width:100%;
+  }
+}

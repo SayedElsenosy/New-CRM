@@ -200,15 +200,15 @@ export class AgentRuntime{
  }
  buildPlannerMessages({message,questions,areas,applicant,knowledge,recentMessages,settings,office=null}){
   const currentText=String(message?.body||'');
-  const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,24).map(q=>({
+  const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,16).map(q=>({
    field_key:q.field_key,kind:q.kind,required:q.required!==false,priority:Number(q.priority||50),
    label:trim(q.label,80),instruction:trim(q.agent_instruction,60),confirmation_required:q.confirmation_required===true,
    options:Array.isArray(q.options)?q.options.slice(0,8).map(o=>typeof o==='string'?trim(o,80):{label:trim(o?.label,80),value:trim(o?.value??o?.label,80)}):[]
   }));
-  const safeAreas=compactAreas(areas,currentText,12).map(a=>({
+  const safeAreas=compactAreas(areas,currentText,10).map(a=>({
    id:a.id,name:trim(a.name,70),aliases:(a.aliases||[]).slice(0,1).map(x=>trim(x,45)),zone:a.zone||'UNKNOWN'
   }));
-  const safeKnowledge=compactKnowledge(knowledge,currentText,5).map(k=>({
+  const safeKnowledge=compactKnowledge(knowledge,currentText,4).map(k=>({
    id:k.id,question:trim(k.question,130),answer:trim(k.answer,220),scope:k.knowledge_scope||'office',
    confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,1).map(x=>trim(x,65))
   }));

@@ -160,7 +160,7 @@ function UpcomingInterviewsPanel({items=[],onSelect,onTab}){
 }
 function MetricSparkline({tone='cyan'}){
  const paths={cyan:'M3 28 C12 25 18 27 26 20 S42 12 50 16 S64 26 74 18 S88 7 97 10',orange:'M3 26 C12 30 19 17 28 20 S43 26 52 17 S66 8 75 14 S88 22 98 9',green:'M3 27 C14 25 21 19 30 20 S43 27 52 18 S68 10 77 15 S90 11 98 7'};
- return <svg className={'metric-sparkline '+tone} viewBox="0 0 100 34" aria-hidden="true"><path d={paths[tone]||paths.cyan}/><circle cx="98" cy={tone==='green'?7:tone==='orange'?9:10} r="2.6"/></svg>;
+ return <svg className={'metric-sparkline '+tone} viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true"><path d={paths[tone]||paths.cyan}/><circle cx="98" cy={tone==='green'?7:tone==='orange'?9:10} r="2.6"/></svg>;
 }
 function DashboardHeroArt(){
  return <div className="dashboard-hero-art" aria-hidden="true"><div className="hero-skyline"/><img className="reference-hero-rider" src="/reference/hero-rider.webp" alt=""/><div className="reference-hero-fade"/></div>;

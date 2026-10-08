@@ -4476,3 +4476,76 @@ nav button.active .nav-dot{background:#ff8b22!important;box-shadow:0 0 8px #ff7b
     box-shadow:0 0 8px rgba(255,129,29,.8)!important;
   }
 }
+
+
+/* =========================================================
+   OVERVIEW V7 — KPI anatomy + lower row exactness
+   ========================================================= */
+@media (min-width:1100px){
+  .app.app-overview .reference-metrics article{
+    direction:ltr!important;
+    grid-template-columns:56px minmax(0,1fr)!important;
+    column-gap:14px!important;
+    align-items:center!important;
+    padding:13px 15px 29px!important;
+  }
+  .app.app-overview .reference-metrics article>.metric-ref-icon{
+    grid-column:1!important;
+    grid-row:1!important;
+    width:54px!important;
+    height:54px!important;
+    justify-self:start!important;
+    align-self:center!important;
+  }
+  .app.app-overview .reference-metrics article>div{
+    grid-column:2!important;
+    grid-row:1!important;
+    direction:rtl!important;
+    text-align:right!important;
+    align-items:flex-start!important;
+    min-width:0!important;
+  }
+  .app.app-overview .reference-metrics article>div small,
+  .app.app-overview .reference-metrics article>div strong,
+  .app.app-overview .reference-metrics article>div em{
+    width:100%!important;
+    text-align:right!important;
+  }
+  .app.app-overview .metric-sparkline{
+    left:15px!important;
+    right:15px!important;
+    bottom:7px!important;
+    width:calc(100% - 30px)!important;
+    height:25px!important;
+    overflow:visible!important;
+  }
+  .app.app-overview .metric-sparkline path{stroke-width:1.75!important}
+  .app.app-overview .metric-sparkline circle{r:2.2}
+
+  .app.app-overview .reference-bottom>.light-card{
+    height:282px!important;
+    min-height:282px!important;
+  }
+  .app.app-overview .dashboard-people{
+    max-height:220px!important;
+  }
+  .app.app-overview .dash-alert-list button{
+    min-height:51px!important;
+  }
+  .app.app-overview .reference-quick-actions{
+    gap:8px!important;
+  }
+  .app.app-overview .ref-action{
+    min-height:68px!important;
+  }
+  .app.app-overview .ref-mini{
+    min-height:62px!important;
+  }
+}
+
+@media (min-width:1100px) and (max-height:820px){
+  .app.app-overview .reference-bottom>.light-card{
+    height:270px!important;
+    min-height:270px!important;
+  }
+}

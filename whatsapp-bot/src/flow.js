@@ -522,7 +522,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   };
  }
 
- if(current?.field_key==='preferred_work_area'&&!protocolAction&&(mentionsResidence(m.body)||asksForNearbyArea(m.body))){
+ if(!protocolAction&&((current?.field_key==='preferred_work_area'&&(mentionsResidence(m.body)||asksForNearbyArea(m.body)))||(asksForNearbyArea(m.body)&&mentionsResidence(m.body))||(asksForNearbyArea(m.body)&&answers.__area_recommendations?.origin_key))){
   let recommendation=await nearestWorkAreasWithGoogleMaps(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,fallbackOriginQuery:answers.__area_recommendations?.origin_query||null,limit:3,...mapsOptions});
   if(!recommendation&&asksForNearbyArea(m.body)){
    const residenceQuestion=qs.find(q=>['residence_area','residence'].includes(q.field_key));
@@ -547,7 +547,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|اقرب|أقرب)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
    return {
-    patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
+    patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers,awaiting_id:null,stage:computedStage({...a,answers},questions,areas)},
     reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaMapsReply(recommendation) ,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,

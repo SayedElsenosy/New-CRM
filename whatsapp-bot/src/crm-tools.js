@@ -75,7 +75,8 @@ function areaDetailTool({text,areas,answers}){
 }
 function compareTool({text,areas,answers}){
  const result=conversationalAreaAdvice(text,areas,answers);
- if(!result?.reply||!['compare_area_modes','compare_places','compare_places_followup','compare_work_modes_general'].includes(result.action)){
+ if(result?.action==='compare_work_modes_general')return {ok:false,reply:'الماركت والمطاعم تفاصيلهم بتختلف من منطقة للتانية. قولّي اسم المنطقة علشان أقارن النظامين فيها من البيانات المسجلة بدل ما أخلط شروط مناطق مختلفة.'};
+ if(!result?.reply||!['compare_area_modes','compare_places','compare_places_followup'].includes(result.action)){
   return {ok:false,reply:'علشان المقارنة تكون دقيقة، حدّد اسم المنطقة أو المنطقتين اللي عايز تقارن بينهم، أو قولّي «قارن الماركت والمطاعم».'};
  }
  return {
@@ -144,7 +145,16 @@ export async function runCrmTools({
    if(ok&&out.context?.place_key)updates.place_key=out.context.place_key;
    if(ok&&out.context?.preview_area_id)updates.preview_area_id=out.context.preview_area_id;
    if(ok&&Array.isArray(out.context?.comparison_keys))updates.comparison_keys=out.context.comparison_keys;
-   if(ok&&out.context?.recommendations)updates.recommendations=out.context.recommendations;
+   if(ok&&out.context?.recommendations){
+    updates.recommendations=out.context.recommendations;
+    // Compare systems within the closest known office place, not a
+    // market row from one district against restaurants in another.
+    const closest=updates.recommendations.values?.[0];
+    const chosen=context.areas.find(a=>String(a.id)===String(closest));
+    if(chosen&&!context.answers.__area_context?.place_key){
+     context.answers={...context.answers,__area_context:{place_key:areaPlaceKey(chosen)}};
+    }
+   }
   }catch{
    trace.push({tool:name,ok:false,reason:'tool_unavailable'});
    outputs.push(name==='find_nearest_work_areas'

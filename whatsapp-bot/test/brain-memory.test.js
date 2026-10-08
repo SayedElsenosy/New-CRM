@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {updateBrainMemory,brainMemoryContext,buildBrainSteps,validateBrainSteps} from '../src/brain-memory.js';
+import {updateBrainMemory,brainMemoryContext,buildBrainSteps,validateBrainSteps,needsLlmPlanning} from '../src/brain-memory.js';
 import {AgentRuntime} from '../src/agent-runtime.js';
 
 test('candidate shift preference persists across unrelated conversations without raw transcript',()=>{
@@ -103,4 +103,14 @@ test('planner cannot use output steps to execute unsafe operations',()=>{
  const allowed=buildBrainSteps('قارن مرتب الماركت والمطاعم',{hasPendingQuestion:true});
  const external=['send_whatsapp','accept_candidate','override_area','check_nearest_work_areas'];
  assert.deepEqual(validateBrainSteps(external,allowed),[]);
+});
+
+
+test('cheap local protocol actions skip LLM while rich messages keep planner',()=>{
+ for(const body of ['area_preview:x','confirm_area:x','area_page:2','choice:q5:0','no_work_area','']){
+  assert.equal(needsLlmPlanning({body}),false,body);
+ }
+ assert.equal(needsLlmPlanning({body:'',media_path:'files/photo.jpeg'}),false);
+ assert.equal(needsLlmPlanning({body:'أنا محتار بين المطاعم والماركت والمرتب يفرق معايا'}),true);
+ assert.equal(needsLlmPlanning({body:'مش معايا الرخصة'}),true);
 });

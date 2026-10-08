@@ -1245,3 +1245,37 @@
   .webv2-table{overflow-x:auto!important}
   .webv2-table .head,.webv2-table .row{min-width:560px!important}
 }
+
+
+/* Web V2 screenshot polish */
+.app-v2-overview .webv2-kpi-copy{
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  align-items:flex-start!important;
+  min-width:0!important;
+}
+.app-v2-overview .webv2-kpi-copy span{
+  display:block!important;
+  width:100%!important;
+  line-height:1.25!important;
+}
+.app-v2-overview .webv2-kpi-copy strong{
+  display:block!important;
+  width:100%!important;
+  margin-top:7px!important;
+  line-height:.95!important;
+}
+.app-v2-overview .webv2-agent-tile,
+.app-v2-overview .webv2-agent-tile *{
+  color:#fff!important;
+}
+.app-v2-overview .webv2-agent-tile small{
+  color:#9fc5d4!important;
+}
+.app-v2-overview .webv2-area-row:first-child{
+  margin-top:2px!important;
+}
+.app-v2-overview .webv2-hero-art img{
+  object-position:center 45%!important;
+}

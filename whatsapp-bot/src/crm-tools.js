@@ -17,7 +17,7 @@ export const CRM_TOOL_NAMES=Object.freeze([
 const ALLOWED=new Set(CRM_TOOL_NAMES);
 const MAX_TOOLS_PER_TURN=3;
 const contains=(s,r)=>r.test(norm(s));
-const compareIntent=s=>contains(s,/(?:قارن|مقارن|الفرق|احسن|افضل|افضلهم|انسب|أنسب|مميزات.*(?:ماركت|مطاعم)|ماركت.*مطاعم)/);
+const compareIntent=s=>contains(s,/(?:قارن|مقارن|الفرق|احسن|افضل|افضلهم|انسب|أنسب|مميزات.*(?:ماركت|مطاعم)|ماركت.*مطاعم|مطاعم.*ماركت|محتار بين)/);
 const progressIntent=s=>contains(s,/(?:حاله طلبي|حاله التقديم|موقف التقديم|ناقصني ايه|فاضل ايه|وصلت لفين|اكملت التقديم|خلصت التقديم|بياناتي اكتملت|ايه اللي ناقص|اتقبلت ولا)/);
 const detailsIntent=s=>contains(s,/(?:تفاصيل|نظام|شروط|مميزات|الشيفت|شيفت|مرتب|راتب|دخل).*(?:ماركت|مطاعم|منطقه|منطقة|العبور|زايد)/)
  ||contains(s,/(?:ماركت|مطاعم).*(?:تفاصيل|نظام|مميزات|مرتب|راتب|شيفت)/);
@@ -70,7 +70,7 @@ function areaDetailTool({text,areas,answers}){
  return {
   ok:true,reply:areaDetails(result.area),
   meta:{area_id:result.area.id,work_mode:areaMode(result.area)},
-  context:{place_key:areaPlaceKey(result.area)}
+  context:{place_key:areaPlaceKey(result.area),preview_area_id:result.area.id}
  };
 }
 function compareTool({text,areas,answers}){
@@ -142,6 +142,7 @@ export async function runCrmTools({
    trace.push({tool:name,ok,meta:out?.meta||{}});
    if(out?.reply)outputs.push(out.reply);
    if(ok&&out.context?.place_key)updates.place_key=out.context.place_key;
+   if(ok&&out.context?.preview_area_id)updates.preview_area_id=out.context.preview_area_id;
    if(ok&&Array.isArray(out.context?.comparison_keys))updates.comparison_keys=out.context.comparison_keys;
    if(ok&&out.context?.recommendations)updates.recommendations=out.context.recommendations;
   }catch{

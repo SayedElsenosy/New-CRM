@@ -2,7 +2,8 @@ import {activeQuestions,answered,completion,computedStage,validateAnswer,questio
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
-import {nearestWorkAreas,nearestWorkAreaReply,asksForNearbyArea,mentionsResidence} from './location.js';
+import {asksForNearbyArea,mentionsResidence} from './location.js';
+import {nearestWorkAreasWithGoogleMaps,nearestWorkAreaMapsReply} from './google-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
@@ -367,7 +368,7 @@ function areaComparisonReply(items){
  return 'دي مقارنة من التفاصيل المسجلة عندنا فقط 👇\n\n'+blocks.join('\n\n────────\n\n')+'\n\nلو عايز تقارن نقطة محددة زي المرتب أو الشيفت أو مكان الاستلام قولّي.';
 }
 
-export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null}) {
+export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null,mapsOptions={}}) {
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
@@ -522,11 +523,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  if(current?.field_key==='preferred_work_area'&&!protocolAction&&(mentionsResidence(m.body)||asksForNearbyArea(m.body))){
-  let recommendation=nearestWorkAreas(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,limit:3});
+  let recommendation=await nearestWorkAreasWithGoogleMaps(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,fallbackOriginQuery:answers.__area_recommendations?.origin_query||null,limit:3,...mapsOptions});
   if(!recommendation&&asksForNearbyArea(m.body)){
    const residenceQuestion=qs.find(q=>['residence_area','residence'].includes(q.field_key));
    const storedResidence=residenceQuestion?answers[residenceQuestion.id]?.display||answers[residenceQuestion.id]?.value:null;
-   if(storedResidence)recommendation=nearestWorkAreas(String(storedResidence),areas,{limit:3});
+   if(storedResidence)recommendation=await nearestWorkAreasWithGoogleMaps(String(storedResidence),areas,{limit:3,...mapsOptions});
   }
   if(recommendation){
    clearAgentState(answers);
@@ -536,6 +537,7 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     values:recommendation.items.map(item=>item.area.id),
     origin_key:recommendation.origin.key,
     origin_label:recommendation.origin.label,
+    ...(recommendation.origin_query?{origin_query:recommendation.origin_query}:{}),
     kind:'area_recommendations',
     at:new Date().toISOString()
    };
@@ -546,10 +548,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    }
    return {
     patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},
-    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaReply(recommendation).replace('اختار المنطقة من الأزرار علشان أبعتلك تفاصيلها الأول. لو التفاصيل مناسبة ليك أكدها ونكمل التقديم.','قولّي اسم المنطقة اللي حابب تعرف تفاصيلها.') ,
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaMapsReply(recommendation) ,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
-    agent_action:sideMatch?'recommend_nearest_work_area_with_answer':'recommend_nearest_work_area'
+    agent_action:sideMatch?'recommend_nearest_work_area_with_answer':'recommend_nearest_work_area',
+    maps_grounded:Boolean(recommendation.google_maps_used)
    };
   }
  }

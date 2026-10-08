@@ -646,3 +646,32 @@ test('LLM next-best action only drives flow in live mode above confidence thresh
  });
  assert.notEqual(shadow.agent_action,'llm_resume_flow');
 });
+
+
+test('residence in Sayeda Aisha recommends nearby work areas and never commits preferred_work_area automatically',async()=>{
+ const nearAreas=[
+  {id:'mok',name:'المقطم مطاعم',aliases:['المقطم'],active:true,recruitment_eligible:true,zone:'CENTRAL',details:'تفاصيل المقطم'},
+  {id:'moh',name:'المهندسين مطاعم',aliases:['المهندسين'],active:true,recruitment_eligible:true,zone:'WEST',details:'تفاصيل المهندسين'},
+  {id:'maadi',name:'المعادي ماركت',aliases:['المعادي'],active:true,recruitment_eligible:true,zone:'SOUTH',details:'تفاصيل المعادي'},
+  {id:'tagamoa',name:'التجمع',aliases:['التجمع'],active:true,recruitment_eligible:true,zone:'EAST',details:'تفاصيل التجمع'}
+ ];
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const first=await planTurn({applicant:a,message:{body:'طيب انا ساكن في السيدة عائشة'},questions,areas:nearAreas,settings,interpret:noAi,knowledge:[]});
+ assert.equal(first.agent_action,'recommend_nearest_work_area');
+ assert.equal(first.patch.awaiting_id,'q2');
+ assert.equal(first.patch.answers.q2,undefined);
+ assert.equal(first.patch.answers.__area_recommendations.origin_key,'sayeda_aisha');
+ assert.equal(first.patch.answers.__area_recommendations.values[0],'mok');
+ assert.match(first.reply,/المقطم مطاعم/);
+ assert.match(first.reply,/الأقرب تقريبًا/);
+
+ const second=await planTurn({
+  applicant:{...a,answers:first.patch.answers},
+  message:{body:'ما انا مش عارف ايه اقرب حاجة ليا'},
+  questions,areas:nearAreas,settings,interpret:noAi,knowledge:[]
+ });
+ assert.equal(second.agent_action,'recommend_nearest_work_area');
+ assert.equal(second.patch.answers.q2,undefined);
+ assert.equal(second.patch.answers.__area_recommendations.origin_key,'sayeda_aisha');
+ assert.match(second.reply,/المقطم مطاعم/);
+});

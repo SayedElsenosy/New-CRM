@@ -33,3 +33,22 @@ test('nearest recommendation ignores inactive areas',()=>{
  ]);
  assert.equal(result.items[0].area.id,'haram');
 });
+
+
+test('Sayeda Aisha resolves and recommends nearby work areas without auto-selecting one',()=>{
+ const localAreas=[
+  {id:'mok',name:'المقطم مطاعم',active:true,position:1},
+  {id:'moh',name:'المهندسين مطاعم',active:true,position:2},
+  {id:'maadi',name:'المعادي ماركت',active:true,position:3},
+  {id:'tag',name:'التجمع',active:true,position:4}
+ ];
+ assert.equal(resolveKnownPlace('طيب انا ساكن في السيدة عايشة')?.key,'sayeda_aisha');
+ const result=nearestWorkAreas('انا ساكن في السيدة عائشة',localAreas,{limit:3});
+ assert.equal(result.origin.key,'sayeda_aisha');
+ assert.equal(result.items[0].area.id,'mok');
+ assert.deepEqual(result.items.map(x=>x.area.id),['mok','moh','maadi']);
+ const reply=nearestWorkAreaReply(result);
+ assert.match(reply,/السيدة عائشة/);
+ assert.match(reply,/المقطم مطاعم/);
+ assert.match(reply,/الأقرب تقريبًا/);
+});

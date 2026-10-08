@@ -45,6 +45,10 @@ test('Egyptian residence extraction sends only the named place to Geocoding',()=
  assert.equal(extractResidenceLocation('انا ساكن في السيدة عائشة'),'السيدة عائشة');
 });
 
+test('precise home addresses are not sent to Google Maps',()=>{
+ assert.equal(extractResidenceLocation('انا ساكن في شارع التحرير عمارة 12'),null);
+});
+
 test('without a Maps key, local recommendations behave exactly as before',async()=>{
  const result=await nearestWorkAreasWithGoogleMaps('انا ساكن في إمبابة',candidates,{env:{},limit:3});
  assert.equal(result.items[0].area.id,'moh');
@@ -101,6 +105,25 @@ test('an unknown residence can be reused in a follow-up without committing a wor
  assert.equal(follow.agent_action,'recommend_nearest_work_area');
  assert.equal(follow.patch.answers.q2,undefined);
  assert.equal(follow.patch.answers.__area_recommendations.origin_query,'عزبة النخل');
+});
+
+test('an explicit nearest-place question is answered while collecting a different field',async()=>{
+ const calls=[];
+ const questions=[
+  {id:'q1',field_key:'has_motorcycle',label:'معاك موتوسيكل؟',kind:'yes_no',required:true,active:true,position:1},
+  {id:'q2',field_key:'preferred_work_area',label:'أنهي منطقة تقدر تشتغل فيها؟',kind:'area',required:true,active:true,position:2,confirmation_required:true}
+ ];
+ const applicant={stage:'new',recruitment_stage:'new',answers:{},awaiting_id:'q1',bot_enabled:true};
+ const answer=await planTurn({
+  applicant,message:{body:'انا ساكن في عزبة النخل، ايه اقرب منطقة شغل عندكم؟'},
+  questions,areas:candidates,settings:{ai_enabled:true,ai_knowledge_enabled:false},
+  interpret:async()=>null,knowledge:[],
+  mapsOptions:{apiKey:'TEST_KEY',routesEnabled:false,fetchImpl:mockGoogle(calls),maxDailyCalls:1000}
+ });
+ assert.equal(answer.agent_action,'recommend_nearest_work_area');
+ assert.equal(answer.patch.awaiting_id,'q1');
+ assert.equal(answer.patch.answers.q2,undefined);
+ assert.match(answer.reply,/الخصوص ماركت|العبور ماركت/);
 });
 
 test('Google errors retain the safe local fallback',async()=>{

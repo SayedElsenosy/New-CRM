@@ -1937,3 +1937,24 @@
     transform:scale(1.08)!important;
   }
 }
+
+
+/* Web V2 logo fine-tune — slightly smaller artwork only */
+@media (min-width:1100px){
+  .app-v2-overview>aside .brand img{
+    width:214px!important;
+    max-width:214px!important;
+    height:78px!important;
+    max-height:78px!important;
+    transform:scale(1)!important;
+  }
+}
+@media (max-width:1099px){
+  .app-v2>aside .brand img{
+    width:198px!important;
+    max-width:198px!important;
+    height:72px!important;
+    max-height:72px!important;
+    transform:scale(1)!important;
+  }
+}

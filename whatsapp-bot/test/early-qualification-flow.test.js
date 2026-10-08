@@ -215,7 +215,7 @@ test('مدينة العبور is understood as the same place as العبور م
  assert.equal(preview.agent_action,'explain_area_family');
  assert.match(preview.reply,/العبور موجودة/);
  assert.match(preview.reply,/ماركت/);
- assert.match(preview.reply,/5,225/);
+ assert.match(preview.reply,/مرتب شهري ثابت 5225 جنيه/);
 
  const confirmed=await planTurn({applicant:{...a,answers:preview.patch.answers,awaiting_id:'q2'},message:{body:'مناسبة وكمل'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
  assert.equal(confirmed.patch.answers.q2.value,'obour-market');

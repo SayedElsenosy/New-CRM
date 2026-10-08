@@ -75,7 +75,7 @@ test('Geoapify errors fall back to existing local recommendation without inventi
   geoapifyMaxDailyCredits:2500,geoapifyFetchImpl:mockApi([],{fail:true})
  });
  assert.equal(r.items[0].area.id,'moh');
- assert.equal(r.distance_source,undefined);
+ assert.equal(r.distance_source,'straight_line');
  assert.doesNotMatch(nearestWorkAreaFreeReply(r),/كم بالطريق/);
 });
 

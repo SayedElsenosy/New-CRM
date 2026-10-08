@@ -4389,3 +4389,90 @@ nav button.active .nav-dot{background:#ff8b22!important;box-shadow:0 0 8px #ff7b
     display:block!important;
   }
 }
+
+
+/* =========================================================
+   OVERVIEW V6 — final proportion pass against approved reference
+   ========================================================= */
+@media (min-width:1100px){
+  /* reference header has profile + bell + search only */
+  .app.app-overview .overview-main .topbar-actions>button{
+    display:none!important;
+  }
+  .app.app-overview .overview-main .topbar{
+    width:545px!important;
+    gap:7px!important;
+  }
+  .app.app-overview .overview-main .top-profile{
+    width:190px!important;
+    min-width:190px!important;
+    height:52px!important;
+    min-height:52px!important;
+  }
+  .app.app-overview .overview-main .topbar-actions .icon{
+    width:42px!important;
+    min-width:42px!important;
+    height:42px!important;
+  }
+  .app.app-overview .overview-main .global-search{
+    min-width:238px!important;
+    max-width:285px!important;
+    height:42px!important;
+  }
+
+  /* bring card proportions back to the master artwork */
+  .app.app-overview .reference-metrics{
+    gap:14px!important;
+    margin-bottom:13px!important;
+  }
+  .app.app-overview .reference-metrics article{
+    height:112px!important;
+    min-height:112px!important;
+    padding-top:12px!important;
+    padding-bottom:24px!important;
+  }
+
+  .app.app-overview .reference-middle{
+    gap:14px!important;
+    margin-bottom:13px!important;
+  }
+  .app.app-overview .reference-middle>.light-card{
+    height:248px!important;
+    min-height:248px!important;
+    padding:12px 14px!important;
+  }
+  .app.app-overview .growth-chart{
+    height:190px!important;
+    min-height:190px!important;
+  }
+  .app.app-overview .exact-geo-content{
+    height:191px!important;
+    min-height:191px!important;
+    grid-template-columns:minmax(0,1fr) 160px!important;
+    gap:8px!important;
+  }
+
+  .app.app-overview .reference-bottom{
+    grid-template-columns:minmax(0,1.02fr) minmax(0,1.70fr) minmax(0,.82fr)!important;
+    gap:14px!important;
+  }
+  .app.app-overview .reference-bottom>.light-card{
+    height:230px!important;
+    min-height:230px!important;
+    padding:12px 13px!important;
+  }
+
+  /* closer active-sidebar treatment */
+  .app.app-overview .primary-nav button.active{
+    min-height:48px!important;
+    height:48px!important;
+    border-radius:9px!important;
+  }
+  .app.app-overview .primary-nav button.active .nav-dot{
+    width:8px!important;
+    height:8px!important;
+    border-radius:50%!important;
+    background:#ff8a22!important;
+    box-shadow:0 0 8px rgba(255,129,29,.8)!important;
+  }
+}

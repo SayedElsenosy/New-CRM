@@ -220,7 +220,7 @@ function saveNoWorkArea(answers,current){
  answers[current.id]={value:'__none__',display:'لا توجد منطقة مناسبة',label:current.label,key:current.field_key,kind:current.kind,at:new Date().toISOString(),no_eligible_work_area:true,work_area_eligible:false};
  return answers;
 }
-const NO_MOTORCYCLE_REPLY='شكرًا ليك 🙏\n\nالوظيفة المتاحة حاليًا في Breadfast بتشترط وجود موتوسيكل متاح للشغل يوميًا، لذلك مش هنقدر نكمل التقديم على الوظيفة دي حاليًا.\n\nلو توفر معاك موتوسيكل بعد كده تقدر ترجع تقدم من جديد.';
+const NO_MOTORCYCLE_REPLY='شكرًا ليك 🙏\n\nالوظيفة المتاحة حاليًا بتشترط وجود موتوسيكل متاح للشغل يوميًا، لذلك مش هنقدر نكمل التقديم على الوظيفة دي حاليًا.\n\nلو توفر معاك موتوسيكل بعد كده تقدر ترجع تقدم من جديد.';
 const NO_ELIGIBLE_WORK_AREA_REPLY='شكرًا ليك 🙏\n\nالتعيين الحالي متاح في مناطق تشغيل محددة، وبما إن مفيش منطقة متاحة تقدر تلتزم بالشغل فيها يوميًا، مش هنقدر نكمل التقديم على الوظيفة دي حاليًا.\n\nلو قدرت تلتزم بمنطقة تشغيل متاحة بعد كده تقدر ترجع تقدم من جديد.';
 const SHIFT_STOP_REPLY='تمام، سجلت إجابتك.\n\nنظام الشيفت الحالي شرط للتقديم على الوظيفة دي، لذلك مش هنكمل باقي خطوات التقديم حاليًا.';
 const QUALIFICATION_PENDING_REPLY='تمام، سجلت بياناتك الحالية. في شرط تأهيل لسه محتاج تأكيد قبل إنهاء التقديم، ومسؤول التوظيف يقدر يراجعه.';

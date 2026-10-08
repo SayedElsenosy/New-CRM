@@ -1880,3 +1880,60 @@
     margin:0!important;
   }
 }
+
+
+/* =========================================================
+   Web V2 logo correction — stronger, centered, less empty space
+   ========================================================= */
+@media (min-width:1100px){
+  .app-v2-overview>aside .brand{
+    flex:0 0 104px!important;
+    height:104px!important;
+    min-height:104px!important;
+    padding:4px 10px 3px!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+    overflow:hidden!important;
+  }
+
+  .app-v2-overview>aside .brand img{
+    width:238px!important;
+    max-width:238px!important;
+    height:88px!important;
+    max-height:88px!important;
+    object-fit:contain!important;
+    object-position:center center!important;
+    transform:scale(1.12)!important;
+    transform-origin:center!important;
+    filter:
+      drop-shadow(0 0 8px rgba(20,196,255,.20))
+      drop-shadow(0 0 18px rgba(13,105,255,.10))!important;
+  }
+
+  .app-v2-overview>aside .brand:after{
+    left:18px!important;
+    right:18px!important;
+    opacity:.55!important;
+  }
+}
+
+@media (max-width:1099px){
+  .app-v2>aside .brand{
+    flex:0 0 96px!important;
+    min-height:96px!important;
+    height:96px!important;
+    padding:4px 10px!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+  }
+  .app-v2>aside .brand img{
+    width:218px!important;
+    max-width:218px!important;
+    height:80px!important;
+    max-height:80px!important;
+    object-fit:contain!important;
+    transform:scale(1.08)!important;
+  }
+}

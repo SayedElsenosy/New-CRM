@@ -297,7 +297,7 @@ export class Worker {
       }
      }
      let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
-     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'){
+     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded){
       try{
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages

@@ -67,6 +67,7 @@ test('read area details returns official text verbatim when combined with progre
  assert.match(r.reply,/اكتمال الأسئلة المطلوبة: 0 من 3/);
  assert.ok(!r.reply.includes('99999'));
  assert.equal(r.context.place_key,'العبور');
+ assert.equal(r.context.preview_area_id,'obm');
 });
 
 test('ambiguous family needs operating mode, never picks arbitrary salary',async()=>{
@@ -123,6 +124,7 @@ test('full flow retains pending applicant question after status plus registered 
  assert.equal(r.agent_action,'crm_tools_multi_step');
  assert.equal(r.patch.awaiting_id,'qArea');
  assert.equal(r.patch.answers.qArea,undefined);
+ assert.equal(r.patch.answers.__area_preview?.value,'obm');
  assert.match(r.reply,/مرتب ماركت العبور/);
  assert.match(r.reply,/اكتمال الأسئلة/);
  assert.equal(r.reply.match(/نكمل التقديم:/g),null);

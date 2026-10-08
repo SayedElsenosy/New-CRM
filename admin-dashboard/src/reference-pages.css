@@ -1691,3 +1691,192 @@
     min-height:36px!important;
   }
 }
+
+
+/* =========================================================
+   Web V2 sidebar final pass — fixed brand/footer + nav-only scroll
+   ========================================================= */
+@media (min-width:1100px){
+  .app-v2-overview>aside{
+    display:flex!important;
+    flex-direction:column!important;
+    height:100vh!important;
+    min-height:0!important;
+    overflow:hidden!important;
+  }
+
+  .app-v2-overview>aside .brand{
+    flex:0 0 124px!important;
+    height:124px!important;
+    min-height:124px!important;
+    padding:10px 18px 8px!important;
+    position:relative!important;
+    z-index:3!important;
+    background:
+      radial-gradient(circle at 50% 34%,rgba(22,212,255,.11),transparent 48%),
+      linear-gradient(180deg,#041827 0%,#03111e 100%)!important;
+    border-bottom:1px solid rgba(22,177,229,.25)!important;
+    box-shadow:0 8px 20px rgba(0,0,0,.16)!important;
+  }
+  .app-v2-overview>aside .brand:after{
+    content:''!important;
+    position:absolute!important;
+    left:22px!important;
+    right:22px!important;
+    bottom:0!important;
+    height:1px!important;
+    background:linear-gradient(90deg,transparent,#11d8ff 48%,transparent)!important;
+    opacity:.7!important;
+  }
+  .app-v2-overview>aside .brand img{
+    width:auto!important;
+    max-width:214px!important;
+    height:auto!important;
+    max-height:96px!important;
+    object-fit:contain!important;
+    object-position:center!important;
+    filter:drop-shadow(0 0 10px rgba(15,192,255,.18))!important;
+  }
+
+  .app-v2-overview>aside .sidebar-scroll{
+    flex:1 1 auto!important;
+    min-height:0!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    overscroll-behavior:contain!important;
+    scrollbar-width:thin!important;
+    scrollbar-color:#0b6288 transparent!important;
+    padding:7px 0 10px!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll::-webkit-scrollbar{
+    width:5px!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll::-webkit-scrollbar-track{
+    background:transparent!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll::-webkit-scrollbar-thumb{
+    background:linear-gradient(180deg,#0a6d97,#0fd3f4)!important;
+    border-radius:999px!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll::-webkit-scrollbar-thumb:hover{
+    background:#18d9ff!important;
+  }
+
+  .app-v2-overview>aside .nav-label{
+    margin:10px 17px 5px!important;
+    font-size:8px!important;
+    color:#6f94a6!important;
+    letter-spacing:.15px!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll nav{
+    padding:0 9px!important;
+    gap:3px!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll nav button{
+    height:40px!important;
+    min-height:40px!important;
+    padding:5px 12px!important;
+    border-radius:9px!important;
+    font-size:11.3px!important;
+    font-weight:800!important;
+    gap:10px!important;
+    transition:background .16s ease,border-color .16s ease,transform .16s ease!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll nav button:hover{
+    background:#07253a!important;
+    border-color:#0a587c!important;
+    transform:translateX(-1px)!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll nav button.active{
+    background:linear-gradient(90deg,#075bdc 0%,#088df2 52%,#16cef5 100%)!important;
+    border-color:#29ddff!important;
+    box-shadow:0 0 18px rgba(5,150,255,.26),inset 0 0 16px rgba(255,255,255,.06)!important;
+  }
+  .app-v2-overview>aside .sidebar-scroll nav button svg{
+    width:18px!important;
+    height:18px!important;
+    flex:0 0 18px!important;
+  }
+
+  .app-v2-overview>aside .sidebar-art-wrap{
+    display:none!important;
+  }
+
+  .app-v2-overview>aside .sidebar-bottom{
+    flex:0 0 72px!important;
+    height:72px!important;
+    min-height:72px!important;
+    margin:0!important;
+    position:relative!important;
+    z-index:4!important;
+    padding:9px 12px!important;
+    background:linear-gradient(180deg,#041522,#020d17)!important;
+    border-top:1px solid rgba(24,177,229,.26)!important;
+    box-shadow:0 -8px 22px rgba(0,0,0,.22)!important;
+  }
+  .app-v2-overview>aside .sidebar-bottom>div{
+    min-width:0!important;
+    flex:1 1 auto!important;
+  }
+  .app-v2-overview>aside .sidebar-bottom strong{
+    display:block!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    font-size:11px!important;
+  }
+  .app-v2-overview>aside .sidebar-bottom small{
+    display:block!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+    max-width:138px!important;
+    font-size:7px!important;
+  }
+}
+
+/* Sidebar remains independently scrollable on tablets/mobile drawer */
+@media (max-width:1099px){
+  .app-v2>aside{
+    display:flex!important;
+    flex-direction:column!important;
+    height:100dvh!important;
+    min-height:0!important;
+    overflow:hidden!important;
+  }
+  .app-v2>aside .brand{
+    flex:0 0 110px!important;
+    min-height:110px!important;
+    height:110px!important;
+  }
+  .app-v2>aside .brand img{
+    width:auto!important;
+    max-width:200px!important;
+    height:auto!important;
+    max-height:86px!important;
+    object-fit:contain!important;
+  }
+  .app-v2>aside .sidebar-scroll{
+    flex:1 1 auto!important;
+    min-height:0!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior:contain!important;
+    scrollbar-width:thin!important;
+    scrollbar-color:#0c769f transparent!important;
+  }
+  .app-v2>aside .sidebar-scroll::-webkit-scrollbar{
+    width:4px!important;
+  }
+  .app-v2>aside .sidebar-scroll::-webkit-scrollbar-thumb{
+    background:#0c769f!important;
+    border-radius:999px!important;
+  }
+  .app-v2>aside .sidebar-bottom{
+    flex:0 0 68px!important;
+    min-height:68px!important;
+    height:68px!important;
+    margin:0!important;
+  }
+}

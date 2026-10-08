@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shouldBrowseAreaButtons,botAreaChoices,recommendedAreaChoices,shouldOfferYesNoButtons,shouldOfferChoiceButtons,choiceButtons} from '../src/worker.js';
+import {shouldBrowseAreaButtons,botAreaChoices,recommendedAreaChoices,shouldOfferYesNoButtons,shouldOfferChoiceButtons,choiceButtons,replyContainsVerbatimAreaDetails} from '../src/worker.js';
 import {normalizeWorkAreas} from '../src/db.js';
 
 test('work-area prompt is conversation-first and does not render buttons automatically',()=>{
@@ -80,4 +80,12 @@ test('choice question renders configured WhatsApp buttons',()=>{
  assert.equal(shouldOfferChoiceButtons(q,'تمام، دي اختيارات سريعة للسؤال 👇',[]),true);
  assert.deepEqual(choiceButtons(q).map(x=>x.text),['صباحي','مسائي','أي شيفت']);
  assert.deepEqual(choiceButtons(q).map(x=>x.id),['choice:shift-type:0','choice:shift-type:1','choice:shift-type:2']);
+});
+
+
+test('live LLM cannot paraphrase full Areas data embedded in a reply',()=>{
+ const area={id:'r1',name:'الشيخ زايد مطاعم',details:'بند أول\nالدخل بحسب عدد الأوردرات\nالقبض أسبوعي',active:true};
+ assert.equal(replyContainsVerbatimAreaDetails('أكيد:\n\n📍 '+area.name+'\n'+area.details+'\n\nلو مناسب قولّي', [area]),true);
+ assert.equal(replyContainsVerbatimAreaDetails('المطاعم دخلها بحسب عدد الأوردرات', [area]),false);
+ assert.equal(replyContainsVerbatimAreaDetails('📍 '+area.name+'\n'+area.details,[{...area,active:false}]),false);
 });

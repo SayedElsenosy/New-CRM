@@ -96,3 +96,15 @@ export function validateBrainSteps(proposed,expected=[]){
  if(!Array.isArray(proposed))return [];
  return [...new Set(proposed.filter(x=>typeof x==='string'&&PLAN_STEP_TYPES.has(x)&&allowed.has(x)))].slice(0,6);
 }
+
+
+// Interactive button payloads and media-only uploads have exact, local CRM
+// handlers. Avoid wasting scarce free LLM requests on those turns.
+export function needsLlmPlanning(message={}){
+ const body=String(message.body||'').trim();
+ if(!body)return false;
+ if(message.media_path&&!body)return false;
+ if(/^(?:area_preview:|confirm_area:|area_page:|choice:)[^\s]{1,180}$/.test(body))return false;
+ if(body==='no_work_area')return false;
+ return true;
+}

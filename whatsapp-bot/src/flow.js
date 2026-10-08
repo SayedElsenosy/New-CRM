@@ -496,6 +496,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    if(toolResult.context?.place_key){
     answers.__area_context={place_key:toolResult.context.place_key,kind:'area_context',at:new Date().toISOString()};
    }
+   if(current?.field_key==='preferred_work_area'&&toolResult.context?.preview_area_id){
+    const preview=areas.find(z=>z.active===true&&String(z.id)===String(toolResult.context.preview_area_id));
+    if(preview)answers.__area_preview={value:preview.id,display:preview.name,kind:'area_preview',
+     advisor:true,at:new Date().toISOString()};
+   }
    if(Array.isArray(toolResult.context?.comparison_keys)&&toolResult.context.comparison_keys.length>=2){
     answers.__area_comparison={place_keys:toolResult.context.comparison_keys,
      kind:'area_comparison',at:new Date().toISOString()};

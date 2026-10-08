@@ -26,20 +26,20 @@ function MetricCard({title,value,caption,Icon,tone='cyan',trend=''}) {
 }
 
 function LineChart({data=[]}){
-  const clean=data.length?data:[{label:'مايو',count:0,accepted:0},{label:'يونيو',count:0,accepted:0},{label:'يوليو',count:0,accepted:0},{label:'أغسطس',count:0,accepted:0},{label:'سبتمبر',count:0,accepted:0},{label:'أكتوبر',count:0,accepted:0}];
+  const clean=data.length?[...data].reverse():[{label:'أكتوبر',count:0,accepted:0},{label:'سبتمبر',count:0,accepted:0},{label:'أغسطس',count:0,accepted:0},{label:'يوليو',count:0,accepted:0},{label:'يونيو',count:0,accepted:0},{label:'مايو',count:0,accepted:0}];
   const width=620,height=220,padX=36,padTop=24,padBottom=38;
   const max=Math.max(1,...clean.flatMap(x=>[n(x.count),n(x.accepted)]));
   const step=clean.length>1?(width-padX*2)/(clean.length-1):0,usable=height-padTop-padBottom;
   const pts=key=>clean.map((d,i)=>({x:padX+i*step,y:padTop+usable-(n(d[key])/max)*usable,label:d.label||String(d.key||'')}));
   const a=pts('count'),b=pts('accepted'),poly=x=>x.map(p=>p.x+','+p.y).join(' ');
   const area=x=>x.length?padX+','+(height-padBottom)+' '+poly(x)+' '+x.at(-1).x+','+(height-padBottom):'';
-  return <div className="v2-chart"><div className="v2-chart-legend"><span className="orange">طلبات التوظيف</span><span className="cyan">المقبولين</span></div>
+  return <div className="v2-chart"><div className="v2-chart-legend"><span className="cyan">الطلبات</span><span className="orange">المقبولون</span></div>
     <svg viewBox={'0 0 '+width+' '+height} role="img" aria-label="أداء التوظيف">
       {[0,.25,.5,.75,1].map((r,i)=><line key={i} x1={padX} x2={width-padX} y1={padTop+usable*r} y2={padTop+usable*r} className="grid"/>)}
-      <polygon points={area(a)} className="area orange"/><polygon points={area(b)} className="area cyan"/>
-      <polyline points={poly(a)} className="line orange"/><polyline points={poly(b)} className="line cyan"/>
-      {a.map((p,i)=><g key={i}><circle cx={p.x} cy={p.y} r="4.3" className="point orange"/><text x={p.x} y={height-12} textAnchor="middle">{p.label}</text></g>)}
-      {b.map((p,i)=><circle key={'b'+i} cx={p.x} cy={p.y} r="3.5" className="point cyan"/>)}
+      <polygon points={area(a)} className="area cyan"/><polygon points={area(b)} className="area orange"/>
+      <polyline points={poly(a)} className="line cyan"/><polyline points={poly(b)} className="line orange"/>
+      {a.map((p,i)=><g key={i}><circle cx={p.x} cy={p.y} r="4.3" className="point cyan"/><text x={p.x} y={height-12} textAnchor="middle">{p.label}</text></g>)}
+      {b.map((p,i)=><circle key={'b'+i} cx={p.x} cy={p.y} r="3.5" className="point orange"/>)}
     </svg>
   </div>;
 }

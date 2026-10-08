@@ -3,7 +3,7 @@ import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowle
 import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
 import {asksForNearbyArea,mentionsResidence} from './location.js';
-import {nearestWorkAreasWithGoogleMaps,nearestWorkAreaMapsReply} from './google-maps.js';
+import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
@@ -523,11 +523,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
 
  if(!protocolAction&&((current?.field_key==='preferred_work_area'&&(mentionsResidence(m.body)||asksForNearbyArea(m.body)))||(asksForNearbyArea(m.body)&&mentionsResidence(m.body))||(asksForNearbyArea(m.body)&&answers.__area_recommendations?.origin_key))){
-  let recommendation=await nearestWorkAreasWithGoogleMaps(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,fallbackOriginQuery:answers.__area_recommendations?.origin_query||null,limit:3,...mapsOptions});
+  let recommendation=await nearestWorkAreasWithFreeMaps(m.body,areas,{fallbackOriginKey:answers.__area_recommendations?.origin_key||null,fallbackOriginQuery:answers.__area_recommendations?.origin_query||null,limit:3,...mapsOptions});
   if(!recommendation&&asksForNearbyArea(m.body)){
    const residenceQuestion=qs.find(q=>['residence_area','residence'].includes(q.field_key));
    const storedResidence=residenceQuestion?answers[residenceQuestion.id]?.display||answers[residenceQuestion.id]?.value:null;
-   if(storedResidence)recommendation=await nearestWorkAreasWithGoogleMaps(String(storedResidence),areas,{limit:3,...mapsOptions});
+   if(storedResidence)recommendation=await nearestWorkAreasWithFreeMaps(String(storedResidence),areas,{limit:3,...mapsOptions});
   }
   if(recommendation){
    clearAgentState(answers);
@@ -548,11 +548,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    }
    return {
     patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{answers,awaiting_id:null,stage:computedStage({...a,answers},questions,areas)},
-    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaMapsReply(recommendation) ,
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+nearestWorkAreaFreeReply(recommendation) ,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
     agent_action:sideMatch?'recommend_nearest_work_area_with_answer':'recommend_nearest_work_area',
-    maps_grounded:Boolean(recommendation.google_maps_used)
+    maps_grounded:Boolean(recommendation.google_maps_used||recommendation.geoapify_used)
    };
   }
  }

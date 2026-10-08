@@ -77,7 +77,7 @@ test('explicitly missing ID or license hands off immediately, not automatic disq
 });
 
 test('no motorcycle is different from a missing license: existing eligibility rule still applies',async()=>{
- const r=await run(applicant,'مش معايا موتوسيكل');
+ const r=await run({...applicant,answers:{area:answers.area}},'مش معايا موتوسيكل');
  assert.equal(r.patch.answers.__qualification_stop?.reason,'no_motorcycle');
  assert.notEqual(r.handoff_reason,'documents_unavailable');
 });

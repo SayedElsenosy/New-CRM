@@ -1,3 +1,5 @@
+import {brainMemoryContext,buildBrainSteps,validateBrainSteps} from './brain-memory.js';
+
 const ALLOWED_ACTIONS=new Set([
  'answer_question','save_facts','ask_next','clarify','recommend_area','compare_areas',
  'change_answer','resume_flow','handoff','none'
@@ -18,11 +20,12 @@ const PLAN_FORMAT={type:'json_schema',json_schema:{name:'agent_plan',strict:true
    field_key:{type:'string'},value:{type:['string','number','boolean','null']},display:{type:'string'},
    confidence:{type:'number',minimum:0,maximum:1},source:{type:'string'}
   },required:['field_key','value','display','confidence','source']}},
+  steps:{type:'array',maxItems:6,items:{type:'string',enum:['understand_message','read_office_areas','compare_registered_areas','check_nearest_work_areas','read_verified_knowledge','ask_pending_question','request_confirmation','request_clarification','human_handoff']}},
   knowledge_ranking:{type:'array',maxItems:12,items:{type:'object',additionalProperties:false,properties:{
    id:{type:'string'},score:{type:'number',minimum:0,maximum:1}
   },required:['id','score']}}
  },
- required:['action','confidence','intent','knowledge_id','field_key','area_id','clarification','summary','facts','knowledge_ranking']
+ required:['action','confidence','intent','knowledge_id','field_key','area_id','clarification','summary','facts','knowledge_ranking','steps']
 }}};
 
 const REPLY_FORMAT={type:'json_schema',json_schema:{name:'agent_reply',strict:true,schema:{
@@ -119,6 +122,7 @@ function safePlan(value){
   area_id:trim(p.area_id,100)||null,
   clarification:trim(p.clarification,500)||null,
   summary:trim(p.summary,700),
+  steps:Array.isArray(p.steps)?p.steps.slice(0,6):[],
   facts:Array.isArray(p.facts)?p.facts.slice(0,12).map(f=>({
    field_key:trim(f?.field_key,80),
    value:f?.value,
@@ -133,7 +137,7 @@ function safePlan(value){
 }
 
 
-function sanitizePlanForContext(plan,questions=[]){
+function sanitizePlanForContext(plan,questions=[],expectedSteps=[]){
  const configured=new Map((questions||[]).filter(q=>q?.active!==false).map(q=>[String(q.field_key),q]));
  const facts=[];
  for(const fact of plan?.facts||[]){
@@ -144,7 +148,7 @@ function sanitizePlanForContext(plan,questions=[]){
   if(q.confirmation_required===true)continue;
   facts.push(fact);
  }
- return {...plan,facts};
+ return {...plan,facts,steps:validateBrainSteps(plan.steps,expectedSteps)};
 }
 
 export class AgentRuntime{
@@ -194,7 +198,7 @@ export class AgentRuntime{
    return {json:cleanJson(text),latency_ms:Date.now()-started,provider:state.provider,model:state.model};
   }finally{clearTimeout(timer);}
  }
- buildPlannerMessages({message,questions,areas,applicant,knowledge,recentMessages,settings}){
+ buildPlannerMessages({message,questions,areas,applicant,knowledge,recentMessages,settings,office=null}){
   const currentText=String(message?.body||'');
   const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,24).map(q=>({
    field_key:q.field_key,kind:q.kind,required:q.required!==false,priority:Number(q.priority||50),
@@ -208,17 +212,19 @@ export class AgentRuntime{
    id:k.id,question:trim(k.question,130),answer:trim(k.answer,220),scope:k.knowledge_scope||'office',
    confidence:Number(k.confidence??0.8),examples:(k.examples||[]).slice(0,1).map(x=>trim(x,65))
   }));
-  const contextLimit=4;
+  const contextLimit=6;
   const conversation=(recentMessages||[]).slice(-contextLimit).map(x=>({
    role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
-   text:String(x.body||'').slice(0,300)
+   text:String(x.body||'').slice(0,240)
   }));
   const system=[
-   'أنت Decision Planner لمساعد توظيف Breadfast في مصر.',
+   'أنت Decision Planner لمساعد توظيف تابع لمنصة Speed Delivery في مصر. المكتب الحالي يحدد من بيانات CRM فقط، ولا تنسب الوظيفة لعلامة تجارية أخرى دون معلومة مؤكدة.',
    'مهمتك فهم الرسالة كاملة وإرجاع JSON فقط. لا تكتب Chain-of-Thought.',
    'لا تخترع أي راتب أو شرط أو عنوان. أي إجابة تشغيلية يجب أن تشير knowledge_id موجود.',
    'مكان السكن معلومة مساعدة فقط ولا يحدد Qualification. preferred_work_area هو منطقة العمل.',
    'لا تغيّر قواعد التأهيل. النظام الحتمي هو صاحب القرار النهائي.',
+   'لو الرسالة فيها أكتر من طلب، اعمل خطوات مرتبة في steps: افهم الطلب، استخدم قراءة البيانات الموجودة، قارن عند وجود حقائق، ثم اطلب توضيح/إجابة السؤال الناقص. steps تخطيط فقط؛ التنفيذ وقواعد التأهيل من النظام.',
+   'لا تنفذ أو تذكر أي أداة غير متاحة في السياق، ولا تعد بأي خطوة لم تحصل.',
    'لو الرسالة تحتوي عدة معلومات استخرجها كلها facts حتى لو خارج ترتيب السؤال.',
    'facts تعني معلومات عن المتقدم فقط، وليست إجابات Knowledge مثل المرتب أو التأمين.',
    'ممنوع وضع preferred_work_area داخل facts من مجرد السكن أو ترشيح أقرب منطقة؛ منطقة العمل لا تصبح حقيقة إلا بعد اختيار/تأكيد صريح من المتقدم.',
@@ -229,6 +235,9 @@ export class AgentRuntime{
   ].filter(Boolean).join('\n');
   const payload={
    current_message:currentText.slice(0,900),
+   office_name:trim(office?.name||'مكتب التوظيف',90),
+   verified_preference_memory:brainMemoryContext(applicant?.answers),
+   suggested_readonly_steps:buildBrainSteps(currentText,{hasPendingQuestion:Boolean(applicant?.awaiting_id)}),
    awaiting_field:(questions||[]).find(q=>String(q.id)===String(applicant?.awaiting_id||''))?.field_key||null,
    known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,10).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,60)})),
    observed_facts:applicant?.answers?.__observed_facts||{},
@@ -236,7 +245,7 @@ export class AgentRuntime{
   };
   return [
    {role:'system',content:system},
-   {role:'user',content:'حلل الدور الحالي وأرجع JSON بالشكل: {action,confidence,intent,knowledge_id,field_key,area_id,clarification,summary,facts:[{field_key,value,display,confidence,source}],knowledge_ranking:[{id,score}]}\n\n'+JSON.stringify(payload)}
+   {role:'user',content:'حلل الدور الحالي وأرجع JSON بالشكل: {action,confidence,intent,knowledge_id,field_key,area_id,clarification,summary,steps:[allowed steps],facts:[{field_key,value,display,confidence,source}],knowledge_ranking:[{id,score}]}\n\n'+JSON.stringify(payload)}
   ];
  }
  async composeTurn(input){
@@ -262,13 +271,13 @@ export class AgentRuntime{
   }
   return {available:true,applied:true,state,reply,latency_ms:result.latency_ms,provider:result.provider,model:result.model};
  }
- buildComposerMessages({message,turn,recentMessages,settings,plan}){
+ buildComposerMessages({message,turn,recentMessages,settings,plan,office=null,applicant=null}){
   const conversation=(recentMessages||[]).slice(-4).map(x=>({
    role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
    text:trim(x.body,260)
   }));
   const system=[
-   'أنت Response Composer لمساعد توظيف Breadfast في مصر.',
+   'أنت Response Composer لمساعد توظيف تابع لمنصة Speed Delivery في مصر. تحدث باسم مكتب التوظيف المحدد في بيانات CRM فقط.',
    'حوّل draft_reply إلى رد مصري طبيعي وواضح كأن Recruiter بشري بيتكلم على واتساب.',
    'draft_reply هو مصدر الحقيقة الوحيد. ممنوع إضافة أي معلومة أو رقم أو ميزة أو شرط أو عنوان غير موجود فيه.',
    'ممنوع تغيير قرار Qualification أو اعتبار السكن منطقة عمل أو تأكيد اختيار منطقة لم يؤكده المتقدم.',
@@ -282,6 +291,9 @@ export class AgentRuntime{
   ].filter(Boolean).join('\n');
   const payload={
    current_message:trim(message?.body,900),
+   office_name:trim(office?.name||'مكتب التوظيف',90),
+   verified_preference_memory:brainMemoryContext(applicant?.answers),
+   validated_readonly_steps:Array.isArray(plan?.steps)?plan.steps.slice(0,6):[],
    action:String(turn?.agent_action||''),
    draft_reply:trim(turn?.reply,1800),
    separate_followup:trim(turn?.followup_reply,600)||null,
@@ -299,7 +311,7 @@ export class AgentRuntime{
   const state=this.snapshot(settings);
   if(settings.agent_llm_enabled!==true||!state.configured)return {available:false,state,plan:null};
   const result=await this.call(this.buildPlannerMessages(input),settings);
-  const plan=sanitizePlanForContext(safePlan(result.json),input.questions||[]);
+  const plan=sanitizePlanForContext(safePlan(result.json),input.questions||[],buildBrainSteps(input.message?.body,{hasPendingQuestion:Boolean(input.applicant?.awaiting_id)}));
   return {available:true,state,plan,latency_ms:result.latency_ms,provider:result.provider,model:result.model};
  }
  async testPlan(input){

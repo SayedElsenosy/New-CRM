@@ -3,7 +3,7 @@ import {
   Activity,ArrowLeft,BarChart3,BellRing,BookOpen,BrainCircuit,CalendarDays,
   CheckCircle2,ClipboardCheck,Cpu,Database,FileText,Gauge,Globe2,MessageCircle,
   Megaphone,Play,Plus,RefreshCw,Search,Send,Settings2,ShieldCheck,Sparkles,
-  Target,Users,Zap
+  Target,Users,Zap,MapPin,TrendingUp
 } from 'lucide-react';
 import {api,send,date,personName} from './api';
 
@@ -17,10 +17,10 @@ function Spark({tone='cyan'}){
   return <svg className={'v2-spark '+tone} viewBox="0 0 100 34" preserveAspectRatio="none" aria-hidden="true"><path d={path}/><circle cx="99" cy={tone==='orange'?8:10} r="2.4"/></svg>;
 }
 
-function MetricCard({title,value,caption,Icon,tone='cyan'}){
+function MetricCard({title,value,caption,Icon,tone='cyan',trend=''}) {
   return <article className={'v2-metric '+tone}>
     <span className="v2-metric-icon"><Icon size={27}/></span>
-    <div><small>{title}</small><strong>{value}</strong><em>{caption}</em></div>
+    <div><small>{title}</small><strong>{value}</strong><em>{caption}</em>{trend&&<b className="v2-metric-trend"><TrendingUp size={12}/>{trend}</b>}</div>
     <Spark tone={tone}/>
   </article>;
 }
@@ -44,6 +44,47 @@ function LineChart({data=[]}){
   </div>;
 }
 
+
+const AREA_COORDS=[
+  {keys:['الشيخ زايد','زايد','sheikh zayed'],x:19,y:45},{keys:['اكتوبر','اكتوبر 6','6 اكتوبر','السادس من اكتوبر','october'],x:12,y:64},
+  {keys:['حدائق الاهرام','الاهرام','الهرم','haram'],x:28,y:68},{keys:['المهندسين','مهندسين'],x:38,y:45},{keys:['المعادي','معادي'],x:48,y:72},
+  {keys:['المقطم','مقطم'],x:59,y:68},{keys:['مدينة نصر','مدينه نصر','نصر'],x:65,y:45},{keys:['مصر الجديدة','مصر الجديده','هليوبوليس'],x:60,y:30},
+  {keys:['التجمع','التجمع الخامس','القاهرة الجديدة','القاهره الجديده'],x:78,y:51},{keys:['الرحاب','رحاب'],x:82,y:37},
+  {keys:['مدينتي','مدينتى'],x:88,y:30},{keys:['الشروق','شروق'],x:91,y:48},{keys:['العبور','عبور'],x:75,y:20},
+  {keys:['الفردوس','فردوس'],x:20,y:57},{keys:['حدائق اكتوبر','حدايق اكتوبر'],x:16,y:72}
+];
+const areaNorm=value=>String(value||'').toLowerCase().replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').replace(/ى/g,'ي').replace(/[^\u0600-\u06ff\w ]/g,' ').replace(/\s+/g,' ').trim();
+const hashPoint=(name,index)=>{let h=0;for(const ch of areaNorm(name))h=(h*31+ch.charCodeAt(0))>>>0;return{x:18+((h+index*17)%70),y:20+(((h>>>5)+index*23)%58)};};
+const pointFor=(name,index)=>{const q=areaNorm(name),hit=AREA_COORDS.find(p=>p.keys.some(k=>q.includes(areaNorm(k))||areaNorm(k).includes(q)));return hit?{x:hit.x,y:hit.y}:hashPoint(name,index);};
+
+function DynamicAreaMap({areas=[]}){
+  const points=useMemo(()=>areas.slice(0,8).map((area,index)=>({...area,...pointFor(area.name,index),tone:index%2?'cyan':'orange'})),[areas]);
+  const [selected,setSelected]=useState('');
+  useEffect(()=>{if(points.length&&!points.some(p=>p.name===selected))setSelected(points[0].name);},[points,selected]);
+  return <div className="v2-live-map">
+    <div className="v2-map-toolbar"><span><MapPin size={13}/> توزيع مباشر</span><b>{fmt(points.reduce((s,p)=>s+n(p.count),0))} مرشح</b></div>
+    <svg className="v2-map-base" viewBox="0 0 600 350" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="districtFill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#06304a"/><stop offset="1" stopColor="#031724"/></linearGradient></defs>
+      <path className="district west" d="M24 66 L172 34 240 79 224 154 268 218 205 318 52 285 18 190 Z"/>
+      <path className="district center" d="M229 76 L355 34 404 103 375 170 414 233 341 319 260 218 224 153 Z"/>
+      <path className="district east" d="M390 78 L532 48 583 122 548 207 576 292 421 319 414 232 376 169 Z"/>
+      <path className="nile" d="M318 0 C301 62 325 112 309 167 C294 219 314 268 288 350"/>
+      <path className="road" d="M45 113 C150 92 208 134 291 126 S431 86 555 111"/>
+      <path className="road" d="M62 244 C170 216 232 245 326 225 S461 196 552 225"/>
+      <path className="road" d="M138 40 C190 113 190 189 142 306"/>
+      <path className="road" d="M455 45 C429 110 446 174 492 300"/>
+      <circle className="ring r1" cx="300" cy="172" r="52"/><circle className="ring r2" cx="300" cy="172" r="88"/>
+    </svg>
+    <div className="v2-map-points">
+      {points.map((p,index)=><button key={p.name} type="button" className={'v2-map-pin '+p.tone+(selected===p.name?' active':'')} style={{left:p.x+'%',top:p.y+'%'}} onClick={()=>setSelected(p.name)} title={p.name+' · '+fmt(p.count)}>
+        <span className="pin-dot"><MapPin size={selected===p.name?21:17}/></span>
+        <span className="pin-label"><b>{p.name}</b><strong>{fmt(p.count)}</strong></span>
+      </button>)}
+    </div>
+    {!points.length&&<div className="v2-map-empty">أول ما المرشحين يختاروا مناطق العمل، التوزيع هيظهر هنا تلقائيًا.</div>}
+  </div>;
+}
+
 function RecentApplicants({items=[],onSelect}){
   return <div className="v2-people">
     <div className="v2-people-head"><span>الاسم</span><span>رقم الهاتف</span><span>المنطقة</span><span>الحالة</span></div>
@@ -60,36 +101,38 @@ export function ReferenceOverviewPage({version=0,officeId='',alerts={},onAlert,o
   const [data,setData]=useState(null),[error,setError]=useState('');
   const load=useCallback(async()=>{try{const p=new URLSearchParams();if(officeId)p.set('office_id',officeId);setData(await api('/dashboard'+(p.toString()?'?'+p:'')));setError('');}catch(e){setError(e.message);}},[officeId]);
   useEffect(()=>{load();},[load,version]);
-  const metrics=data?.metrics||{},areas=data?.area_distribution||[],recent=data?.recent||[];
-  return <div className="v2-page v2-dashboard">
-    <section className="v2-hero v2-dashboard-hero">
-      <div className="v2-hero-copy"><h1>لوحة التحكم</h1><p>متابعة وإدارة توظيف الطيارين والكادر اللوجستي بسهولة</p></div>
+  const metrics=data?.metrics||{},areas=data?.area_distribution||[],recent=data?.recent||[],growth=data?.growth||[];
+  const current=n(growth.at(-1)?.count),previous=n(growth.at(-2)?.count),monthTrend=previous?Math.round(((current-previous)/previous)*100):current?100:0;
+  return <div className="v2-page v2-dashboard v2-dashboard-rebuilt">
+    <section className="v2-home-hero">
+      <div className="v2-home-city" aria-hidden="true"/>
+      <div className="v2-home-copy"><span>لوحة التحكم · التوظيف المباشر</span><h1>لوحة التحكم</h1><p>متابعة وإدارة توظيف الطيارين والكادر اللوجستي بسهولة</p></div>
       <img src="/reference/hero-rider.webp" alt="" aria-hidden="true"/>
     </section>
     {error&&<div className="v2-error">{error}<button onClick={load}><RefreshCw size={15}/> إعادة المحاولة</button></div>}
-    <div className="v2-metrics">
-      <MetricCard title="إجمالي الطيارين" value={fmt(metrics.total)} caption="كل الطلبات المسجلة" Icon={Users}/>
-      <MetricCard title="طلبات جديدة" value={fmt(metrics.new_today)} caption="طلبات اليوم" Icon={ClipboardCheck} tone="orange"/>
-      <MetricCard title="الطيارون النشطون" value={fmt(metrics.active_candidates)} caption="داخل مسار التوظيف" Icon={Activity}/>
-      <MetricCard title="مقابلات اليوم" value={fmt(metrics.interviews_today)} caption="المواعيد المجدولة" Icon={CalendarDays} tone="orange"/>
+    <div className="v2-metrics v2-home-metrics">
+      <MetricCard title="إجمالي الطيارين" value={fmt(metrics.total)} caption="كل الطلبات المسجلة" trend={(metrics.new_today||0)+' اليوم'} Icon={Users}/>
+      <MetricCard title="طلبات جديدة" value={fmt(metrics.new_today)} caption="طلبات وصلت اليوم" trend={(monthTrend>=0?'+':'')+monthTrend+'%'} Icon={ClipboardCheck} tone="orange"/>
+      <MetricCard title="الطيارون النشطون" value={fmt(metrics.active_candidates)} caption="داخل مسار التوظيف" trend={fmt(metrics.hired||0)+' تم تعيينهم'} Icon={Activity}/>
+      <MetricCard title="مقابلات اليوم" value={fmt(metrics.interviews_today)} caption="المواعيد المجدولة" trend={fmt(metrics.interviews||0)+' إجمالي'} Icon={CalendarDays} tone="orange"/>
     </div>
-    <div className="v2-middle">
+    <div className="v2-middle v2-home-middle">
       <section className="v2-panel v2-performance">
-        <header><div><h2>أداء التوظيف</h2><p>نمو الطلبات خلال آخر 6 أشهر</p></div><button onClick={load}><RefreshCw size={14}/> آخر 30 يوم</button></header>
-        <LineChart data={data?.growth||[]}/>
+        <header><div><h2>أداء التوظيف</h2><p>مقارنة الطلبات والمقبولين خلال آخر 6 أشهر</p></div><button onClick={load}><RefreshCw size={14}/> تحديث</button></header>
+        <LineChart data={growth}/>
       </section>
       <section className="v2-panel v2-geo">
-        <header><div><h2>التوزيع الجغرافي</h2><p>أكثر المناطق من حيث الطيارين</p></div><span className="live">LIVE</span></header>
-        <div className="v2-geo-body">
-          <div className="v2-map"><img src="/reference/geo-map.webp" alt="خريطة توزيع الطيارين"/></div>
-          <div className="v2-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{areas.slice(0,5).map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{fmt(x.count)}</b></div>)}{!areas.length&&<small>لسه مفيش بيانات مناطق كفاية</small>}</div>
+        <header><div><h2>التوزيع الجغرافي</h2><p>الخريطة تتحدث تلقائيًا من مناطق عمل المرشحين</p></div><button onClick={()=>onTab?.('areas')}><MapPin size={13}/> إدارة المناطق</button></header>
+        <div className="v2-geo-body v2-geo-dynamic">
+          <DynamicAreaMap areas={areas}/>
+          <div className="v2-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{areas.slice(0,6).map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{fmt(x.count)}</b></div>)}{!areas.length&&<small>لسه مفيش بيانات مناطق كفاية</small>}</div>
         </div>
       </section>
     </div>
-    <div className="v2-bottom">
+    <div className="v2-bottom v2-home-bottom">
       <section className="v2-panel v2-alerts">
         <header><div><h2>التنبيهات</h2><p>الحالات اللي محتاجة متابعة</p></div><span className="count">{alerts.open_count||0}</span></header>
-        {(alerts.items||[]).slice(0,4).length?<div className="v2-alert-list">{alerts.items.slice(0,4).map((item,i)=><button key={item.id} onClick={()=>onAlert?.(item)}><span className={'ico tone-'+i}><BellRing size={16}/></span><div><strong>{item.applicant_name||'متقدم يحتاج متابعة'}</strong><small>{item.body||'افتح الحالة لمراجعتها'} · {date(item.created_at)}</small></div><ArrowLeft size={14}/></button>)}</div>:<div className="v2-empty"><CheckCircle2 size={28}/><strong>مفيش تنبيهات مفتوحة</strong><small>كل الحالات تحت السيطرة.</small></div>}
+        {(alerts.items||[]).slice(0,4).length?<div className="v2-alert-list">{alerts.items.slice(0,4).map((item,i)=><button key={item.id} onClick={()=>onAlert?.(item)}><span className={'ico tone-'+i}><BellRing size={16}/></span><div><strong>{item.applicant_name||'متقدم يحتاج متابعة'}</strong><small>{item.body||'افتح الحالة لمراجعتها'} · {date(item.created_at)}</small></div><ArrowLeft size={14}/></button>)}</div>:<div className="v2-empty"><CheckCircle2 size={25}/><strong>مفيش تنبيهات مفتوحة</strong><small>كل الحالات تحت السيطرة.</small></div>}
       </section>
       <section className="v2-panel v2-recent">
         <header><div><h2>أحدث المتقدمين</h2><p>آخر الطلبات المسجلة</p></div><button className="link" onClick={()=>onTab?.('applicants')}>عرض الكل <ArrowLeft size={14}/></button></header>
@@ -97,9 +140,9 @@ export function ReferenceOverviewPage({version=0,officeId='',alerts={},onAlert,o
       </section>
       <section className="v2-panel v2-actions">
         <header><div><h2>إجراءات سريعة</h2><p>أكثر العمليات استخدامًا</p></div><Zap size={19}/></header>
-        <button className="action orange" onClick={()=>onTab?.('applicants')}><Plus/><div><strong>إضافة طيار</strong><small>إضافة طلب طيار جديد للنظام</small></div><Users/></button>
+        <button className="action orange" onClick={()=>onTab?.('applicants')}><Plus/><div><strong>إضافة طيار</strong><small>إضافة طلب جديد للنظام</small></div><Users/></button>
         <button className="action cyan" onClick={()=>onTab?.('campaigns')}><ArrowLeft/><div><strong>إنشاء إعلان</strong><small>نشر وإدارة حملات التوظيف</small></div><Megaphone/></button>
-        <div className="action-pair"><button onClick={()=>onTab?.('interviews')}><CalendarDays/><span>جدولة مقابلة</span></button><button onClick={()=>onTab?.('applicants')}><FileText/><span>استيراد بيانات</span></button></div>
+        <div className="action-pair"><button onClick={()=>onTab?.('interviews')}><CalendarDays/><span>جدولة مقابلة</span></button><button onClick={()=>onTab?.('areas')}><MapPin/><span>مناطق العمل</span></button></div>
       </section>
     </div>
   </div>;

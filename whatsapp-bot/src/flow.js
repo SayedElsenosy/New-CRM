@@ -5,6 +5,7 @@ import {decideConversationAction,extractConversationFacts,extractConversationObs
 import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
+import {documentAvailabilityDecision,unavailableDocumentNote} from './document-assistance.js';
 import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
 function areaPreviewReply(area,areas){
@@ -74,7 +75,9 @@ function handoffTurn({answers,current,applicant,questions,areas,settings,message
  delete handoffAnswers.__agent_state;
  const fallback=reason==='user_requested_human'
   ?'تمام، هحوّل المحادثة لمسؤول التوظيف علشان يكمل معاك.'
-  :String(settings.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.').trim();
+  :reason==='documents_unavailable'
+   ?'تمام، فهمت إن في مستند مش متوفر معاك دلوقتي. هبلّغ مسؤول التوظيف علشان يراجع موقفك ويوضح الخطوة المناسبة. مش هكرر عليك طلب الصور لحد ما يتابع معاك.'
+   :String(settings.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.').trim();
  return {patch:{answers:handoffAnswers,awaiting_id:current?.id||null,bot_enabled:false,stage:computedStage({...applicant,answers:handoffAnswers},questions,areas)},reply:fallback,handoff:true,handoff_reason:reason};
 }
 function agentClarificationTurn({answers,current,applicant,questions,areas,message}){
@@ -416,6 +419,35 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const buttonAction=areaAction(m.body);
  const choiceButton=choiceAction(m.body);
  const protocolAction=buttonAction||choiceButton;
+ // An upload request cannot be answered with plain text. Handle Egyptian
+ // "مش معايا" before fact extraction or live LLM reasoning can mistake it
+ // for a rejection, and preserve the existing pending document question.
+ const waitingQuestion=qs.find(q=>q.id===a.awaiting_id);
+ const waitingDocument=waitingQuestion&&!answered(waitingQuestion,answers,areas)&&waitingQuestion.kind==='image'
+  ?waitingQuestion:null;
+ if(waitingDocument&&!protocolAction){
+  if(m.media_path){
+   if(answers.__document_issue?.question_id===waitingDocument.id)delete answers.__document_issue;
+  }else{
+   const missing=documentAvailabilityDecision(m.body,waitingDocument,answers.__document_issue);
+   if(missing?.action==='clarify'){
+    answers.__document_issue={kind:'document_availability_clarification',question_id:waitingDocument.id,
+     at:new Date().toISOString()};
+    return {
+     patch:{answers,awaiting_id:waitingDocument.id,stage:computedStage({...a,answers},questions,areas)},
+     reply:missing.reply,agent_action:'clarify_unavailable_documents'
+    };
+   }
+   if(missing?.action==='handoff'){
+    answers.__document_issue={kind:'document_unavailable',question_id:waitingDocument.id,
+     reported:missing.document,needs_human:true,at:new Date().toISOString()};
+    const turn=handoffTurn({answers,current:waitingDocument,applicant:a,questions,areas,settings,
+     message:m,reason:'documents_unavailable'});
+    return {...turn,agent_action:'documents_unavailable_handoff',
+     handoff_note:unavailableDocumentNote(waitingDocument,m.body,missing.document)};
+   }
+  }
+ }
  const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
  const recommendationPreferences=settings.ai_enabled&&!protocolAction?extractRecommendationPreferences(m.body):[];
  const recommendationMerge=mergeRecommendationProfile(answers.__recommendation_profile,recommendationPreferences);

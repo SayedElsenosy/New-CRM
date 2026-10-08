@@ -1534,3 +1534,160 @@
     grid-template-rows:295px 232px!important;
   }
 }
+
+
+/* =========================================================
+   Web V2 balanced desktop pass — comfortable, not oversized
+   ========================================================= */
+@media (min-width:1100px){
+  .app-v2-overview main.reference-main{
+    scrollbar-width:thin!important;
+    scrollbar-color:#0b5a7e #03111d!important;
+  }
+  .app-v2-overview main.reference-main::-webkit-scrollbar{
+    width:8px!important;
+  }
+  .app-v2-overview main.reference-main::-webkit-scrollbar-track{
+    background:#03111d!important;
+  }
+  .app-v2-overview main.reference-main::-webkit-scrollbar-thumb{
+    background:#0b5a7e!important;
+    border-radius:999px!important;
+    border:2px solid #03111d!important;
+  }
+
+  .app-v2-overview .page{
+    padding:0 16px 22px!important;
+  }
+  .webv2-home{
+    min-height:820px!important;
+    grid-template-rows:188px 98px 510px!important;
+    gap:11px!important;
+  }
+
+  .webv2-hero{
+    height:188px!important;
+    min-height:188px!important;
+  }
+  .webv2-hero-copy{
+    padding:20px 24px!important;
+  }
+  .webv2-hero-copy h1{
+    font-size:33px!important;
+  }
+  .webv2-hero-copy p{
+    margin:7px 0 14px!important;
+    font-size:14.5px!important;
+  }
+  .webv2-hero-actions button{
+    height:42px!important;
+    min-width:160px!important;
+  }
+
+  .webv2-kpi{
+    height:98px!important;
+    min-height:98px!important;
+    grid-template-columns:1fr 54px!important;
+    padding:11px 14px!important;
+  }
+  .webv2-kpi-icon{
+    width:52px!important;
+    height:52px!important;
+  }
+  .webv2-kpi-copy strong{
+    font-size:29px!important;
+  }
+
+  .webv2-main-grid{
+    height:510px!important;
+    min-height:510px!important;
+    gap:11px!important;
+  }
+  .webv2-left-stack{
+    grid-template-rows:180px 66px 242px!important;
+    gap:11px!important;
+  }
+  .webv2-right-stack{
+    grid-template-rows:280px 219px!important;
+    gap:11px!important;
+  }
+
+  .webv2-card>header{
+    min-height:44px!important;
+    padding:9px 13px 6px!important;
+  }
+  .webv2-card>header h2{
+    font-size:15.5px!important;
+  }
+
+  .webv2-area-list{
+    padding:5px 13px 9px!important;
+    gap:9px!important;
+  }
+  .webv2-area-row{
+    grid-template-columns:84px 1fr 36px!important;
+    gap:9px!important;
+    font-size:10px!important;
+  }
+  .webv2-area-row .bar{
+    height:12px!important;
+  }
+
+  .webv2-agent-tile{
+    height:66px!important;
+    min-height:66px!important;
+    grid-template-columns:52px 1fr 36px!important;
+    padding:8px 13px!important;
+  }
+  .webv2-agent-tile .agent-icon{
+    width:44px!important;
+    height:44px!important;
+  }
+  .webv2-agent-tile strong{
+    font-size:16.5px!important;
+  }
+
+  .webv2-performance .v2-chart{
+    height:calc(100% - 46px)!important;
+    padding-top:24px!important;
+  }
+  .webv2-performance .v2-chart svg text{
+    font-size:8.5px!important;
+  }
+
+  .webv2-table{
+    height:calc(100% - 49px)!important;
+    margin:0 10px!important;
+  }
+  .webv2-table .head{
+    height:31px!important;
+    font-size:8.5px!important;
+    padding:6px 10px!important;
+  }
+  .webv2-table .row{
+    height:calc((100% - 31px)/4)!important;
+    min-height:39px!important;
+    padding:6px 10px!important;
+    font-size:8.5px!important;
+  }
+  .webv2-table .candidate i{
+    width:29px!important;
+    height:29px!important;
+  }
+
+  .webv2-today>header{
+    min-height:39px!important;
+  }
+  .webv2-needs-reply{
+    height:39px!important;
+    min-height:39px!important;
+  }
+  .webv2-today-list>button{
+    height:43px!important;
+    min-height:43px!important;
+  }
+  .webv2-today-actions button{
+    height:36px!important;
+    min-height:36px!important;
+  }
+}

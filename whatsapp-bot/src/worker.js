@@ -9,12 +9,21 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
-import {questionPrompt} from './domain.js';
+import {questionPrompt,areaDetails} from './domain.js';
 import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
 export function shouldBrowseAreaButtons(_question,body){
  const text=String(body||'');
  return text.includes('اختيارات سريعة للمناطق');
+}
+
+// The office's Areas field is authoritative. LLM composition must not change
+// its wording, omit lines, or silently change any salary or other conditions.
+export function replyContainsVerbatimAreaDetails(reply,areas=[]){
+ const text=String(reply||'');
+ return (areas||[]).some(area=>area?.active===true
+  &&String(area?.details||'').trim().length>0
+  &&text.includes(areaDetails(area)));
 }
 
 export function botAreaChoices(areas){
@@ -297,7 +306,7 @@ export class Worker {
       }
      }
      let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
-     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded){
+     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages

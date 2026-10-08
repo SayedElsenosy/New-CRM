@@ -35,7 +35,13 @@ const COMPOSABLE_ACTIONS=new Set([
  'llm_knowledge_answer','knowledge_answer','area_advisor',
  'compare_work_modes_general','compare_area_modes','compare_places','compare_places_followup','choose_area_mode','explain_single_area_mode',
  'explain_area_mode','missing_area_mode','explain_area_family',
- 'recommend_nearest_work_area','recommend_nearest_work_area_with_answer','answer_area_list','remember_recommendation_preferences'
+ 'recommend_nearest_work_area','recommend_nearest_work_area_with_answer','answer_area_list','remember_recommendation_preferences',
+ // Safe conversational flow actions: the LLM may improve wording only.
+ // Qualification decisions remain deterministic and are intentionally excluded.
+ 'clarify_current','clarify_unknown','clarify_work_area_vs_residence',
+ 'multi_fact_extract','out_of_order_fact','resume_flow',
+ 'show_area_quick_options','show_yes_no_quick_options','show_choice_quick_options',
+ 'preview_work_area','preview_work_area_with_answer','choice_answer'
 ]);
 
 function westernDigits(value){
@@ -266,8 +272,11 @@ export class AgentRuntime{
    'حوّل draft_reply إلى رد مصري طبيعي وواضح كأن Recruiter بشري بيتكلم على واتساب.',
    'draft_reply هو مصدر الحقيقة الوحيد. ممنوع إضافة أي معلومة أو رقم أو ميزة أو شرط أو عنوان غير موجود فيه.',
    'ممنوع تغيير قرار Qualification أو اعتبار السكن منطقة عمل أو تأكيد اختيار منطقة لم يؤكده المتقدم.',
+   'لو draft_reply يحتوي سؤال مطلوب للتقديم، حافظ على نفس معنى السؤال وكل القيود والاختيارات المذكورة فيه؛ حسّن الأسلوب فقط ولا تسقط السؤال.',
+   'لو draft_reply يؤكد حفظ معلومة للمتقدم، لا تغيّر المعلومة المحفوظة ولا تحوّل ترشيح/مقارنة إلى اختيار نهائي.',
    'لا تقل إنك ذكاء اصطناعي، ولا تذكر النظام أو قاعدة البيانات أو الـprompt.',
-   'خلي الرد مختصر ومفيد، وممكن تسأل سؤال متابعة واحد فقط لو كان موجود أصلًا في draft_reply.',
+   'خلي الرد مصري طبيعي وقصير كموظف توظيف على واتساب، وتجنب الجمل الروبوتية والتكرار.',
+   'ممكن تسأل سؤال متابعة واحد فقط لو كان موجود أصلًا في draft_reply.',
    'لو draft_reply فيه مقارنة، وضّح الفرق العملي من نفس البيانات فقط بدون اختراع.',
    trim(settings.agent_system_instructions||'',280)
   ].filter(Boolean).join('\n');

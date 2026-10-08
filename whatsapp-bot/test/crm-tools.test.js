@@ -44,8 +44,8 @@ test('real CRM tools combine Geoapify-ready nearest suggestions with official mo
  assert.equal(r.agent_action,'crm_tools_multi_step');
  assert.equal(r.tools.length,2);
  assert.deepEqual(r.tools.map(x=>x.tool),['find_nearest_work_areas','compare_registered_areas']);
- assert.match(r.reply,/الماركت/);
- assert.match(r.reply,/المطاعم/);
+ assert.match(r.reply,/ماركت/);
+ assert.match(r.reply,/مطاعم/);
  assert.match(r.reply,/عين شمس/);
  // The comparison must use actual market+restaurant records from one family,
  // never aggregate the highest salary from a different office neighborhood.

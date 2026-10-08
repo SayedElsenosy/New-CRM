@@ -22,7 +22,7 @@ test('مدينة العبور resolves to the available market operation natural
  assert.equal(r.action,'explain_area_family');
  assert.match(r.reply,/العبور موجودة/);
  assert.match(r.reply,/ماركت/);
- assert.match(r.reply,/5,225/);
+ assert.match(r.reply,/مرتب شهري ثابت 5225 جنيه/);
  assert.doesNotMatch(r.reply,/اختار.*الأزرار/);
 });
 

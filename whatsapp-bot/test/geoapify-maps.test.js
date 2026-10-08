@@ -62,6 +62,28 @@ test('Geoapify uses free location API with Egypt-only filter and route matrix',a
  assert.match(nearestWorkAreaFreeReply(result),/كم بالطريق/);
 });
 
+test('common Egyptian phrase انا في resolves unknown neighborhoods safely',async()=>{
+ const calls=[];
+ const result=await nearestWorkAreasWithFreeMaps('أنا في عزبة النخل، اقرب منطقة فين؟',areas,{
+  geoapifyApiKey:'FAKE_KEY',geoapifyRoutesEnabled:false,geoapifyFetchImpl:mockApi(calls),
+  geoapifyMaxDailyCredits:2500
+ });
+ assert.equal(result.origin_query,'عزبة النخل');
+ assert.equal(result.geoapify_used,true);
+});
+
+test('followup remembers known origin and can calculate roads again',async()=>{
+ const calls=[];
+ const result=await nearestWorkAreasWithFreeMaps('طب إيه الأقرب ليا؟',areas,{
+  fallbackOriginKey:'imbaba',geoapifyApiKey:'FAKE_KEY',
+  geoapifyRoutesEnabled:true,geoapifyFetchImpl:mockApi(calls),
+  geoapifyMaxDailyCredits:2500
+ });
+ assert.equal(result.origin.key,'imbaba');
+ assert.equal(result.distance_source,'road');
+ assert.ok(calls.some(x=>x.url.pathname.includes('routematrix')));
+});
+
 test('when there is no key, the free map module retains the offline advisor',async()=>{
  const r=await nearestWorkAreasWithFreeMaps('انا ساكن في إمبابة',areas,{env:{}});
  assert.equal(r.items[0].area.id,'moh');

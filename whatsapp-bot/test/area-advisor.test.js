@@ -22,7 +22,7 @@ test('مدينة العبور resolves to the available market operation natural
  assert.equal(r.action,'explain_area_family');
  assert.match(r.reply,/العبور موجودة/);
  assert.match(r.reply,/ماركت/);
- assert.match(r.reply,/5,225/);
+ assert.match(r.reply,/مرتب شهري ثابت 5225 جنيه/);
  assert.doesNotMatch(r.reply,/اختار.*الأزرار/);
 });
 
@@ -206,4 +206,59 @@ test('restaurant details track office edits with no fixed salary or shift text',
  const r=conversationalAreaAdvice('تفاصيل مطاعم الشيخ زايد',[changed],{});
  assert.ok(r.reply.includes('📍 '+changed.name+'\n'+changed.details));
  assert.doesNotMatch(r.reply,/4500|8000|42 جنيه/);
+});
+
+
+test('market details from Areas are sent in full with every line unchanged',()=>{
+ const area=areas.find(x=>x.id==='zayed-market');
+ const r=conversationalAreaAdvice('ممكن تفاصيل الماركت في الشيخ زايد؟',areas,{});
+ assert.equal(r.action,'explain_area_mode');
+ assert.equal(r.previewAreaId,area.id);
+ assert.ok(r.reply.includes('📍 '+area.name+'\n'+area.details));
+ assert.match(r.reply,/تأمين طبي شامل ومجاني/);
+ assert.match(r.reply,/21 يوم إجازة سنوية/);
+ assert.match(r.reply,/أوفر تايم/);
+});
+
+test('market only mode follow-up uses complete details of the remembered city',()=>{
+ const area=areas.find(x=>x.id==='obour-market');
+ const r=conversationalAreaAdvice('ماركت',areas,{
+  __area_context:{place_key:'العبور',kind:'area_context'}
+ });
+ assert.equal(r.action,'explain_area_mode');
+ assert.equal(r.previewAreaId,area.id);
+ assert.ok(r.reply.includes('📍 '+area.name+'\n'+area.details));
+});
+
+test('generic market request with one market location shows its exact data',()=>{
+ const market=areas.find(x=>x.id==='zayed-market');
+ const r=conversationalAreaAdvice('ممكن تفاصيل شغل الماركت؟',[market],{});
+ assert.equal(r.action,'explain_area_mode');
+ assert.equal(r.previewAreaId,market.id);
+ assert.ok(r.reply.includes('📍 '+market.name+'\n'+market.details));
+});
+
+test('generic market request across several locations asks which, without mixed salaries',()=>{
+ const r=conversationalAreaAdvice('تفاصيل الماركت كام مرتبها؟',areas,{});
+ assert.equal(r.action,'ask_market_area');
+ assert.match(r.reply,/العبور/);
+ assert.match(r.reply,/الشيخ زايد/);
+ assert.doesNotMatch(r.reply,/3500|5225|6000/);
+});
+
+test('edited office market details appear exactly, without legacy values or summaries',()=>{
+ const area={...areas.find(x=>x.id==='obour-market'),
+  details:'مرتب المكتب الجديد 7400 جنيه\nالقبض الجمعة\nبونص متغير حسب التعاقد'};
+ const r=conversationalAreaAdvice('تفاصيل العبور ماركت',[area],{});
+ assert.equal(r.previewAreaId,area.id);
+ assert.ok(r.reply.includes('📍 '+area.name+'\n'+area.details));
+ assert.doesNotMatch(r.reply,/5225|3500|6000/);
+});
+
+test('comparing market and restaurants still returns compact comparisons',()=>{
+ const r=conversationalAreaAdvice('إيه الفرق بين الماركت والمطاعم في الشيخ زايد؟',areas,{});
+ assert.equal(r.action,'compare_area_modes');
+ assert.match(r.reply,/الماركت|ماركت/);
+ assert.match(r.reply,/المطاعم|مطاعم/);
+ assert.doesNotMatch(r.reply,/21 يوم إجازة سنوية/);
 });

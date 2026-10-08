@@ -215,7 +215,7 @@ test('مدينة العبور is understood as the same place as العبور م
  assert.equal(preview.agent_action,'explain_area_family');
  assert.match(preview.reply,/العبور موجودة/);
  assert.match(preview.reply,/ماركت/);
- assert.match(preview.reply,/5,225/);
+ assert.match(preview.reply,/مرتب شهري ثابت 5225 جنيه/);
 
  const confirmed=await planTurn({applicant:{...a,answers:preview.patch.answers,awaiting_id:'q2'},message:{body:'مناسبة وكمل'},questions,areas:liveAreas,settings,interpret:noAi,knowledge:[]});
  assert.equal(confirmed.patch.answers.q2.value,'obour-market');
@@ -703,4 +703,29 @@ test('WhatsApp restaurant area preview sends original details unchanged',async()
  assert.equal(r.patch.awaiting_id,'q2');
  assert.equal(r.patch.answers.q2,undefined);
  assert.ok(r.reply.includes('📍 '+rest.name+'\n'+details));
+});
+
+
+test('requesting market details during work-area selection keeps the original stored text',async()=>{
+ const exact='* الشيفت الصباحي: 9 ساعات\n* المرتب الثابت: 7,350 جنيه\n* تأمين طبي\n* التأمين الاجتماعي\n* القبض أسبوعي حسب نظام التشغيل';
+ const market={id:'zayed-market',name:'الشيخ زايد ماركت',place_key:'الشيخ زايد',work_mode:'market',active:true,recruitment_eligible:true,zone:'WEST',details:exact};
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'عايز تفاصيل شغل الماركت في الشيخ زايد'},
+  questions,areas:[market],settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.agent_action,'explain_area_mode');
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.answers.__area_preview.value,'zayed-market');
+ assert.ok(r.reply.includes('📍 '+market.name+'\n'+exact));
+});
+
+test('market preview WhatsApp button returns unedited region-specific details',async()=>{
+ const details='** الماركت **\nالمرتب بيتم تحديده حسب اللوائح\nصرف يوم الخميس';
+ const market={id:'oct-market',name:'أكتوبر ماركت',place_key:'أكتوبر',work_mode:'market',active:true,recruitment_eligible:true,zone:'WEST',details};
+ const a={...applicant,awaiting_id:'q2',answers:{}};
+ const r=await planTurn({applicant:a,message:{body:'area_preview:oct-market'},
+  questions,areas:[market],settings,interpret:noAi,knowledge:[]});
+ assert.equal(r.patch.answers.q2,undefined);
+ assert.equal(r.patch.awaiting_id,'q2');
+ assert.ok(r.reply.includes('📍 '+market.name+'\n'+details));
 });

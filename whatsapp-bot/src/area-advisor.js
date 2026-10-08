@@ -514,13 +514,16 @@ function generalComparison(areas){
   +'• المطاعم: '+compactAreaSummary(restaurants)+'\n\n'
   +'الماركت غالبًا أقوى لو عايز دخل ثابت ومميزات واضحة، والمطاعم ممكن يكون دخله أعلى مع الشغل والأوردرات. قولّي المنطقة اللي بتفكر فيها وأنا أقارنها لك بالأرقام.';
 }
-// Restaurant details are official office data, not text for the LLM to summarize.
-function restaurantDetailsOrSummary(area){
- return areaMode(area)==='restaurants'?areaDetails(area):compactAreaSummary(area);
+// Market and restaurant details are official CRM Areas data, never LLM summaries.
+function operatingAreaDetailsOrSummary(area){
+ return ['market','restaurants'].includes(areaMode(area))
+  ?areaDetails(area):compactAreaSummary(area);
 }
-function asksRestaurantDetails(text){
- return hasAny(text,RESTAURANT_WORDS)
-  &&/(?:تفاصيل|معلومات|نظام|شغل|مرتب|راتب|قبض|دخل|شيفت|شفت|اوردر|أوردر|ساعات|مميزات)/.test(norm(text));
+function requestedOperatingModeDetails(text){
+ if(!/(?:تفاصيل|معلومات|نظام|شغل|مرتب|راتب|قبض|دخل|شيفت|شفت|اوردر|أوردر|ساعات|مميزات)/.test(norm(text)))return null;
+ const market=hasAny(text,MARKET_WORDS);
+ const restaurants=hasAny(text,RESTAURANT_WORDS);
+ return market!==restaurants?(market?'market':'restaurants'):null;
 }
 function asksComparison(text){
  const n=norm(text);
@@ -554,23 +557,27 @@ export function conversationalAreaAdvice(text,areas,answers={}){
  const key=explicit[0]||contextKey(answers,active);
  if(!key){
   if(compare)return {reply:generalComparison(active),action:'compare_work_modes_general'};
-  // If there is no chosen place, clarify which restaurant row is intended.
-  if(asksRestaurantDetails(text)){
-   const restaurantAreas=active.filter(a=>areaMode(a)==='restaurants');
-   if(restaurantAreas.length===1){
-    const area=restaurantAreas[0];
+  // When the candidate did not specify a location, do not mix salary/benefits
+  // from independent market or restaurant rows.
+  const requestedMode=requestedOperatingModeDetails(text);
+  if(requestedMode){
+   const modeAreas=active.filter(a=>areaMode(a)===requestedMode);
+   const modeName=modeLabel(requestedMode);
+   if(modeAreas.length===1){
+    const area=modeAreas[0];
     return {
-     reply:'أكيد، دي تفاصيل شغل المطاعم المسجلة عندنا:\n\n'+areaDetails(area)+'\n\nلو التفاصيل مناسبة ليك قولّي «مناسبة وكمل».',
+     reply:'أكيد، دي تفاصيل شغل '+modeName+' المسجلة عندنا:\n\n'
+      +areaDetails(area)+'\n\nلو التفاصيل مناسبة ليك قولّي «مناسبة وكمل».',
      action:'explain_area_mode',previewAreaId:area.id,contextPlaceKey:areaPlaceKey(area)
     };
    }
-   if(restaurantAreas.length>1){
-    const places=[...new Set(restaurantAreas.map(a=>displayPlace(familyByKey(active,areaPlaceKey(a)))))];
+   if(modeAreas.length>1){
+    const places=[...new Set(modeAreas.map(a=>displayPlace(familyByKey(active,areaPlaceKey(a)))))];
     return {
-     reply:'تفاصيل شغل المطاعم بتختلف حسب المنطقة. المطاعم المتاحة عندنا في:\n'
+     reply:'تفاصيل شغل '+modeName+' بتختلف حسب المنطقة. '+modeName+' متاح عندنا في:\n'
       +places.map(name=>'• '+name).join('\n')
-      +'\n\nقولّي أنهي منطقة تقصدها علشان أبعتلك تفاصيل المطاعم المسجلة فيها كاملة.',
-     action:'ask_restaurant_area'
+      +'\n\nقولّي أنهي منطقة تقصدها علشان أبعتلك تفاصيل '+modeName+' المسجلة فيها كاملة.',
+     action:requestedMode==='market'?'ask_market_area':'ask_restaurant_area'
     };
    }
   }
@@ -591,22 +598,22 @@ export function conversationalAreaAdvice(text,areas,answers={}){
   if(compareItems.length>=2)return {reply:compareReply(compareItems,text,place,profile),action:'compare_area_modes',contextPlaceKey:key};
   if(detailedVariants.length>=2)return {reply:compareReply(detailedVariants.slice(0,3),text,place,profile),action:'compare_area_modes',contextPlaceKey:key};
   if(variants.length===1){
-   return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+restaurantDetailsOrSummary(variants[0])+'\n\nلو مناسب ليك قولّي «مناسبة وكمل».',action:'explain_single_area_mode',previewAreaId:variants[0].id,contextPlaceKey:key};
+   return {reply:'في '+place+' المسجل عندي حاليًا '+modeLabel(areaMode(variants[0]))+' بس، ومش شايف النوع التاني متاح هناك دلوقتي.\n\n'+operatingAreaDetailsOrSummary(variants[0])+'\n\nلو مناسب ليك قولّي «مناسبة وكمل».',action:'explain_single_area_mode',previewAreaId:variants[0].id,contextPlaceKey:key};
   }
  }
  if(requestedModes.length){
   const target=variants.find(v=>requestedModes.includes(areaMode(v)));
-  if(target)return {reply:'أيوه، '+place+' فيها '+modeLabel(areaMode(target))+' حسب المسجل عندنا.\n\n'+restaurantDetailsOrSummary(target)+'\n\nلو مناسب ليك قولّي «مناسبة وكمل».',action:'explain_area_mode',previewAreaId:target.id,contextPlaceKey:key};
+  if(target)return {reply:'أيوه، '+place+' فيها '+modeLabel(areaMode(target))+' حسب المسجل عندنا.\n\n'+operatingAreaDetailsOrSummary(target)+'\n\nلو مناسب ليك قولّي «مناسبة وكمل».',action:'explain_area_mode',previewAreaId:target.id,contextPlaceKey:key};
   return {reply:'بالنسبة لـ'+place+'، مش شايف '+requestedModes.map(modeLabel).join(' أو ')+' مسجل حاليًا. المتاح عندي هو '+(variants.map(v=>modeLabel(areaMode(v))).join(' و ')||'المنطقة نفسها من غير تفاصيل تشغيل كفاية')+'.',action:'missing_area_mode',contextPlaceKey:key};
  }
  if(asksAvailability(text)||explicitKey(text,active)){
   if(variants.length===1){
-   return {reply:'أيوه، '+place+' موجودة عندنا. المتاح المسجل حاليًا هناك '+modeLabel(areaMode(variants[0]))+'.\n\n'+restaurantDetailsOrSummary(variants[0])+'\n\nلو ده مناسب ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:variants[0].id,contextPlaceKey:key};
+   return {reply:'أيوه، '+place+' موجودة عندنا. المتاح المسجل حاليًا هناك '+modeLabel(areaMode(variants[0]))+'.\n\n'+operatingAreaDetailsOrSummary(variants[0])+'\n\nلو ده مناسب ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:variants[0].id,contextPlaceKey:key};
   }
   if(variants.length>1){
    return {reply:'أيوه، '+place+' موجودة عندنا، وعندي فيها نظامين منفصلين:\n\n'+variants.slice(0,3).map(v=>'• '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n')+'\n\nقولّي «ماركت» أو «مطاعم» علشان أحددلك النظام نفسه وأقولك تفاصيله.',action:'choose_area_mode',contextPlaceKey:key};
   }
-  if(String(general?.details||'').trim())return {reply:'أيوه، '+place+' موجودة عندنا.\n\n'+restaurantDetailsOrSummary(general)+'\n\nلو مناسبة ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:general?.id||null};
+  if(String(general?.details||'').trim())return {reply:'أيوه، '+place+' موجودة عندنا.\n\n'+operatingAreaDetailsOrSummary(general)+'\n\nلو مناسبة ليك قولّي «مناسبة وكمل».',action:'explain_area_family',previewAreaId:general?.id||null};
  }
  return null;
 }

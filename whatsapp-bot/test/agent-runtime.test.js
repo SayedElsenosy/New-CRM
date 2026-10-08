@@ -65,11 +65,16 @@ test('free-tier planner payload stays compact with many areas and knowledge rows
 });
 
 
-test('response composer is limited to grounded conversational actions',()=>{
+test('response composer covers safe natural flow actions but never qualification decisions',()=>{
  assert.equal(canComposeAgentReply('compare_area_modes'),true);
  assert.equal(canComposeAgentReply('llm_knowledge_answer'),true);
+ assert.equal(canComposeAgentReply('multi_fact_extract'),true);
+ assert.equal(canComposeAgentReply('clarify_current'),true);
+ assert.equal(canComposeAgentReply('resume_flow'),true);
+ assert.equal(canComposeAgentReply('preview_work_area'),true);
  assert.equal(canComposeAgentReply('qualification_fact'),false);
  assert.equal(canComposeAgentReply('llm_change_answer'),false);
+ assert.equal(canComposeAgentReply('handoff'),false);
 });
 
 test('grounded reply validator rejects invented numbers and accepts Arabic digit rewrites',()=>{

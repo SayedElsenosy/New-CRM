@@ -135,14 +135,15 @@ export async function nearestWorkAreasWithFreeMaps(value,areas,options={}){
  if(!config.key)return nearestWorkAreasWithGoogleMaps(value,areas,options);
  const local=nearestWorkAreas(value,areas,options);
  const residential=extractResidenceLocation(value);
- const known=resolveKnownPlace(residential||value);
+ const known=resolveKnownPlace(residential||value)||(!residential?local?.origin:null);
  let origin=known?{key:known.key,label:known.label,...point(known.lat,known.lng)}:null;
+ let providerUsed=false;
  let queried=null;
  if(!origin){
   queried=residential||locationText(options.fallbackOriginQuery)||null;
   if(queried){
    const found=await geocode(queried,config);
-   if(found)origin={key:'geoapify_query',label:queried,lat:found.lat,lng:found.lng};
+   if(found){origin={key:'geoapify_query',label:queried,lat:found.lat,lng:found.lng};providerUsed=true;}
   }
  }
  if(!origin)return local;
@@ -166,6 +167,7 @@ export async function nearestWorkAreasWithFreeMaps(value,areas,options={}){
   if(!existing)newLookups++;
   const located=existing||await geocode(name,config);
   if(!located)continue;
+  providerUsed=true;
   for(const area of group)rows.push({area,point:located,distance_km:haversine(origin,located)});
  }
  if(!rows.length)return local;
@@ -182,7 +184,8 @@ export async function nearestWorkAreasWithFreeMaps(value,areas,options={}){
   const byLocation=new Map([...unique.keys()].map((k,i)=>[k,matrix.get(i)]));
   const withRoutes=rows.map(r=>({...r,route:byLocation.get(r.point.lat.toFixed(5)+','+r.point.lng.toFixed(5))}))
    .filter(x=>x.route);
-  if(withRoutes.length>=Math.min(3,rows.length)){
+  if(withRoutes.length>=Math.min(3,rows.length)&&withRoutes.length===rows.filter(r=>unique.has(r.point.lat.toFixed(5)+','+r.point.lng.toFixed(5))).length){
+   providerUsed=true;
    ranked=withRoutes.map(r=>({...r,distance_km:r.route.distance_km,duration_min:r.route.duration_min}))
     .sort((a,b)=>a.distance_km-b.distance_km||Number(a.area.position||0)-Number(b.area.position||0));
    road=true;
@@ -193,7 +196,7 @@ export async function nearestWorkAreasWithFreeMaps(value,areas,options={}){
   origin_query:queried||null,
   items:ranked.slice(0,bounded(options.limit,3,1,5)),
   distance_source:road?'road':'straight_line',
-  geoapify_used:true,source:road?'geoapify_routes':'geoapify_geocoding'
+  geoapify_used:providerUsed,source:road?'geoapify_routes':providerUsed?'geoapify_geocoding':'local'
  };
 }
 export function nearestWorkAreaFreeReply(result){

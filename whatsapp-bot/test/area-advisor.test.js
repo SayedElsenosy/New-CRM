@@ -163,3 +163,47 @@ test('ambiguous single word never guesses between two different places',()=>{
  const r=resolveAreaReference('حدائق',ambiguous);
  assert.equal(r.matched,false);
 });
+
+
+test('restaurant details from Areas are sent in full with every original line intact',()=>{
+ const target=areas.find(x=>x.id==='zayed-rest');
+ const reply=conversationalAreaAdvice('ممكن تفاصيل المطاعم في الشيخ زايد؟',areas,{});
+ assert.equal(reply.action,'explain_area_mode');
+ assert.equal(reply.previewAreaId,target.id);
+ assert.ok(reply.reply.includes('📍 '+target.name+'\n'+target.details));
+ assert.match(reply.reply,/سعر الأوردر \/ 42 جنيه/);
+ assert.match(reply.reply,/القبض أسبوعي على الفيزا/);
+ assert.doesNotMatch(reply.reply,/نظام مطاعم ·/);
+});
+
+test('restaurant mode follow-up uses exact full text, not abbreviated summary',()=>{
+ const area=areas.find(x=>x.id==='zayed-rest');
+ const r=conversationalAreaAdvice('مطاعم',areas,{__area_context:{place_key:'الشيخ زايد',kind:'area_context'}});
+ assert.equal(r.previewAreaId,area.id);
+ assert.ok(r.reply.includes('📍 '+area.name+'\n'+area.details));
+});
+
+test('single registered restaurant area sends full details even without a place name',()=>{
+ const restaurant=areas.find(x=>x.id==='zayed-rest');
+ const r=conversationalAreaAdvice('عايز تفاصيل شغل المطاعم', [restaurant], {});
+ assert.equal(r.action,'explain_area_mode');
+ assert.equal(r.previewAreaId,restaurant.id);
+ assert.ok(r.reply.includes('📍 '+restaurant.name+'\n'+restaurant.details));
+});
+
+test('multiple restaurant locations require clarification rather than mixing details',()=>{
+ const restaurant=areas.find(x=>x.id==='zayed-rest');
+ const second={...restaurant,id:'obour-rest',name:'العبور مطاعم',place_key:'العبور',details:'القبض في العبور يختلف تماماً\nمعلومة حصرية للعبور'};
+ const r=conversationalAreaAdvice('عايز تفاصيل شغل المطاعم',[restaurant,second],{});
+ assert.equal(r.action,'ask_restaurant_area');
+ assert.match(r.reply,/الشيخ زايد/);
+ assert.match(r.reply,/العبور/);
+ assert.doesNotMatch(r.reply,/4500|معلومة حصرية/);
+});
+
+test('restaurant details track office edits with no fixed salary or shift text',()=>{
+ const changed={...areas.find(x=>x.id==='zayed-rest'),details:'الشيفت الجديد: 11 ساعة\nالدخل: حسب المنطقة\nميزة إضافية خاصة بالمطاعم 🛵'};
+ const r=conversationalAreaAdvice('تفاصيل مطاعم الشيخ زايد',[changed],{});
+ assert.ok(r.reply.includes('📍 '+changed.name+'\n'+changed.details));
+ assert.doesNotMatch(r.reply,/4500|8000|42 جنيه/);
+});

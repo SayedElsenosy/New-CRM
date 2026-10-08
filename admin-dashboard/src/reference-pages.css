@@ -3358,3 +3358,92 @@
     display:none!important;
   }
 }
+
+
+/* =========================================================
+   Mobile navigation V3 — overlay-free fix for iOS Safari.
+   The prior full-screen backdrop was being composited over
+   the drawer (blur + darkness). Do not render that element.
+   Instead dim ONLY the sibling main page: the sidebar can
+   never inherit a backdrop-filter from a covering overlay.
+   ========================================================= */
+.app.app-v2 .mobile-sidebar-close{
+  display:none!important;
+}
+@media(max-width:1099px){
+  .app.app-v2.mobile-nav-open{
+    background:#000d18!important;
+    isolation:isolate!important;
+  }
+  .app.app-v2.mobile-nav-open>main{
+    opacity:.30!important;
+    transition:opacity .18s ease!important;
+    /* Main stays tappable so tapping outside the drawer closes it
+       without firing the button/link underneath (React capture). */
+    pointer-events:auto!important;
+  }
+  .app.app-v2>aside{
+    z-index:1000!important;
+    opacity:1!important;
+    filter:none!important;
+    -webkit-filter:none!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    background:#031522!important;
+  }
+  .app.app-v2>aside.open{
+    z-index:1000!important;
+    transform:translate3d(0,0,0)!important;
+    opacity:1!important;
+    filter:none!important;
+    -webkit-filter:none!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    box-shadow:-18px 0 54px rgba(0,0,0,.62)!important;
+  }
+  .app.app-v2>.mobile-nav-backdrop{
+    display:none!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+  }
+  .app.app-v2 .mobile-sidebar-close{
+    display:flex!important;
+    position:absolute!important;
+    top:11px!important;
+    left:12px!important;
+    z-index:20!important;
+    width:40px!important;
+    height:40px!important;
+    min-width:40px!important;
+    min-height:40px!important;
+    padding:8px!important;
+    align-items:center!important;
+    justify-content:center!important;
+    border:1px solid #216280!important;
+    border-radius:10px!important;
+    background:#062338!important;
+    color:#edfaff!important;
+    box-shadow:none!important;
+    cursor:pointer;
+  }
+  .app.app-v2 .mobile-sidebar-close:focus-visible{
+    outline:2px solid #24dfff!important;
+    outline-offset:3px;
+  }
+  .app.app-v2>aside .sidebar-scroll{
+    min-height:0!important;
+    flex:1 1 auto!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .app.app-v2>aside{
+    transition:none!important;
+  }
+  .app.app-v2.mobile-nav-open>main{
+    transition:none!important;
+  }
+}

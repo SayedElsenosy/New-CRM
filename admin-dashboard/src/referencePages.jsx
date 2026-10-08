@@ -3,7 +3,7 @@ import {
   Activity,ArrowLeft,BarChart3,BellRing,BookOpen,BrainCircuit,CalendarDays,
   CheckCircle2,ClipboardCheck,Cpu,Database,FileText,Gauge,Globe2,MessageCircle,
   Megaphone,Play,Plus,RefreshCw,Search,Send,Settings2,ShieldCheck,Sparkles,
-  Target,Users,Zap,MapPin,TrendingUp
+  Target,Users,Zap,MapPin,TrendingUp,Briefcase,Clock3,FolderOpen,ChevronLeft,CalendarCheck,UserPlus,Bot,MessageSquare,Filter
 } from 'lucide-react';
 import {api,send,date,personName} from './api';
 
@@ -97,54 +97,111 @@ function RecentApplicants({items=[],onSelect}){
   </div>;
 }
 
-export function ReferenceOverviewPage({version=0,officeId='',alerts={},onAlert,onTab,onSelect}){
+function WebV2Kpi({title,value,Icon,tone='cyan',caption=''}) {
+  return <article className={'webv2-kpi '+tone}>
+    <div className="webv2-kpi-copy"><span>{title}</span><strong>{value}</strong>{caption&&<small>{caption}</small>}</div>
+    <span className="webv2-kpi-icon"><Icon size={27}/></span>
+  </article>;
+}
+
+function WebV2AreaBars({areas=[]}) {
+  const top=areas.slice(0,4),max=Math.max(1,...top.map(x=>n(x.count)));
+  return <section className="webv2-card webv2-areas">
+    <header><h2><MapPin size={17}/> مناطق العمل</h2><button type="button"><Filter size={15}/></button></header>
+    <div className="webv2-area-list">
+      {top.length?top.map(x=><div key={x.name} className="webv2-area-row">
+        <span>{x.name}</span><div className="bar"><i style={{width:Math.max(8,Math.round((n(x.count)/max)*100))+'%'}}/></div><b>{fmt(x.count)}</b>
+      </div>):<div className="webv2-empty-mini">لسه مفيش بيانات كفاية لمناطق العمل.</div>}
+    </div>
+  </section>;
+}
+
+function WebV2Applicants({items=[],onSelect}) {
+  return <section className="webv2-card webv2-applicants">
+    <header><div><h2><Users size={18}/> أحدث المتقدمين</h2><p>أحدث الطلبات المسجلة</p></div><button className="webv2-link">عرض الكل <ChevronLeft size={15}/></button></header>
+    <div className="webv2-table">
+      <div className="head"><span>المرشح</span><span>المنطقة</span><span>الحالة</span><span>الإجراء</span></div>
+      {items.length?items.slice(0,4).map(a=>{
+        const stage=a.recruitment_stage||'new';
+        const label=stage==='hired'?'تم القبول':stage==='accepted'?'تم القبول':stage==='interview'?'مقابلة':stage==='review'?'قيد المراجعة':'جديد';
+        return <div className="row" key={a.id}>
+          <span className="candidate"><i>{personName(a)[0]||'م'}</i><b>{personName(a)}</b></span>
+          <span>{a.qualification?.preferred_work_area||'—'}</span>
+          <span><em className={'stage '+stage}>{label}</em></span>
+          <span><button onClick={()=>onSelect?.(a.id)}><FolderOpen size={14}/> فتح الملف</button></span>
+        </div>;
+      }):<div className="webv2-empty-mini">لسه مفيش متقدمين.</div>}
+    </div>
+  </section>;
+}
+
+function WebV2Today({interviews=[],alerts={},onTab,onAlert}) {
+  const list=interviews.slice(0,2);
+  return <section className="webv2-card webv2-today">
+    <header><h2><Clock3 size={17}/> متابعة اليوم</h2></header>
+    <button className="webv2-needs-reply" onClick={()=>alerts.items?.[0]&&onAlert?.(alerts.items[0])}>
+      <span><b>{alerts.open_count||0}</b> حالات تحتاج رد</span><ChevronLeft size={18}/>
+    </button>
+    <div className="webv2-today-list">
+      {list.map(x=><button key={x.id} onClick={()=>onTab?.('interviews')}>
+        <span><CalendarDays size={16}/></span>
+        <div><strong>{x.applicant_name||'مرشح'}</strong><small>{x.office?.name||'مقابلة توظيف'}</small></div>
+        <time>{new Date(x.scheduled_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit',timeZone:'Africa/Cairo'})}</time>
+      </button>)}
+      {!list.length&&<div className="webv2-empty-mini">مفيش مقابلات قريبة.</div>}
+    </div>
+    <div className="webv2-today-actions"><button onClick={()=>onTab?.('interviews')}><CalendarCheck size={15}/> كل المقابلات</button><button onClick={()=>onTab?.('applicants')}><MessageSquare size={15}/> المحادثات</button></div>
+  </section>;
+}
+
+export function ReferenceOverviewPage({version=0,officeId='',alerts={},onAlert,onTab,onSelect,profileName='سيد'}){
   const [data,setData]=useState(null),[error,setError]=useState('');
   const load=useCallback(async()=>{try{const p=new URLSearchParams();if(officeId)p.set('office_id',officeId);setData(await api('/dashboard'+(p.toString()?'?'+p:'')));setError('');}catch(e){setError(e.message);}},[officeId]);
   useEffect(()=>{load();},[load,version]);
-  const metrics=data?.metrics||{},areas=data?.area_distribution||[],recent=data?.recent||[],growth=data?.growth||[];
-  const current=n(growth.at(-1)?.count),previous=n(growth.at(-2)?.count),monthTrend=previous?Math.round(((current-previous)/previous)*100):current?100:0;
-  return <div className="v2-page v2-dashboard v2-dashboard-rebuilt">
-    <section className="v2-home-hero">
-      <div className="v2-home-city" aria-hidden="true"/>
-      <div className="v2-home-copy"><span>لوحة التحكم · التوظيف المباشر</span><h1>لوحة التحكم</h1><p>متابعة وإدارة توظيف الطيارين والكادر اللوجستي بسهولة</p></div>
-      <img src="/reference/hero-rider.webp" alt="" aria-hidden="true"/>
-    </section>
-    {error&&<div className="v2-error">{error}<button onClick={load}><RefreshCw size={15}/> إعادة المحاولة</button></div>}
-    <div className="v2-metrics v2-home-metrics">
-      <MetricCard title="إجمالي الطيارين" value={fmt(metrics.total)} caption="كل الطلبات المسجلة" trend={(metrics.new_today||0)+' اليوم'} Icon={Users}/>
-      <MetricCard title="طلبات جديدة" value={fmt(metrics.new_today)} caption="طلبات وصلت اليوم" trend={(monthTrend>=0?'+':'')+monthTrend+'%'} Icon={ClipboardCheck} tone="orange"/>
-      <MetricCard title="الطيارون النشطون" value={fmt(metrics.active_candidates)} caption="داخل مسار التوظيف" trend={fmt(metrics.hired||0)+' تم تعيينهم'} Icon={Activity}/>
-      <MetricCard title="مقابلات اليوم" value={fmt(metrics.interviews_today)} caption="المواعيد المجدولة" trend={fmt(metrics.interviews||0)+' إجمالي'} Icon={CalendarDays} tone="orange"/>
-    </div>
-    <div className="v2-middle v2-home-middle">
-      <section className="v2-panel v2-performance">
-        <header><div><h2>أداء التوظيف</h2><p>مقارنة الطلبات والمقبولين خلال آخر 6 أشهر</p></div><button onClick={load}><RefreshCw size={14}/> تحديث</button></header>
-        <LineChart data={growth}/>
-      </section>
-      <section className="v2-panel v2-geo">
-        <header><div><h2>التوزيع الجغرافي</h2><p>الخريطة تتحدث تلقائيًا من مناطق عمل المرشحين</p></div><button onClick={()=>onTab?.('areas')}><MapPin size={13}/> إدارة المناطق</button></header>
-        <div className="v2-geo-body v2-geo-dynamic">
-          <DynamicAreaMap areas={areas}/>
-          <div className="v2-ranking"><strong>أكثر المناطق من حيث الطيارين</strong>{areas.slice(0,6).map((x,i)=><div key={x.name}><span><i className={i%2?'cyan':'orange'}/>{x.name}</span><b>{fmt(x.count)}</b></div>)}{!areas.length&&<small>لسه مفيش بيانات مناطق كفاية</small>}</div>
+  const metrics=data?.metrics||{},growth=data?.growth||[],areas=data?.area_distribution||[],recent=data?.recent||[],upcoming=data?.upcoming_interviews||[];
+
+  return <div className="v2-page webv2-home">
+    <section className="webv2-hero">
+      <div className="webv2-hero-art" aria-hidden="true"><img src="/reference/hero-rider.webp" alt=""/></div>
+      <div className="webv2-hero-copy">
+        <span className="eyebrow">مساحة العمل اليومية</span>
+        <h1>أهلًا {profileName.split(' ')[0]||'سيد'}، خلّينا نبدأ يومك.</h1>
+        <p>كل طلب، محادثة، ومقابلة في مكان واحد.</p>
+        <div className="webv2-hero-actions">
+          <button className="primary" onClick={()=>onTab?.('applicants')}><UserPlus size={18}/> إضافة مرشح</button>
+          <button onClick={()=>onTab?.('interviews')}><CalendarDays size={18}/> جدولة مقابلة</button>
         </div>
-      </section>
-    </div>
-    <div className="v2-bottom v2-home-bottom">
-      <section className="v2-panel v2-alerts">
-        <header><div><h2>التنبيهات</h2><p>الحالات اللي محتاجة متابعة</p></div><span className="count">{alerts.open_count||0}</span></header>
-        {(alerts.items||[]).slice(0,4).length?<div className="v2-alert-list">{alerts.items.slice(0,4).map((item,i)=><button key={item.id} onClick={()=>onAlert?.(item)}><span className={'ico tone-'+i}><BellRing size={16}/></span><div><strong>{item.applicant_name||'متقدم يحتاج متابعة'}</strong><small>{item.body||'افتح الحالة لمراجعتها'} · {date(item.created_at)}</small></div><ArrowLeft size={14}/></button>)}</div>:<div className="v2-empty"><CheckCircle2 size={25}/><strong>مفيش تنبيهات مفتوحة</strong><small>كل الحالات تحت السيطرة.</small></div>}
-      </section>
-      <section className="v2-panel v2-recent">
-        <header><div><h2>أحدث المتقدمين</h2><p>آخر الطلبات المسجلة</p></div><button className="link" onClick={()=>onTab?.('applicants')}>عرض الكل <ArrowLeft size={14}/></button></header>
-        <RecentApplicants items={recent} onSelect={onSelect}/>
-      </section>
-      <section className="v2-panel v2-actions">
-        <header><div><h2>إجراءات سريعة</h2><p>أكثر العمليات استخدامًا</p></div><Zap size={19}/></header>
-        <button className="action orange" onClick={()=>onTab?.('applicants')}><Plus/><div><strong>إضافة طيار</strong><small>إضافة طلب جديد للنظام</small></div><Users/></button>
-        <button className="action cyan" onClick={()=>onTab?.('campaigns')}><ArrowLeft/><div><strong>إنشاء إعلان</strong><small>نشر وإدارة حملات التوظيف</small></div><Megaphone/></button>
-        <div className="action-pair"><button onClick={()=>onTab?.('interviews')}><CalendarDays/><span>جدولة مقابلة</span></button><button onClick={()=>onTab?.('areas')}><MapPin/><span>مناطق العمل</span></button></div>
-      </section>
-    </div>
+      </div>
+    </section>
+
+    {error&&<div className="v2-error">{error}<button onClick={load}><RefreshCw size={15}/> إعادة المحاولة</button></div>}
+
+    <section className="webv2-kpis">
+      <WebV2Kpi title="إجمالي المتقدمين" value={fmt(metrics.total)} Icon={Users}/>
+      <WebV2Kpi title="طلبات اليوم" value={fmt(metrics.new_today)} Icon={FileText}/>
+      <WebV2Kpi title="مقابلات اليوم" value={fmt(metrics.interviews_today)} Icon={CalendarDays} tone="orange"/>
+      <WebV2Kpi title="تم تعيينهم" value={fmt(metrics.hired)} Icon={Users} tone="green"/>
+    </section>
+
+    <section className="webv2-main-grid">
+      <div className="webv2-left-stack">
+        <WebV2AreaBars areas={areas}/>
+        <button className="webv2-agent-tile" onClick={()=>onTab?.('agent')}>
+          <span className="agent-icon"><Bot size={30}/></span>
+          <div><strong>AI Agent</strong><small>إدارة مساعد التوظيف</small></div>
+          <ChevronLeft size={24}/>
+        </button>
+        <WebV2Today interviews={upcoming} alerts={alerts} onTab={onTab} onAlert={onAlert}/>
+      </div>
+
+      <div className="webv2-right-stack">
+        <section className="webv2-card webv2-performance">
+          <header><div><h2><BarChart3 size={18}/> أداء التوظيف</h2><p>الطلبات والمقبولون خلال آخر 6 أشهر</p></div><span>آخر ٦ أشهر</span></header>
+          <LineChart data={growth}/>
+        </section>
+        <WebV2Applicants items={recent} onSelect={onSelect}/>
+      </div>
+    </section>
   </div>;
 }
 

@@ -5,6 +5,7 @@ import {decideConversationAction,extractConversationFacts,extractConversationObs
 import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
+import {runCrmTools} from './crm-tools.js';
 import {documentAvailabilityDecision,unavailableDocumentNote} from './document-assistance.js';
 import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
@@ -483,6 +484,45 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
+
+ // Brain 2.0 phase two: execute safe read-only CRM tools for genuinely
+ // compound candidate requests, after confirmed facts and qualification stops
+ // have been handled. No tool can commit work area or qualify a candidate.
+ if(!protocolAction&&!m.media_path&&settings.agent_crm_tools_enabled!==false){
+  const toolResult=await runCrmTools({
+   text:m.body,applicant:a,answers,questions,areas,knowledge,settings,mapsOptions
+  });
+  if(toolResult){
+   if(toolResult.context?.place_key){
+    answers.__area_context={place_key:toolResult.context.place_key,kind:'area_context',at:new Date().toISOString()};
+   }
+   if(current?.field_key==='preferred_work_area'&&toolResult.context?.preview_area_id){
+    const preview=areas.find(z=>z.active===true&&String(z.id)===String(toolResult.context.preview_area_id));
+    if(preview)answers.__area_preview={value:preview.id,display:preview.name,kind:'area_preview',
+     advisor:true,at:new Date().toISOString()};
+   }
+   if(Array.isArray(toolResult.context?.comparison_keys)&&toolResult.context.comparison_keys.length>=2){
+    answers.__area_comparison={place_keys:toolResult.context.comparison_keys,
+     kind:'area_comparison',at:new Date().toISOString()};
+    delete answers.__area_preview;
+   }
+   if(toolResult.context?.recommendations){
+    answers.__area_recommendations=toolResult.context.recommendations;
+    delete answers.__area_preview;
+   }
+   const hasProgress=toolResult.tools.some(x=>x.tool==='read_candidate_progress');
+   const continuation=current&&!hasProgress
+    ?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+   return {
+    patch:current?{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}
+     :{answers,awaiting_id:null,stage:computedStage({...a,answers},questions,areas)},
+    reply:toolResult.reply+continuation,
+    agent_action:toolResult.agent_action,
+    tool_calls:toolResult.tools,
+    tools_grounded:true,maps_grounded:toolResult.maps_grounded
+   };
+  }
+ }
 
  if(!protocolAction&&quickOptionsRequest(m.body)&&current){
   if(current.kind==='area'){

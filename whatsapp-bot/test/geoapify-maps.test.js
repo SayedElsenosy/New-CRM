@@ -92,7 +92,11 @@ test('when there is no key, the free map module retains the offline advisor',asy
 });
 
 test('Geoapify errors fall back to existing local recommendation without inventing route distance',async()=>{
- const r=await nearestWorkAreasWithFreeMaps('انا ساكن في إمبابة',areas,{
+ const knownAreas=[
+  {id:'moh',name:'المهندسين مطاعم',active:true,recruitment_eligible:true},
+  {id:'zayed',name:'الشيخ زايد ماركت',active:true,recruitment_eligible:true}
+ ];
+ const r=await nearestWorkAreasWithFreeMaps('انا ساكن في بولاق الدكرور',knownAreas,{
   geoapifyApiKey:'FAKE_KEY',geoapifyRoutesEnabled:true,
   geoapifyMaxDailyCredits:2500,geoapifyFetchImpl:mockApi([],{fail:true})
  });

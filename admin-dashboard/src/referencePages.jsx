@@ -539,6 +539,7 @@ function AgentPerformance(){
  const funnel=report?.funnel||{},volume=report?.volume||{},accuracy=report?.accuracy||{},pilot=report?.pilot;
  const pilotObservation=report?.pilot_observation;
  const office=(report?.offices||[]).find(x=>x.id===officeId);
+ const officeReady=Boolean(officeId&&report?.office_id===officeId&&!loading);
  const offices=report?.offices||[];
  const counts=funnel.by_stage||{},cohort=report?.sample?.cohort_applicants||0;
  const cards=[
@@ -625,10 +626,10 @@ function AgentPerformance(){
     {office&&!office.agent_enabled&&<span>Agent المكتب متوقف حاليًا؛ شغّله من إعدادات المكتب الأول.</span>}
    </div>
    <div className="v2-pilot-actions">
-    <button type="button" disabled={pilotBusy||loading||!pilotObservation||pilotObservation.active||!office?.active||!office?.agent_enabled||!office?.linked_accounts} onClick={()=>pilotAction(true)}>
+    <button type="button" disabled={pilotBusy||!officeReady||!pilotObservation||pilotObservation.active||!office?.active||!office?.agent_enabled||!office?.linked_accounts} onClick={()=>pilotAction(true)}>
       <Play size={16}/> {pilotBusy?'جارٍ الحفظ':'بدء التجربة على الرسائل الجديدة'}
     </button>
-    <button type="button" className="stop" disabled={pilotBusy||loading||!pilotObservation||!pilotObservation.active} onClick={()=>pilotAction(false)}>
+    <button type="button" className="stop" disabled={pilotBusy||!officeReady||!pilotObservation||!pilotObservation.active} onClick={()=>pilotAction(false)}>
       <ShieldCheck size={16}/> إيقاف مراقبة التجربة
     </button>
    </div>

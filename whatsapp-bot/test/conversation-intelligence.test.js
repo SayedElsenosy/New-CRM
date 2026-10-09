@@ -110,7 +110,7 @@ test('staff correction produces pending suggestion only, never publishes CRM kno
    return {
     select(){
      const query={
-      eq(){return query;},order(){return query;},limit(){return Promise.resolve({data:past,error:null});},
+      eq(){return query;},order(){return query;},limit(){return Promise.resolve({data:[...past].reverse(),error:null});},
       maybeSingle(){return Promise.resolve({data:{office_id:'office-test'},error:null});}
      };
      return query;

@@ -719,7 +719,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const a=await aq.order('created_at',{ascending:false}).limit(cap);
   const applicants=must(a),ids=applicants.map(x=>x.id);
   const empty={data:[],error:null,count:0};
-  const [m,d,latestSuite]=await Promise.all([
+  const [m,d,latestSuite,officeTurns]=await Promise.all([
    ids.length?db.from('masar_messages')
     .select('applicant_id,created_at,direction,sender',{count:'exact'})
     .in('applicant_id',ids).gte('created_at',since)
@@ -729,14 +729,17 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
     .in('applicant_id',ids).gte('created_at',since)
     .order('created_at',{ascending:false}).limit(cap):empty,
    db.from('masar_events').select('created_at,detail')
-    .eq('kind','agent_quality_suite').order('created_at',{ascending:false}).limit(1)
+    .eq('kind','agent_quality_suite').order('created_at',{ascending:false}).limit(1),
+   ids.length?db.from('masar_events').select('kind,detail,created_at,applicant_id',{count:'exact'})
+    .eq('kind','agent_turn').in('applicant_id',ids).gte('created_at',since)
+    .order('created_at',{ascending:false}).limit(1000):empty
   ]);
   const optional=x=>{
    if(!x.error)return x.data||[];
    if(schemaMissing(x.error)||['42703','PGRST204'].includes(x.error.code))return [];
    throw x.error;
   };
-  const messages=must(m),decisions=optional(d),suite=optional(latestSuite)[0];
+  const messages=must(m),decisions=optional(d),suite=optional(latestSuite)[0],turns=optional(officeTurns);
   const qaPassed=suite&&Number(suite.detail?.total)>=560
    &&Number(suite.detail?.failed)===0&&Number(suite.detail?.passed)===Number(suite.detail?.total)
    &&Date.parse(suite.created_at)>=Date.now()-7*86400000;
@@ -744,7 +747,12 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    applicants,messages,decisions,days,
    applicantsTotal:a.count,messagesTotal:m.count,decisionsTotal:d.count
   });
-  res.json({...report,office_id:office.id,office_name:office.name,offices,
+  // Office-scoped operational signals only; synthetic suite is global and is not counted as office accuracy.
+  const officeQuality=qualityMetrics({events:turns,decisions:[],runs:[],days,
+   truncated:Boolean(officeTurns.count>turns.length)||Boolean(a.count>applicants.length)});
+  res.json({...report,office_quality:{sample:officeQuality.sample,operational:officeQuality.operational,
+   handoff_reasons:officeQuality.handoff_reasons,accuracy_rate:null,
+   accuracy_note:'دقة إجابات المكتب لا تُحسب قبل وجود مراجعات بشرية موثقة.'},office_id:office.id,office_name:office.name,offices,
    pilot:pilotReadiness({qualitySuitePassed:Boolean(qaPassed)}),
    pilot_observation:await officePilotReport(office)});
  });

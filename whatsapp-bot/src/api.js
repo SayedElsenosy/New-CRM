@@ -5,6 +5,7 @@ import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
 import {recruitmentPerformance,pilotReadiness} from './recruitment-performance.js';
+import {loadPilotControl,loadPilotEnrollments,pilotCohortSummary,PILOT_LIMIT} from './pilot-observation.js';
 import {conversationIntelligenceMetrics,safeLearningProposal} from './conversation-intelligence.js';
 import {expertBrainSummary} from './recruitment-expert.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
@@ -686,7 +687,68 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    applicants,messages,decisions,days,
    applicantsTotal:a.count,messagesTotal:m.count,decisionsTotal:d.count
   });
-  res.json({...report,pilot:pilotReadiness({qualitySuitePassed:Boolean(qaPassed)})});
+  // The live observational pilot is intentionally separate from the future
+  // automated rollout. The original office Agent remains unchanged.
+  const activeAccounts=must(await db.from('masar_whatsapp_accounts')
+   .select('id,office_id,name').eq('active',true).order('created_at',{ascending:true}).limit(3));
+  const account=activeAccounts.length===1?activeAccounts[0]:null;
+  let pilotObservation=null;
+  if(account){
+   const pilot=await loadPilotControl(db,account.id);
+   const enrollments=await loadPilotEnrollments(db,pilot);
+   const ids=[...new Set(enrollments.map(x=>x.applicant_id))];
+   const [pilotCandidates,pilotHandoffs]=ids.length?await Promise.all([
+    db.from('masar_applicants').select('id,stage').in('id',ids).limit(PILOT_LIMIT),
+    db.from('masar_events').select('applicant_id').eq('kind','ai_handoff')
+      .in('applicant_id',ids).gte('created_at',pilot.started_at).limit(500)
+   ]):[{data:[],error:null},{data:[],error:null}];
+   pilotObservation={...pilotCohortSummary({
+    pilot,enrollments,applicants:must(pilotCandidates),handoffs:must(pilotHandoffs)
+   }),office_label:account.name||'الرقم الرئيسي'};
+  }
+  res.json({...report,pilot:pilotReadiness({qualitySuitePassed:Boolean(qaPassed)}),
+   pilot_observation:pilotObservation});
+ });
+ // Live observational pilot: new inbound callers only; no bulk messages,
+ // no LLM setting changes, no alterations to qualification/office Agent.
+ adminRoute('post','/agent/pilot/start',async(req,res)=>{
+  await serial(async()=>{
+   const accounts=must(await db.from('masar_whatsapp_accounts')
+    .select('id,name,office_id,active').eq('active',true).limit(3));
+   const requested=String(req.body?.account_id||'');
+   const account=requested?accounts.find(x=>x.id===requested):accounts.length===1?accounts[0]:null;
+   if(!account)throw bad('حدد رقم واتساب واحدًا نشطًا لتجربة المتقدمين الجدد.');
+   const existing=await loadPilotControl(db,account.id);
+   if(existing.active)return res.json({ok:true,already_active:true,capacity:PILOT_LIMIT,mode:'new_inbound_observation'});
+   if(account.office_id){
+    const cfg=must(await db.from('masar_office_settings')
+     .select('agent_enabled').eq('office_id',account.office_id).maybeSingle());
+    if(cfg?.agent_enabled===false)throw bad('الـ Agent متوقف لهذا المكتب. شغّله من إعدادات المكتب أولًا.',409);
+   }
+   must(await db.from('masar_events').insert({
+    kind:'agent_pilot_started',staff_id:req.user.id,
+    detail:{whatsapp_account_id:account.id,office_id:account.office_id||null,
+     capacity:PILOT_LIMIT,mode:'new_inbound_observation',unsolicited_messages:false}
+   }));
+   res.json({ok:true,active:true,capacity:PILOT_LIMIT,mode:'new_inbound_observation'});
+  });
+ });
+ adminRoute('post','/agent/pilot/stop',async(req,res)=>{
+  await serial(async()=>{
+   const accounts=must(await db.from('masar_whatsapp_accounts')
+    .select('id,active').eq('active',true).limit(3));
+   const requested=String(req.body?.account_id||'');
+   const account=requested?accounts.find(x=>x.id===requested):accounts.length===1?accounts[0]:null;
+   if(!account)throw bad('حدد رقم واتساب واحدًا نشطًا.');
+   const existing=await loadPilotControl(db,account.id);
+   if(!existing.active)return res.json({ok:true,already_stopped:true});
+   must(await db.from('masar_events').insert({
+    kind:'agent_pilot_stopped',staff_id:req.user.id,
+    detail:{whatsapp_account_id:account.id,run_id:existing.run_id,
+     mode:'new_inbound_observation',office_agent_unchanged:true}
+   }));
+   res.json({ok:true,active:false,note:'تم إيقاف متابعة التجربة فقط؛ البوت الأساسي للمكتب لم يتغير.'});
+  });
  });
  // Admin-only, aggregate-only AI Quality Center. Never return candidate
  // messages, phone numbers, applicant IDs or raw decision traces here.

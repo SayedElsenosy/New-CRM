@@ -512,7 +512,7 @@ function AgentQualityCenter({state,reload,onReviewKnowledge}){
 }
 
 function AgentPerformance(){
- const [days,setDays]=useState(7),[report,setReport]=useState(null);
+ const [days,setDays]=useState(7),[report,setReport]=useState(null),[pilotBusy,setPilotBusy]=useState(false);
  const [loading,setLoading]=useState(false),[error,setError]=useState('');
  const load=useCallback(async()=>{
   setLoading(true);
@@ -521,8 +521,18 @@ function AgentPerformance(){
   finally{setLoading(false);}
  },[days]);
  useEffect(()=>{load();},[load]);
+ const pilotAction=async active=>{
+  if(!window.confirm(active
+   ?'بدء مراقبة أول 50 متقدم جديد يتواصلوا بنفسهم؟ مش هيتم إرسال رسائل جماعية أو تغيير تشغيل البوت.'
+   :'إيقاف متابعة التجربة؟ ده مش هيوقف البوت الأساسي.'))return;
+  setPilotBusy(true);
+  try{await send('/agent/pilot/'+(active?'start':'stop'),{});await load();setError('');}
+  catch(e){setError(e.message);}
+  finally{setPilotBusy(false);}
+ };
  const pct=x=>x==null?'—':Number(x).toLocaleString('en-US',{maximumFractionDigits:1})+'%';
  const funnel=report?.funnel||{},volume=report?.volume||{},accuracy=report?.accuracy||{},pilot=report?.pilot;
+ const pilotObservation=report?.pilot_observation;
  const counts=funnel.by_stage||{},cohort=report?.sample?.cohort_applicants||0;
  const cards=[
   {label:'تسجيلات جديدة',value:report?fmt(funnel.registered):'—',desc:'متقدمون أُنشئت ملفاتهم خلال الفترة'},
@@ -572,16 +582,41 @@ function AgentPerformance(){
     <p className="v2-quality-muted">زمن التخطيط مش مدة إكمال طلب التوظيف. الحالات القديمة أو البيانات غير المكتملة مش بنعوضها بتقديرات.</p>
    </section>
   </div>
+  <section className="v2-detail-card v2-pilot-observation">
+   <div className="v2-quality-section-head">
+    <div><h3><Users size={20}/> التجربة الفعلية للمتقدمين الجدد</h3>
+     <p>مراقبة أول 50 متقدم جديد يراسلوا الرقم الرئيسي بنفسهم، من غير إرسال جماعي أو تغيير قواعد البوت الحالي.</p>
+    </div>
+    <strong className={pilotObservation?.active?'running':'inactive'}>{pilotObservation?.active?'المراقبة شغالة':'المراقبة متوقفة'}</strong>
+   </div>
+   <div className="v2-pilot-observation-stats">
+    {[
+     {label:'دخلوا التجربة',value:fmt(pilotObservation?.enrolled),foot:'من أصل 50'},
+     {label:'أماكن متبقية',value:fmt(pilotObservation?.remaining),foot:'مش هنضيف غير أول 50'},
+     {label:'أكملوا بياناتهم',value:fmt(pilotObservation?.form_completed),foot:'حالة البيانات الحالية'},
+     {label:'احتاجوا تدخل موظف',value:fmt(pilotObservation?.staff_intervention_candidates),foot:'من متقدمي التجربة فقط'}
+    ].map(x=><article key={x.label}><small>{x.label}</small><strong>{x.value}</strong><span>{x.foot}</span></article>)}
+   </div>
+   <div className="v2-pilot-actions">
+    <button type="button" disabled={pilotBusy||loading||!pilotObservation||pilotObservation.active} onClick={()=>pilotAction(true)}>
+      <Play size={16}/> {pilotBusy?'جارٍ الحفظ':'بدء التجربة على الرسائل الجديدة'}
+    </button>
+    <button type="button" className="stop" disabled={pilotBusy||loading||!pilotObservation||!pilotObservation.active} onClick={()=>pilotAction(false)}>
+      <ShieldCheck size={16}/> إيقاف مراقبة التجربة
+    </button>
+   </div>
+   <p className="v2-quality-muted">ده تشغيل لمراقبة عينة محدودة من المحادثات الواردة، مش حملة مراسلة. وقف المراقبة مش هيوقف Agent المكتب؛ تقدر تتحكم في البوت نفسه من إعدادات المكتب. اللي خارج العينة يفضل على تشغيل البوت المعتاد.</p>
+  </section>
   <section className="v2-detail-card v2-pilot-gate">
     <div className="v2-quality-section-head">
-     <div><h3><ShieldCheck size={20}/> جاهزية الإطلاق التدريجي</h3><p>الهدف بعد التأمين: تجربة محدودة من 50 إلى 100 متقدم، ثم مراجعة النتائج قبل التوسع.</p></div>
-     <strong>التجربة غير مفعّلة</strong>
+     <div><h3><ShieldCheck size={20}/> جاهزية التوسع والإرسال التلقائي</h3><p>مراقبة أول 50 محادثة واردة شغالة بشكل مستقل. إرسال حملات جديدة أو توسعة التفعيل يحتاج موافقة منفصلة.</p></div>
+     <strong>التوسع التلقائي غير مفعّل</strong>
     </div>
     <div className="v2-pilot-checks">{(pilot?.checks||[]).map(c=><div key={c.id}>
      {c.ready?<CheckCircle2 size={18} className="ready"/>:<Clock3 size={18}/>}
      <span>{c.label}</span><b>{c.ready?'متحقق':'لم يُتحقق بعد'}</b>
     </div>)}</div>
-    <p className="v2-quality-muted">حتى بعد اكتمال القائمة، التشغيل مش تلقائي: لازم موافقة صريحة جديدة قبل اختيار أرقام أو إرسال رسائل. ما بنخزّنش أي بيانات متقدمين في خطة التجربة دي.</p>
+    <p className="v2-quality-muted">القائمة دي تخص التوسّع والإرسال الاستباقي فقط، مش مراقبة أول 50 محادثة واردة. أي مراسلة جديدة أو تفعيل لمكاتب إضافية هيحتاج موافقة صريحة.</p>
     <a href="https://supabase.com/dashboard/project/oflepwasoawmuspxgnal/database/backups" target="_blank" rel="noreferrer">مراجعة إعدادات Backup في Supabase</a>
   </section>
   <section className="v2-detail-card">

@@ -3620,3 +3620,21 @@
 @media(max-width:1160px){.app-v2 .v2-pilot-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app-v2 .v2-pilot-panels{grid-template-columns:1fr}}
 @media(max-width:750px){.app-v2 .v2-pilot-checks{grid-template-columns:1fr}.app-v2 .v2-pilot-performance .v2-quality-controls{width:100%}.app-v2 .v2-pilot-performance .v2-quality-controls label{flex:1}.app-v2 .v2-pilot-stat-grid{gap:9px}.app-v2 .v2-pilot-stat-grid article{padding:13px}.app-v2 .v2-pilot-stat-grid strong{font-size:22px}}
 @media(max-width:385px){.app-v2 .v2-pilot-stat-grid{grid-template-columns:1fr}}
+
+
+/* Phase 6b: monitoring the first 50 organic inbound WhatsApp applicants */
+.app-v2 .v2-pilot-observation{margin:18px 0;border-color:#21738e!important;min-width:0}
+.app-v2 .v2-pilot-observation .v2-quality-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:13px;flex-wrap:wrap}
+.app-v2 .v2-pilot-observation h3{display:flex;align-items:center;gap:9px;font-size:17px;color:#ebfaff!important}
+.app-v2 .v2-pilot-observation .v2-quality-section-head>strong{padding:10px 14px;font-size:12px;border-radius:10px;background:#3c2b1a;border:1px solid #9b6a3c;color:#ffe6bd!important}
+.app-v2 .v2-pilot-observation .v2-quality-section-head>strong.running{background:#084e43;border-color:#1f9678;color:#c3ffe7!important}
+.app-v2 .v2-pilot-observation-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:15px 0}
+.app-v2 .v2-pilot-observation-stats article{min-width:0;border:1px solid #246480;border-radius:12px;background:#08293c;padding:13px;display:grid;gap:6px}
+.app-v2 .v2-pilot-observation-stats small{color:#b1d5e2!important;font-size:11px}
+.app-v2 .v2-pilot-observation-stats strong{font-size:25px;color:#68ebff!important}
+.app-v2 .v2-pilot-observation-stats span{font-size:11px;color:#9cc9db!important}
+.app-v2 .v2-pilot-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.app-v2 .v2-pilot-actions button{min-height:43px;display:flex;align-items:center;justify-content:center;gap:8px;background:#0c574d;border:1px solid #279a86;border-radius:10px;color:#f1fff9;font-size:13px;font-weight:800;padding:9px 15px;cursor:pointer;flex:1 1 220px}
+.app-v2 .v2-pilot-actions button.stop{background:#473028;border-color:#ba754d;color:#fff1e4}
+.app-v2 .v2-pilot-actions button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:1080px){.app-v2 .v2-pilot-observation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}

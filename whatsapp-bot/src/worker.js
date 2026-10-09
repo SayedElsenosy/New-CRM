@@ -5,6 +5,7 @@ import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {turnQualitySignals} from './conversation-intelligence.js';
+import {enrollNewInboundApplicant} from './pilot-observation.js';
 import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,learnFromConversation} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
@@ -154,11 +155,13 @@ export class Worker {
   }
 
   const referral=record.referral?.source_id?record.referral:null;
+  let applicantWasCreated=false;
   if(!a){
    const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at};
    if(multi)row.whatsapp_account_id=accountId;
    if(referral)row.answers=withFirstAttribution({},referral);
    a=must(await this.db.from('masar_applicants').insert(row).select().single());
+   applicantWasCreated=true;
   }else{
    const patch={contact_id:record.contact_id,last_message_at:record.created_at,updated_at:new Date().toISOString()};
    if(record.phone)patch.phone=record.phone;
@@ -172,6 +175,12 @@ export class Worker {
   must(await this.db.from('masar_contacts').upsert(contactRow,{onConflict:multi?'whatsapp_account_id,contact_id':'contact_id'}));
 
   const isExternalOutbound=record.direction==='out'||record.from_me===true;
+  // Enroll only brand-new, inbound WhatsApp contacts. This is audit-only:
+  // don't send anything, edit answers, or change the existing bot behavior.
+  if(applicantWasCreated&&!isExternalOutbound){
+   try{await enrollNewInboundApplicant(this.db,{applicantId:a.id,accountId:accountId||a.whatsapp_account_id});}
+   catch(error){console.warn('Pilot observation enrollment failed:',error?.code||error?.name||'Error');}
+  }
   if(isExternalOutbound){
    const prepared=await this.prepareRecordMedia(record,a.id,accountId);
    const source=must(await this.db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());

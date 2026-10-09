@@ -21,7 +21,7 @@ function explicitShift(text){
  if(!context&&!preference)return null;
  if(!preference)return null;
  // Prefer the explicitly corrected value even if both shifts were mentioned.
- const correction=n.match(/(?:قصدي|اقصد|انا اقصد)\s+(?:الشيفت\s+|الشفت\s+)?(صباحي|الصبح|مسائي|بالليل|المساء)/);
+ const correction=n.match(/(?:قصدي|اقصد|انا اقصد)\s+(?:(?:ال)?شيفت\s+|(?:ال)?شفت\s+)?(صباحي|الصبح|مسائي|بالليل|المساء)/);
  if(correction)return {op:'set',value:/(?:صباحي|الصبح)/.test(correction[1])?'morning':'evening'};
  if(morning===evening)return null;
  const shift=morning?'morning':'evening';

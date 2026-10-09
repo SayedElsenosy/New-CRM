@@ -98,6 +98,10 @@ export function mansouriyaGuidance({text='',previous=null,areas=[]}={}){
  const fromHaram=mentionsHaram.test(n);
  if(fromHaram||(pending&&yes.test(n)&&phase==='ask_region')){
   if(pending&&['reference_offered','work_detail_offered','followup_clarified'].includes(phase)){
+   if(phase==='followup_clarified')return {
+    reply:'إنت قلت الهرم أكتر من مرة وأنا لسه ما ساعدتكش تختار شغل. هحوّل المحادثة لمسؤول التوظيف يساعدك يراجع أقرب منطقة مناسبة من غير تخمين.',
+    phase:'handoff',reference_place:'haram',action:'residence_handoff',needsHuman:true
+   };
    return {reply:phase==='reference_offered'?acknowledgedHaram(areas):followupHaram(areas),
     phase:phase==='reference_offered'?'work_detail_offered':'followup_clarified',
     reference_place:'haram',action:'residence_context_followup'};

@@ -85,5 +85,6 @@ test('planner gets durable lifetime overview alongside recent conversation, keep
  assert.match(content,/lifetime_conversation_memory/);
  assert.match(content,/historical_messages_indexed/);
  assert.match(content,/المنصورية \(وليس المنصورة\)/);
- assert.equal((content.match(/"role":"applicant"/g)||[]).length,6,'recent turns stay bounded');
+ const payload=JSON.parse(content.slice(content.indexOf('\n\n')+2));
+ assert.equal(payload.conversation.length,6,'recent raw turns stay bounded while lifetime metadata can include topic roles');
 });

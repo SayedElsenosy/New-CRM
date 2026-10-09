@@ -106,7 +106,7 @@ export function safeLearningProposal(question,answer){
  if(q.length<3||a.length<3||q.length>2000||a.length>4000)return false;
  const value=(q+'\n'+a).replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-0x660))
   .replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-0x6f0));
- const sensitive=/(?:\+?20[\s-]*)?01[0125](?:[\s-]*\d){8}\b|\b\d{14,16}\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b(?:شارع|عمارة|شقة|منزل رقم|رقمي الشخصي|بطاقتي رقم|تليفوني|موبايلي)\b/i;
+ const sensitive=/(?:\+?20[\s-]*)?01[0125](?:[\s-]*\d){8}\b|\b\d{14,16}\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}|(?:شارع|عمارة|شقة|منزل رقم|رقمي الشخصي|بطاقتي رقم|تليفوني|موبايلي)/i;
  if(sensitive.test(value))return false;
  return true;
 }

@@ -591,6 +591,16 @@ function AgentPerformance(){
     <p className="v2-quality-muted">زمن التخطيط مش مدة إكمال طلب التوظيف. الحالات القديمة أو البيانات غير المكتملة مش بنعوضها بتقديرات.</p>
    </section>
   </div>
+  {report?.office_quality&&<section className="v2-detail-card">
+   <h3><Activity size={18}/> جودة تشغيل الـAgent — {report.office_name}</h3>
+   <div className="v2-pilot-facts">
+    <div><span>أدوار الـAgent المرصودة</span><b>{fmt(report.office_quality.operational?.turns)}</b></div>
+    <div><span>التحويل للتدخل البشري</span><b>{pct(report.office_quality.operational?.handoff_rate)}</b></div>
+    <div><span>نجاح أدوات الـCRM</span><b>{pct(report.office_quality.operational?.tool_success_rate)}</b></div>
+    <div><span>دقة الإجابات المعتمدة</span><b>—</b></div>
+   </div>
+   <p className="v2-quality-muted">النتائج للمكتب المختار فقط، ومن المحادثات المرصودة ضمن العينة. دقة الإجابات تحتاج مراجعة بشرية؛ عدم توفر قيمة مش معناه صفر أخطاء. {report.office_quality.sample?.truncated?'تنبيه: البيانات المعروضة عينة جزئية.':''}</p>
+  </section>}
   <section className="v2-detail-card v2-office-pilot-directory">
    <div className="v2-quality-section-head"><div><h3><Briefcase size={19}/> مقارنة تجارب المكاتب</h3>
     <p>كل مكتب جديد يبدأ بدون تجربة مفعّلة. اضغط على المكتب علشان تظهر تفاصيله وتتحكم في عدد المتقدمين.</p>

@@ -1,4 +1,5 @@
 import {brainMemoryContext,buildBrainSteps,validateBrainSteps} from './brain-memory.js';
+import {matchExpertTopic} from './recruitment-expert.js';
 
 const ALLOWED_ACTIONS=new Set([
  'answer_question','save_facts','ask_next','clarify','recommend_area','compare_areas',
@@ -209,7 +210,7 @@ export class AgentRuntime{
   const currentText=String(message?.body||'');
   const safeQuestions=(questions||[]).filter(q=>q?.active!==false).slice(0,16).map(q=>({
    field_key:q.field_key,kind:q.kind,required:q.required!==false,priority:Number(q.priority||50),
-   label:trim(q.label,80),instruction:trim(q.agent_instruction,60),confirmation_required:q.confirmation_required===true,
+   label:trim(q.label,80),instruction:trim(q.agent_instruction,42),confirmation_required:q.confirmation_required===true,
    options:Array.isArray(q.options)?q.options.slice(0,8).map(o=>typeof o==='string'?trim(o,80):{label:trim(o?.label,80),value:trim(o?.value??o?.label,80)}):[]
   }));
   const safeAreas=compactAreas(areas,currentText,10).map(a=>({
@@ -222,7 +223,7 @@ export class AgentRuntime{
   const contextLimit=6;
   const conversation=(recentMessages||[]).slice(-contextLimit).map(x=>({
    role:x.direction==='in'?'applicant':x.sender==='staff'?'staff':'agent',
-   text:String(x.body||'').slice(0,240)
+   text:String(x.body||'').slice(0,205)
   }));
   const system=[
    'أنت Decision Planner لمساعد توظيف تابع لمنصة Speed Delivery في مصر. المكتب الحالي يحدد من بيانات CRM فقط، ولا تنسب الوظيفة لعلامة تجارية أخرى دون معلومة مؤكدة.',
@@ -237,11 +238,18 @@ export class AgentRuntime{
    'ممنوع وضع preferred_work_area داخل facts من مجرد السكن أو ترشيح أقرب منطقة؛ منطقة العمل لا تصبح حقيقة إلا بعد اختيار/تأكيد صريح من المتقدم.',
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
+   'لو السؤال عن التوظيف والدليفري استخدم Recruitment Expert Brain في فهم النية وأسلوب الإجابة، لكن الراتب والمزايا والمواعيد والاشتراطات حقائق تخص المكتب ولا تؤخذ من نصائح عامة.',
+   'المعرفة العامة للخبير ليست تفويضًا بتقديم قبول أو رفض أو رقم أو ميزة تشغيلية غير مسجلة.',
    'لو السؤال غير موثوق استخدم clarify أو handoff بدل التخمين.',
    trim(settings.agent_system_instructions||'',320)
   ].filter(Boolean).join('\n');
   const payload={
    current_message:currentText.slice(0,900),
+   recruitment_expert_hint:(()=>{
+    const matched=matchExpertTopic(currentText);
+    return matched?{topic:matched.topic.id,policy:matched.topic.policy,
+      safe_general_guidance:trim(matched.topic.reply,200)}:null;
+   })(),
    office_name:trim(office?.name||'مكتب التوظيف',90),
    verified_preference_memory:brainMemoryContext(applicant?.answers),
    suggested_readonly_steps:buildBrainSteps(currentText,{hasPendingQuestion:Boolean(applicant?.awaiting_id)}),

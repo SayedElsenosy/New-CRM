@@ -313,7 +313,7 @@ export class Worker {
       turn={...turn,patch:{...turn.patch,answers:{...(turn.patch.answers||a.answers||{}),__brain_memory:brain.memory}}};
      }
      let composerUsage=null,composerCalled=false;
-     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
+     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!turn.expert_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,
@@ -362,6 +362,7 @@ export class Worker {
         knowledge_id:turn.knowledge_id||null,knowledge_confidence:turn.knowledge_confidence??null,
         extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null,
         ...(llmUsage.calls>0?{llm_usage:llmUsage}:{}),
+        ...(turn.expert_intent?{expert_topic:turn.expert_intent,expert_source:turn.expert_source}:{}),
         brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[],
         crm_tools:Array.isArray(turn.tool_calls)?turn.tool_calls.map(x=>({name:x.tool,ok:x.ok})):[]
        }

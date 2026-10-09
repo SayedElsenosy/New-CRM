@@ -1,6 +1,7 @@
 import {planTurn} from './flow.js';
 import {runCrmTools} from './crm-tools.js';
 import {updateBrainMemory} from './brain-memory.js';
+import {EXPERT_TRAINING_EXAMPLES,expertResponse} from './recruitment-expert.js';
 
 /**
  * Counts are observational telemetry, not an accuracy estimate.
@@ -17,8 +18,8 @@ export function qualityMetrics({events=[],decisions=[],runs=[],days=7,now=Date.n
  const turns=recent(events).filter(x=>x.kind==='agent_turn');
  const recentDecisions=recent(decisions);
  const evalRuns=recent(runs);
- let toolCount=0,toolSuccess=0,llmCalls=0,promptTokens=0,completionTokens=0,usageCovered=0,toolTurns=0;
- const actions={},handoffReasons={},tools={},daily={};
+ let toolCount=0,toolSuccess=0,llmCalls=0,promptTokens=0,completionTokens=0,usageCovered=0,toolTurns=0,expertTurnCount=0,expertVerified=0;
+ const actions={},handoffReasons={},tools={},daily={},expertTopics={};
  for(const row of turns){
   const detail=row.detail&&typeof row.detail==='object'?row.detail:{};
   const date=String(row.created_at||'').slice(0,10);
@@ -26,6 +27,11 @@ export function qualityMetrics({events=[],decisions=[],runs=[],days=7,now=Date.n
    daily[date]??={day:date,turns:0,handoffs:0,tools:0};
    daily[date].turns++;
    if(detail.handoff===true)daily[date].handoffs++;
+  }
+  if(typeof detail.expert_topic==='string'&&/^[a-z_]{1,60}$/.test(detail.expert_topic)){
+   expertTurnCount++;
+   if(detail.expert_source==='office_verified')expertVerified++;
+   expertTopics[detail.expert_topic]=(expertTopics[detail.expert_topic]||0)+1;
   }
   const action=String(detail.action||'unknown').slice(0,60);
   actions[action]=(actions[action]||0)+1;
@@ -72,6 +78,8 @@ export function qualityMetrics({events=[],decisions=[],runs=[],days=7,now=Date.n
    llm_decisions:llmDecisions
   },
   evaluation:{evaluated:scored.length,passed:evalPassed,pass_rate:pct(evalPassed,scored.length)},
+  expert:{answers:expertTurnCount,office_verified:expertVerified,general_guidance:expertTurnCount-expertVerified,
+   top_topics:Object.entries(expertTopics).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([topic,count])=>({topic,count}))},
   usage:{
    llm_calls_observed:llmCalls,prompt_tokens_observed:promptTokens,
    completion_tokens_observed:completionTokens,
@@ -254,6 +262,22 @@ for(const [phrase,shift] of [
   const r=updateBrainMemory(null,phrase);
   return {reply:'',patch:{},memory:r.memory};
  },checks({mutate:r=>r.memory?.preferred_shift===shift?[]:['لم يُحفظ تفضيل '+shift]})]);
+}
+// Expert Brain curriculum: synthetic, office-independent questions. These
+// cases test retrieval, topic routing and non-fabricated guidance only.
+for(const item of EXPERT_TRAINING_EXAMPLES){
+ qualityScenarios.push(['expert',item.input,async()=>{
+  const answer=expertResponse(item.input,{knowledge:[],knowledgeEnabled:false});
+  return {reply:answer?.reply||'',patch:{},expert_intent:answer?.intent,
+   expert_origin:answer?.origin};
+ },checks({mutate:r=>{
+  const failures=[];
+  if(r.expert_intent!==item.intent)failures.push('تعرف مجال التوظيف غلط');
+  if(r.expert_origin!=='general_guidance')failures.push('نصائح عامة تحولت لشروط مكتب بدون دليل');
+  if(!r.reply.trim())failures.push('لا يوجد رد متخصص');
+  if(/\b\d{4,6}\s*(?:جنيه|جم)\b/.test(r.reply))failures.push('رقم مالي غير موثق');
+  return failures;
+  }})]);
 }
 export const BUILTIN_QUALITY_COUNT=qualityScenarios.length;
 export async function runBuiltInQualitySuite(){

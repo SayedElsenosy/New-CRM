@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
+import {expertBrainSummary} from './recruitment-expert.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence,loadKnowledge} from './knowledge.js';
@@ -613,7 +614,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
  }
  async function agentState(){
   const base=await intelligenceState();
-  if(!base.configured)return {...base,llm:agentRuntime?.snapshot?.({})||{configured:false,enabled:false},decisions:[],quality:{cases:[],recent_runs:[]},agent_stats:{}};
+  if(!base.configured)return {...base,llm:agentRuntime?.snapshot?.({})||{configured:false,enabled:false},decisions:[],quality:{cases:[],recent_runs:[]},agent_stats:{},expert:expertBrainSummary()};
   let decisions=[],cases=[],runs=[];
   try{
    const [d,casesResult,runsResult]=await Promise.all([
@@ -636,6 +637,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    const day=String(row.created_at||'').slice(0,10);if(day)growth[day]=(growth[day]||0)+1;
   }
   return {...base,
+   expert:expertBrainSummary(),
    llm:agentRuntime?.snapshot?.(base.settings)||{configured:false,enabled:false},
    decisions:decisions.slice(0,100),
    quality:{cases,recent_runs:runs.slice(0,100)},
@@ -865,6 +867,8 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   if(suggestion.status!=='pending')throw bad('تمت مراجعة الاقتراح بالفعل');
   const question=String(req.body.question||suggestion.question||'').trim(),answer=String(req.body.answer||suggestion.answer||'').trim();
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
+  if(/(?:\+?20)?01[0125]\d{8}|\b\d{14}\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(question+' '+answer))
+   throw bad('راجع الاقتراح واحذف أرقام الهواتف والبطاقات والبريد الإلكتروني قبل اعتماد المعرفة.');
   const knowledge=must(await db.from('masar_knowledge').insert({
    question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),
    examples:[question],active:true,source:'staff',office_id:suggestion.office_id||null,

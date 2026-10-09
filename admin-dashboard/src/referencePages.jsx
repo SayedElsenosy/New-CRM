@@ -220,7 +220,7 @@ function AgentDashboard({state,onView}){
     <div className="v2-agent-metrics">
       <MetricCard title="المهام المنفذة" value={fmt(a.decisions_24h)} caption="قرار خلال آخر 24 ساعة" Icon={ClipboardCheck}/>
       <MetricCard title="قرارات LLM اليوم" value={fmt(a.llm_decisions_24h)} caption={llm.configured?'العقل الخارجي متصل':'يعمل بالقواعد الحالية'} Icon={MessageCircle} tone="orange"/>
-      <MetricCard title="نسبة الدقة" value={a.avg_confidence_24h==null?'—':Math.round(n(a.avg_confidence_24h))+'%'} caption="متوسط الثقة" Icon={Target}/>
+      <MetricCard title="متوسط الثقة" value={a.avg_confidence_24h==null?'—':Math.round(n(a.avg_confidence_24h))+'%'} caption="متوسط الثقة" Icon={Target}/>
       <MetricCard title="مصادر المعرفة" value={fmt(stats.active||knowledge.filter(x=>x.active!==false).length)} caption="معلومة نشطة" Icon={BookOpen} tone="orange"/>
     </div>
     <div className="v2-agent-main-grid">
@@ -269,6 +269,96 @@ function AgentTest({state}){
   return <div className="v2-agent-detail"><div className="detail-head"><div><h2>تدريب واختبار الوكيل</h2><p>جرّب رسالة حقيقية قبل ما تغيّر وضع التشغيل.</p></div></div>{error&&<div className="v2-error">{error}</div>}<div className="v2-test-grid"><form className="v2-detail-card" onSubmit={run}><label>رسالة المتقدم<textarea required rows={9} value={text} onChange={e=>setText(e.target.value)} placeholder="مثال: أنا من مدينة العبور ومعايا مكنة وعايز أعرف أنهي منطقة أفضل..."/></label><button disabled={busy||!state.llm?.configured}><Play size={15}/> {busy?'جارٍ التحليل...':'حلّل الرسالة'}</button>{!state.llm?.configured&&<small>الـLLM Provider غير متصل حاليًا؛ الاختبار هيتفعل بعد إضافة بيانات المزود.</small>}</form><section className="v2-detail-card result"><h3>نتيجة الـPlanner</h3>{result?.plan?<><strong>{result.plan.action} · {Math.round(n(result.plan.confidence)*100)}%</strong><p>{result.plan.summary||'—'}</p><pre>{JSON.stringify(result.plan,null,2)}</pre></>:<div className="v2-empty">نتيجة الاختبار هتظهر هنا.</div>}</section></div></div>;
 }
 
+
+function AgentQualityCenter(){
+  const [days,setDays]=useState(7),[metrics,setMetrics]=useState(null),[result,setResult]=useState(null);
+  const [loading,setLoading]=useState(false),[running,setRunning]=useState(false),[error,setError]=useState('');
+  const load=useCallback(async()=>{
+    setLoading(true);
+    try{
+      const data=await api('/agent/quality/metrics?days='+days);
+      setMetrics(data);
+      setError('');
+    }catch(e){setError(e.message);}
+    finally{setLoading(false);}
+  },[days]);
+  useEffect(()=>{load();},[load]);
+  const runSuite=async()=>{
+    setRunning(true);
+    try{
+      const report=await send('/agent/quality/suite/run',{});
+      setResult(report);setError('');
+      await load();
+    }catch(e){setError(e.message);}
+    finally{setRunning(false);}
+  };
+  const fmtPct=x=>x===null||x===undefined?'—':Number(x).toLocaleString('en-US',{maximumFractionDigits:1})+'%';
+  const op=metrics?.operational||{},ev=metrics?.evaluation||{},usage=metrics?.usage||{};
+  const history=metrics?.builtin?.last_runs||[];
+  const totalCalls=op.tool_calls||0;
+  return <div className="v2-agent-detail v2-quality-center">
+    <div className="detail-head">
+      <div><h2>مركز جودة الـ Agent</h2><p>بيانات تشغيل حقيقية + اختبارات آمنة بمرشحين افتراضيين. المراقبة هنا لا تغيّر بيانات أي مرشح.</p></div>
+      <div className="v2-quality-controls">
+        <label>فترة القياس <select value={days} onChange={e=>setDays(Number(e.target.value))}><option value={1}>آخر 24 ساعة</option><option value={7}>آخر 7 أيام</option><option value={30}>آخر 30 يوم</option></select></label>
+        <button type="button" onClick={load} disabled={loading}><RefreshCw size={17}/> {loading?'جارٍ التحديث':'تحديث'}</button>
+      </div>
+    </div>
+    {error&&<div className="v2-error" role="alert">{error}</div>}
+    {metrics?.sample?.truncated&&<div className="v2-quality-notice">المعروض عينة محدودة من آخر السجلات؛ ممكن بعض المعدلات لا تمثل كل الرسائل في الفترة.</div>}
+    <div className="v2-quality-metrics">
+      {[
+        {label:'رسائل تم تحليلها',value:metrics?fmt(op.turns):'—',foot:'سجلات Agent خلال الفترة'},
+        {label:'نجاح أدوات الـ CRM',value:metrics?fmtPct(op.tool_success_rate):'—',foot:totalCalls+' تنفيذ أداة'},
+        {label:'التحويل لمسؤول',value:metrics?fmtPct(op.handoff_rate):'—',foot:(op.handoffs||0)+' حالة من رسائل البوت'},
+        {label:'الـ LLM Fallback',value:metrics?fmtPct(op.fallback_rate):'—',foot:'من قرارات التخطيط المسجلة'},
+        {label:'اجتياز تقييمات الـ LLM',value:metrics?fmtPct(ev.pass_rate):'—',foot:(ev.evaluated||0)+' حالة تم تقييمها'}
+      ].map(x=><article key={x.label} className="v2-quality-metric"><small>{x.label}</small><strong>{x.value}</strong><span>{x.foot}</span></article>)}
+    </div>
+    <div className="v2-quality-layout">
+      <section className="v2-detail-card">
+        <div className="v2-quality-section-head"><div><h3>اختبارات المحادثات المصرية</h3><p>تُشغّل الحالات داخل النظام ببيانات وهمية؛ بدون رسائل حقيقية وبدون طلبات LLM.</p></div><button type="button" onClick={runSuite} disabled={running}><Play size={16}/>{running?'جارٍ تشغيل الاختبارات':'تشغيل الاختبارات'}</button></div>
+        {result&&<div className="v2-quality-suite-summary" role="status"><strong>{result.passed} / {result.total} حالة اجتازت الاختبار</strong><span>نسبة الاجتياز: {fmtPct(result.pass_rate)} · {result.duration_ms} ms</span></div>}
+        {result?.results?.length>0&&<div className="v2-quality-suite-list">
+          {result.results.map(test=><div key={test.id} className={'v2-quality-case '+(test.passed?'pass':'fail')}><span className="quality-state">{test.passed?<CheckCircle2 size={17}/>:<Activity size={17}/>}</span><div><strong>{test.title}</strong><small>{test.category}</small>{!test.passed&&test.problems?.map((p,i)=><p key={i}>{p}</p>)}</div><b>{test.passed?'ناجح':'فشل'}</b></div>)}
+        </div>}
+        {!result&&<p className="v2-quality-muted">اضغط «تشغيل الاختبارات» لقياس القواعد الحالية. ده اختبار آلي أساسي، مش تقييم بشري لكل الردود أو ضمان دقة 100%.</p>}
+        <h3 className="v2-quality-subtitle">آخر مرات تشغيل الاختبارات</h3>
+        {history.length?<div className="v2-quality-history">{history.map((h,i)=><div key={i}><span>{date(h.created_at)}</span><strong>{h.passed}/{h.total} حالة</strong><span>{fmtPct(h.pass_rate)}</span></div>)}</div>:<p className="v2-quality-muted">مافيش تشغيلات محفوظة لسه.</p>}
+      </section>
+      <section className="v2-detail-card">
+        <h3>استخدام الـ LLM والأدوات</h3>
+        <p className="v2-quality-muted">القياس من الاستخدام المبلغ عنه في استجابة المزود، مش تقدير افتراضي للتكلفة.</p>
+        <div className="v2-quality-usage">
+          <div><small>استدعاءات LLM المسجلة</small><strong>{fmt(usage.llm_calls_observed)}</strong></div>
+          <div><small>Input Tokens المرصودة</small><strong>{fmt(usage.prompt_tokens_observed)}</strong></div>
+          <div><small>Output Tokens المرصودة</small><strong>{fmt(usage.completion_tokens_observed)}</strong></div>
+          <div><small>التكلفة الفعلية</small><strong>غير متاحة</strong></div>
+        </div>
+        <p className="v2-quality-muted">{usage.note||'عرض التوكنز يعتمد على دعم المزود لإحصائيات الاستخدام.'}</p>
+        <h3 className="v2-quality-subtitle">تفاصيل نجاح أدوات الـ CRM</h3>
+        <div className="v2-quality-tools">
+          {(metrics?.tools||[]).map(t=><div key={t.name}><span dir="ltr">{t.name}</span><b>{t.success}/{t.total}</b></div>)}
+          {!(metrics?.tools||[]).length&&<p className="v2-quality-muted">مفيش استدعاءات أدوات في الفترة المحددة.</p>}
+        </div>
+        <h3 className="v2-quality-subtitle">أسباب التدخل البشري</h3>
+        <div className="v2-quality-tools">
+          {(metrics?.handoff_reasons||[]).map(t=><div key={t.reason}><span>{t.reason}</span><b>{t.count}</b></div>)}
+          {!(metrics?.handoff_reasons||[]).length&&<p className="v2-quality-muted">مفيش حالات تحويل مسجلة خلال الفترة.</p>}
+        </div>
+      </section>
+    </div>
+    <section className="v2-detail-card v2-quality-chart">
+      <h3>نشاط الـ Agent اليومي</h3>
+      <p className="v2-quality-muted">عدد الأدوار المسجلة يوميًا، ومش مؤشر على جودة الإجابة لوحده.</p>
+      <div className="v2-quality-bars">{(metrics?.daily||[]).map(row=>{
+        const max=Math.max(1,...(metrics?.daily||[]).map(x=>x.turns));
+        return <div key={row.day}><span title={row.turns+' رسالة'} style={{height:Math.max(6,Math.round(row.turns/max*130))+'px'}}/><small>{row.day.slice(5)}</small><b>{row.turns}</b></div>;
+      })}{!(metrics?.daily||[]).length&&<p className="v2-quality-muted">لسه مفيش بيانات كفاية للرسم.</p>}</div>
+    </section>
+  </div>;
+}
+
 function AgentSettings({state,reload,action}){
   const [form,setForm]=useState({...state.settings}),[busy,setBusy]=useState(false),[error,setError]=useState('');
   useEffect(()=>setForm({...state.settings}),[state.settings]);
@@ -287,11 +377,12 @@ export function ReferenceAIAgentPage({action}){
   if(!state)return <div className="v2-agent-loading"><BrainCircuit size={44}/><strong>جارٍ تشغيل AI Agent...</strong>{error&&<small>{error}</small>}</div>;
   return <div className="v2-page v2-agent">
     <section className="v2-hero v2-agent-hero"><div className="v2-hero-copy"><h1>الوكيل الذكي</h1><p>إدارة وتدريب ومتابعة أداء الوكيل الذكي داخل المنصة</p></div><img src="/reference/hero-rider.webp" alt="" aria-hidden="true"/></section>
-    <div className="v2-agent-toolbar"><button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}><BrainCircuit/> الرئيسية</button><button className={view==='knowledge'?'active':''} onClick={()=>setView('knowledge')}><Database/> المعرفة</button><button className={view==='decisions'?'active':''} onClick={()=>setView('decisions')}><Activity/> القرارات</button><button className={view==='test'?'active':''} onClick={()=>setView('test')}><Play/> التدريب</button><button className={view==='settings'?'active':''} onClick={()=>setView('settings')}><Settings2/> الإعدادات</button><span className={'v2-agent-state '+(state.llm?.configured?'on':'')}><i/>{state.llm?.configured?'LLM READY':'CORE ACTIVE'}</span></div>
+    <div className="v2-agent-toolbar"><button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}><BrainCircuit/> الرئيسية</button><button className={view==='knowledge'?'active':''} onClick={()=>setView('knowledge')}><Database/> المعرفة</button><button className={view==='decisions'?'active':''} onClick={()=>setView('decisions')}><Activity/> القرارات</button><button className={view==='test'?'active':''} onClick={()=>setView('test')}><Play/> التدريب</button><button className={view==='quality'?'active':''} onClick={()=>setView('quality')}><ShieldCheck/> مركز الجودة</button><button className={view==='settings'?'active':''} onClick={()=>setView('settings')}><Settings2/> الإعدادات</button><span className={'v2-agent-state '+(state.llm?.configured?'on':'')}><i/>{state.llm?.configured?'LLM READY':'CORE ACTIVE'}</span></div>
     {error&&<div className="v2-error">{error}<button onClick={load}><RefreshCw size={15}/> إعادة المحاولة</button></div>}
     {view==='dashboard'&&<AgentDashboard state={state} onView={setView}/>}
     {view==='knowledge'&&<AgentKnowledge state={state} reload={load}/>}
     {view==='test'&&<AgentTest state={state}/>}
+    {view==='quality'&&<AgentQualityCenter/>}
     {view==='settings'&&<AgentSettings state={state} reload={load} action={action}/>}
     {view==='decisions'&&<AgentDecisions state={state}/>}
   </div>;

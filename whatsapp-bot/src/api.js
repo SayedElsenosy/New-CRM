@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
+import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence,loadKnowledge} from './knowledge.js';
@@ -648,6 +649,55 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    }
   };
  }
+ // Admin-only, aggregate-only AI Quality Center. Never return candidate
+ // messages, phone numbers, applicant IDs or raw decision traces here.
+ adminRoute('get','/agent/quality/metrics',async(req,res)=>{
+  const days=Number(req.query.days||7);
+  if(!Number.isInteger(days)||days<1||days>30)throw bad('اختار مدة من يوم إلى 30 يوم');
+  const since=new Date(Date.now()-days*86400000).toISOString();
+  const maxEvents=5000,maxDecisions=5000,maxRuns=2000;
+  const [ev,dc,er,suites]=await Promise.all([
+   db.from('masar_events').select('kind,detail,created_at')
+    .gte('created_at',since).eq('kind','agent_turn').order('created_at',{ascending:false}).limit(maxEvents),
+   db.from('masar_agent_decisions').select('planner_mode,fallback_used,created_at')
+    .gte('created_at',since).order('created_at',{ascending:false}).limit(maxDecisions),
+   db.from('masar_agent_eval_runs').select('passed,created_at')
+    .gte('created_at',since).order('created_at',{ascending:false}).limit(maxRuns),
+   db.from('masar_events').select('detail,created_at').eq('kind','agent_quality_suite')
+    .order('created_at',{ascending:false}).limit(12)
+  ]);
+  const safe=result=>{
+   if(!result.error)return result.data||[];
+   if(schemaMissing(result.error)||['42703','PGRST204'].includes(result.error.code))return [];
+   throw result.error;
+  };
+  const events=safe(ev),decisions=safe(dc),runs=safe(er),history=safe(suites);
+  const metrics=qualityMetrics({events,decisions,runs,days,
+   truncated:events.length>=maxEvents||decisions.length>=maxDecisions||runs.length>=maxRuns});
+  res.json({...metrics,builtin:{
+   last_runs:history.map(x=>({
+    created_at:x.created_at,passed:Number(x.detail?.passed||0),
+    failed:Number(x.detail?.failed||0),total:Number(x.detail?.total||0),
+    pass_rate:x.detail?.pass_rate??null
+   }))
+  }});
+ });
+ // No LLM calls and no production applicant state changes: every scenario
+ // uses a tiny, completely synthetic office and applicant in memory.
+ adminRoute('post','/agent/quality/suite/run',async(req,res)=>{
+  const result=await runBuiltInQualitySuite();
+  try{
+   const row=await db.from('masar_events').insert({
+    kind:'agent_quality_suite',staff_id:req.user.id,
+    detail:{version:result.version,total:result.total,passed:result.passed,
+     failed:result.failed,pass_rate:result.pass_rate,duration_ms:result.duration_ms}
+   });
+   if(row.error&&!schemaMissing(row.error))throw row.error;
+  }catch(e){
+   if(!schemaMissing(e))throw e;
+  }
+  res.json(result);
+ });
  adminRoute('get','/agent',async(_req,res)=>res.json(await agentState()));
  adminRoute('put','/agent/settings',async(req,res)=>{
   const b=req.body||{};
@@ -708,8 +758,14 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
  adminRoute('post','/agent/quality/cases',async(req,res)=>{
   const title=String(req.body?.title||'').trim(),input=String(req.body?.input_text||'').trim();
   if(title.length<2||title.length>200||input.length<2||input.length>4000)throw bad('راجع اسم ورسالة حالة الاختبار');
-  const tags=Array.isArray(req.body?.tags)?req.body.tags.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20):[];
-  const row=must(await db.from('masar_agent_eval_cases').insert({title,input_text:input,expected:req.body?.expected||{},tags,created_by:req.user.id}).select().single());
+  if(/(?:\+?20|01[0125])[\d\s-]{8,}|\b\d{12,16}\b|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(input))
+   throw bad('استخدم رسالة اختبار افتراضية من غير أرقام تليفون أو بطاقة أو بريد إلكتروني حقيقي.');
+  const expectedAction=String(req.body?.expected?.action||'');
+  const allowedExpected=['','answer_question','save_facts','ask_next','clarify','recommend_area','compare_areas','change_answer','resume_flow','handoff','none'];
+  if(!allowedExpected.includes(expectedAction))throw bad('القرار المتوقع غير مدعوم');
+  const tags=Array.isArray(req.body?.tags)?req.body.tags.map(x=>String(x||'').trim().slice(0,40)).filter(Boolean).slice(0,12):[];
+  const row=must(await db.from('masar_agent_eval_cases').insert({title,input_text:input,
+    expected:expectedAction?{action:expectedAction}:{},tags,created_by:req.user.id}).select().single());
   res.status(201).json(row);
  });
  adminRoute('delete','/agent/quality/cases/:id',async(req,res)=>{

@@ -195,7 +195,14 @@ export class AgentRuntime{
    if(!response.ok)throw Object.assign(new Error(body?.error?.message||body?.message||('LLM HTTP '+response.status)),{code:'LLM_HTTP_'+response.status});
    const text=body?.choices?.[0]?.message?.content;
    if(!text)throw new Error('LLM returned an empty response');
-   return {json:cleanJson(text),latency_ms:Date.now()-started,provider:state.provider,model:state.model};
+   const token=n=>{
+    const value=Number(n);
+    return Number.isSafeInteger(value)&&value>=0&&value<=10000000?value:null;
+   };
+   const usage=body?.usage&&typeof body.usage==='object'
+    ?{prompt_tokens:token(body.usage.prompt_tokens),completion_tokens:token(body.usage.completion_tokens)}
+    :null;
+   return {json:cleanJson(text),latency_ms:Date.now()-started,provider:state.provider,model:state.model,usage};
   }finally{clearTimeout(timer);}
  }
  buildPlannerMessages({message,questions,areas,applicant,knowledge,recentMessages,settings,office=null}){
@@ -267,9 +274,9 @@ export class AgentRuntime{
   const reply=trim(result.json?.reply,1800);
   const source=[draft,trim(input.turn?.followup_reply,600)].filter(Boolean).join('\n');
   if(!groundedReplySafe(source,reply)){
-   return {available:true,applied:false,state,reason:'grounding_validation',latency_ms:result.latency_ms};
+   return {available:true,applied:false,state,reason:'grounding_validation',latency_ms:result.latency_ms,usage:result.usage};
   }
-  return {available:true,applied:true,state,reply,latency_ms:result.latency_ms,provider:result.provider,model:result.model};
+  return {available:true,applied:true,state,reply,latency_ms:result.latency_ms,provider:result.provider,model:result.model,usage:result.usage};
  }
  buildComposerMessages({message,turn,recentMessages,settings,plan,office=null,applicant=null}){
   const conversation=(recentMessages||[]).slice(-4).map(x=>({
@@ -312,7 +319,7 @@ export class AgentRuntime{
   if(settings.agent_llm_enabled!==true||!state.configured)return {available:false,state,plan:null};
   const result=await this.call(this.buildPlannerMessages(input),settings);
   const plan=sanitizePlanForContext(safePlan(result.json),input.questions||[],buildBrainSteps(input.message?.body,{hasPendingQuestion:Boolean(input.applicant?.awaiting_id)}));
-  return {available:true,state,plan,latency_ms:result.latency_ms,provider:result.provider,model:result.model};
+  return {available:true,state,plan,latency_ms:result.latency_ms,provider:result.provider,model:result.model,usage:result.usage};
  }
  async testPlan(input){
   const result=await this.analyzeTurn(input);

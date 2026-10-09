@@ -76,7 +76,7 @@ test('pending mandatory work area is not answered/qualified by an expert FAQ',as
  assert.equal(result.patch.answers?.area,undefined);
  assert.equal(result.patch.answers?.__qualification_stop,undefined);
  assert.match(result.reply,/التأمين/);
- assert.match(result.reply,/نكمل التقديم/);
+ assert.equal(result.followup_reply,null);
  assert.equal(result.expert_intent,'insurance');
  assert.equal(result.expert_source,'general_guidance');
  assert.equal(result.expert_grounded,true);

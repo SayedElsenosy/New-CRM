@@ -2,6 +2,7 @@ import {planTurn} from './flow.js';
 import {runCrmTools} from './crm-tools.js';
 import {updateBrainMemory} from './brain-memory.js';
 import {EXPERT_TRAINING_EXAMPLES,expertResponse} from './recruitment-expert.js';
+import {turnQualitySignals,safeLearningProposal} from './conversation-intelligence.js';
 
 /**
  * Counts are observational telemetry, not an accuracy estimate.
@@ -278,6 +279,42 @@ for(const item of EXPERT_TRAINING_EXAMPLES){
   if(/\b\d{4,6}\s*(?:جنيه|جم)\b/.test(r.reply))failures.push('رقم مالي غير موثق');
   return failures;
   }})]);
+}
+// Phase 5: non-personal conversation-quality regression scenarios. No real
+// applicant transcript, database query or model request is used.
+const qualitySignalsTraining=[
+ ['المستخدم مش فاهم السؤال','محتاج أوضح إجابتك علشان أسجلها صح.',{},'ambiguous_reply'],
+ ['توضيح جواب متكرر','قولّي قصدك بالتحديد.',{},'ambiguous_reply'],
+ ['إجابة ناقصة','الرد مش واضح، قولّي تاني.',{},'ambiguous_reply'],
+ ['نقص معرفة','مش عندي إجابة مؤكدة في المكتب.',{},'knowledge_gap'],
+ ['عدم تخمين','مش هخمن في معلومة المرتب.',{},'knowledge_gap'],
+ ['بيانات غير متاحة','المعلومة دي مش متاحة حاليًا.',{},'knowledge_gap'],
+ ['فشل أداة المنطقة','مش قادر أحدد الأقرب.',{tool_calls:[{tool:'nearest',ok:false}]},'tool_failure'],
+ ['فشل أداة مع نجاح أخرى','قدمتلك جزء من التفاصيل.',{tool_calls:[{tool:'compare',ok:true},{tool:'nearest',ok:false}]},'tool_failure'],
+ ['رجوع مزود الذكاء','هكمل بالقواعد.',{_llmUnavailable:true},'llm_fallback'],
+ ['تحويل للبشر','هحوّلك لمسؤول.',{handoff:true},'handoff'],
+ ['تعديل جواب','تمام.',{_message:'لا قصدي شيفت مسائي مش صباحي'},'correction'],
+ ['طلب مركب','ده رد تفصيلي.',{tool_calls:[{tool:'areas',ok:true},{tool:'compare',ok:true}]},'multiple_intents']
+];
+for(const [label,reply,turn,wanted] of qualitySignalsTraining){
+ qualityScenarios.push(['conversation','رصد: '+label,async()=>{
+  const {_message,_llmUnavailable,...cleanTurn}=turn;
+  const signals=turnQualitySignals({
+   message:_message||'استفسار عن الشغل',reply,turn:cleanTurn,
+   awaitingBefore:'area',awaitingAfter:'area',llmUnavailable:_llmUnavailable===true
+  });
+  return {reply:'',patch:{},signals};
+ },checks({mutate:r=>r.signals?.includes(wanted)?[]:['لم يرصد النظام إشارة '+wanted]}))]);
+}
+for(const q of [
+ 'رقمي 01012345678','موبايلي 01155555555',
+ 'بطاقتي 29810010001234','معلوماتي في شارع التحرير',
+ 'أنا ساكن شقة 10','بياناتي في عمارة 15',
+ 'user@example.com للاستعلام','01012345678 محتاج الشغل'
+]){
+ qualityScenarios.push(['privacy','منع بيانات شخصية: '+q.replace(/[\d]/g,'*'),async()=>({
+  reply:'',patch:{},safeguarded:!safeLearningProposal(q,'القبض حسب تفاصيل المكتب')
+ }),checks({mutate:r=>r.safeguarded?[]:['قد يتم حفظ معلومة شخصية كمعرفة عامة']}))]);
 }
 export const BUILTIN_QUALITY_COUNT=qualityScenarios.length;
 export async function runBuiltInQualitySuite(){

@@ -5,6 +5,7 @@ import {decideConversationAction,extractConversationFacts,extractConversationObs
 import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {paymentTimingAdvice} from './payment-info.js';
 import {mansouriyaGuidance} from './residence-guidance.js';
+import {contextualAreaFollowup,rememberAreaDetails} from './contextual-area-followup.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {runCrmTools} from './crm-tools.js';
@@ -477,6 +478,19 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    };
   }
  }
+ // Short phrases such as "التفاصيل" and "كمل" refer to the last displayed
+ // job, not an unrelated question. Never commit a work area by implication.
+ if(!protocolAction&&!m.media_path){
+  const contextual=contextualAreaFollowup({
+   text:m.body,answers,areas,
+   current:qs.find(q=>q.id===a.awaiting_id)||null
+  });
+  if(contextual){
+   Object.assign(answers,contextual.patch);
+   return {patch:{answers,awaiting_id:a.awaiting_id||null},
+    reply:contextual.reply,agent_action:contextual.action};
+  }
+ }
  const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
  const recommendationPreferences=settings.ai_enabled&&!protocolAction?extractRecommendationPreferences(m.body):[];
  const recommendationMerge=mergeRecommendationProfile(answers.__recommendation_profile,recommendationPreferences);
@@ -615,7 +629,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
-   const persistAdvisorAnswers=Boolean(advice.contextPlaceKey||(current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||recommendationProfileChanged||observations.length||savedAgentFacts.length);
+   const rememberedDetails=rememberAreaDetails(answers,areas,advice);
+   const persistAdvisorAnswers=Boolean(rememberedDetails||advice.contextPlaceKey||(current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||recommendationProfileChanged||observations.length||savedAgentFacts.length);
    const compareContinuation=['compare_places','compare_places_followup'].includes(advice.action)&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
@@ -872,9 +887,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(inquiry&&!committedAreaInTurn){
   if(current?.kind==='area'){
    answers.__area_preview={value:inquiry.id,display:inquiry.name,kind:'area_preview',at:new Date().toISOString()};
+   rememberAreaDetails(answers,areas,{action:'explain_area_family',previewAreaId:inquiry.id});
    return {patch:{answers,awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'},reply:areaPreviewReply(inquiry,areas)};
   }
-  return {patch:current?{awaiting_id:current.id}:{},reply:areaDetails(inquiry)+(current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'')};
+  rememberAreaDetails(answers,areas,{action:'explain_area_family',previewAreaId:inquiry.id});
+  return {patch:current?{answers,awaiting_id:current.id}:{answers},reply:areaDetails(inquiry)+(current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'')};
  }
 
  if(areaListInquiry(m.body)){

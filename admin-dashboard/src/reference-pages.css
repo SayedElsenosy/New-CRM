@@ -3554,3 +3554,29 @@
 .app-v2 .v2-expert-review-actions button.reject{background:#452625;border-color:#974c49;color:#ffe6df}
 .app-v2 .v2-expert-review-actions button:disabled{opacity:.5;cursor:wait}
 @media(max-width:850px){.app-v2 .v2-expert-suggestion-list{grid-template-columns:1fr}}
+
+
+/* Phase 5: Real Conversation Intelligence — metadata-only quality patterns */
+.app-v2 .v2-conversation-intelligence{margin:16px 0 23px!important;min-width:0}
+.app-v2 .v2-conversation-intelligence h3{display:flex;align-items:center;gap:9px;color:#f0fbff!important;font-size:18px}
+.app-v2 .v2-conversation-intelligence .v2-quality-section-head p{color:#b1d3e0!important;font-size:12px;line-height:1.8}
+.app-v2 .v2-conversation-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin:16px 0}
+.app-v2 .v2-conversation-stats>div{padding:15px;background:#092c3d;border:1px solid #1d617b;border-radius:12px;min-width:0}
+.app-v2 .v2-conversation-stats small{display:block;color:#b4d3df!important;font-size:11px;line-height:1.5}
+.app-v2 .v2-conversation-stats strong{display:block;color:#76edfb!important;font-size:21px;margin-top:7px;overflow-wrap:anywhere}
+.app-v2 .v2-conversation-patterns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.app-v2 .v2-conversation-pattern{display:grid;grid-template-columns:1fr auto;gap:6px;padding:14px 16px;border:1px solid #26647e;background:#082437;border-radius:12px;min-width:0}
+.app-v2 .v2-conversation-pattern.severity-high{border-color:#b77c42;background:#302518}
+.app-v2 .v2-conversation-pattern.severity-medium{border-color:#a58e39}
+.app-v2 .v2-conversation-pattern strong{display:block;color:#edfaff!important;font-size:13px}
+.app-v2 .v2-conversation-pattern small{display:block;color:#add0dd!important;font-size:11px;margin-top:4px}
+.app-v2 .v2-conversation-pattern b{color:#60e7f6!important;font-size:21px}
+.app-v2 .v2-conversation-pattern p{grid-column:1/-1;color:#b6d5e1!important;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.app-v2 .v2-conversation-trends{margin-top:15px;border-top:1px solid #1b4d67;padding-top:13px}
+.app-v2 .v2-conversation-trends h4{color:#d3effa!important;font-size:13px;margin-bottom:10px}
+.app-v2 .v2-conversation-trends>div{display:flex;gap:8px;flex-wrap:wrap}
+.app-v2 .v2-conversation-trends span{display:flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid #286680;border-radius:9px;background:#071e30}
+.app-v2 .v2-conversation-trends small{color:#a7cbd8!important}
+.app-v2 .v2-conversation-trends strong{color:#eeffff!important}
+@media(max-width:1110px){.app-v2 .v2-conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.app-v2 .v2-conversation-patterns{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.app-v2 .v2-conversation-patterns{grid-template-columns:1fr}.app-v2 .v2-conversation-stats{gap:8px}.app-v2 .v2-conversation-stats strong{font-size:17px}.app-v2 .v2-conversation-intelligence .v2-quality-section-head button{width:100%}}

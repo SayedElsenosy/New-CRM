@@ -758,8 +758,14 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
  adminRoute('post','/agent/quality/cases',async(req,res)=>{
   const title=String(req.body?.title||'').trim(),input=String(req.body?.input_text||'').trim();
   if(title.length<2||title.length>200||input.length<2||input.length>4000)throw bad('راجع اسم ورسالة حالة الاختبار');
-  const tags=Array.isArray(req.body?.tags)?req.body.tags.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20):[];
-  const row=must(await db.from('masar_agent_eval_cases').insert({title,input_text:input,expected:req.body?.expected||{},tags,created_by:req.user.id}).select().single());
+  if(/(?:\+?20|01[0125])[\d\s-]{8,}|\b\d{12,16}\b|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(input))
+   throw bad('استخدم رسالة اختبار افتراضية من غير أرقام تليفون أو بطاقة أو بريد إلكتروني حقيقي.');
+  const expectedAction=String(req.body?.expected?.action||'');
+  const allowedExpected=['','answer_question','save_facts','ask_next','clarify','recommend_area','compare_areas','change_answer','resume_flow','handoff','none'];
+  if(!allowedExpected.includes(expectedAction))throw bad('القرار المتوقع غير مدعوم');
+  const tags=Array.isArray(req.body?.tags)?req.body.tags.map(x=>String(x||'').trim().slice(0,40)).filter(Boolean).slice(0,12):[];
+  const row=must(await db.from('masar_agent_eval_cases').insert({title,input_text:input,
+    expected:expectedAction?{action:expectedAction}:{},tags,created_by:req.user.id}).select().single());
   res.status(201).json(row);
  });
  adminRoute('delete','/agent/quality/cases/:id',async(req,res)=>{

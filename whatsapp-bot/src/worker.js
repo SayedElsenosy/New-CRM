@@ -5,11 +5,12 @@ import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {turnQualitySignals} from './conversation-intelligence.js';
+import {qualityIssueAlertCandidate} from './quality-alerts.js';
 import {enrollNewInboundApplicant} from './pilot-observation.js';
 import {interpret} from './ai.js';
 import {loadKnowledge,schemaMissing,learnFromConversation} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
-import {sendHumanInterventionPush} from './push.js';
+import {sendHumanInterventionPush,sendOfficeQualityPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
 import {questionPrompt,areaDetails} from './domain.js';
@@ -62,9 +63,49 @@ export function choiceButtons(question){
 export class Worker {
  constructor({db,connection,connections,serial,sessionPath,speech=null,agentRuntime=null}){
   Object.assign(this,{db,connection,connections,serial,speech,agentRuntime});
-  this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;this.lastFollowupSweep=0;this.lastInterviewReconcile=0;
+  this.spool=path.join(sessionPath,'inbox');this.ticking=false;this.lastError=null;this.receiveSequence=0;this.lastFollowupSweep=0;this.lastInterviewReconcile=0;this.officeQualityChecks=new Map();
  }
  multi(){return Boolean(this.connections?.configured);}
+
+ async maybeOfficeQualityAlert({applicant,message,signals}){
+  if(!applicant?.office_id||!applicant?.whatsapp_account_id||!Array.isArray(signals)||
+   !signals.some(s=>['ambiguous_reply','tool_failure','llm_fallback','knowledge_gap'].includes(s)))return;
+  const now=Date.now(),officeId=applicant.office_id;
+  // Bounded sampling; check at most every 2 minutes per office.
+  if(now-(this.officeQualityChecks.get(officeId)||0)<120000)return;
+  this.officeQualityChecks.set(officeId,now);
+  const since=new Date(now-86400000).toISOString();
+  const response=await this.db.from('masar_events')
+   .select('kind,detail,applicant_id,created_at',{count:'exact'})
+   .eq('kind','agent_turn').contains('detail',{office_id:officeId})
+   .gte('created_at',since).order('created_at',{ascending:false}).limit(240);
+  if(response.error)throw response.error;
+  const recent=response.data||[];
+  const issue=qualityIssueAlertCandidate(recent,{
+   officeId,currentApplicantId:applicant.id,now,partial:Number(response.count)>recent.length
+  });
+  if(!issue)return;
+  const existing=must(await this.db.from('masar_events').select('id')
+   .eq('kind','agent_quality_alert').contains('detail',{office_id:officeId,issue:issue.key})
+   .gte('created_at',since).limit(1));
+  if(existing.length)return;
+  const title='تنبيه جودة الـAI Agent';
+  const body=issue.title+' — رُصدت '+issue.count+' حالات في آخر 24 ساعة. راجع المحادثات الخاصة بالمكتب.';
+  const created=await this.db.from('masar_alerts').upsert({
+   applicant_id:applicant.id,whatsapp_account_id:applicant.whatsapp_account_id,
+   source_message_id:message.id,kind:'agent_quality_issue',title,body,
+   status:'open',updated_at:new Date(now).toISOString()
+  },{onConflict:'source_message_id',ignoreDuplicates:true});
+  if(created.error)throw created.error;
+  const logged=await this.db.from('masar_events').insert({
+   applicant_id:applicant.id,kind:'agent_quality_alert',
+   detail:{office_id:officeId,issue:issue.key,count:issue.count,sampled_turns:issue.sampled_turns}
+  });
+  if(logged.error)throw logged.error;
+  sendOfficeQualityPush(this.db,{whatsappAccountId:applicant.whatsapp_account_id,title:body})
+   .catch(e=>console.warn('Agent quality push failed:',e.code||e.name||'Error'));
+ }
+
  async init(){
   await fs.mkdir(this.spool,{recursive:true});
   // Pending staff corrections are never auto-approved or shared at startup.
@@ -402,6 +443,8 @@ export class Worker {
        }
       });
       if(eventResult.error)throw eventResult.error;
+      try{await this.maybeOfficeQualityAlert({applicant:a,message:m,signals:qualitySignals});}
+      catch(qualityError){console.warn('Agent quality alert failed:',qualityError.code||qualityError.name||'Error');}
       try{
        const plannerMode=llmAnalysis?.available
         ?(c.settings.agent_llm_mode==='live'?'llm_live':c.settings.agent_llm_mode==='assist'?'llm_assist':'llm_shadow')

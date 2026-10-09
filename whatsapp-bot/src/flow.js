@@ -2,8 +2,9 @@ import {activeQuestions,answered,completion,computedStage,validateAnswer,questio
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
-import {asksForNearbyArea,mentionsResidence,requiresResidenceDisambiguation} from './location.js';
+import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {paymentTimingAdvice} from './payment-info.js';
+import {mansouriyaGuidance} from './residence-guidance.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {runCrmTools} from './crm-tools.js';
@@ -451,6 +452,23 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    }
   }
  }
+ // Handle follow-up messages about the ambiguous residence BEFORE facts, CRM
+ // tools, or LLM navigation can interpret them as a work-area commitment.
+ if(!protocolAction&&!m.media_path){
+  const guidance=mansouriyaGuidance({
+   text:m.body,previous:answers.__residence_clarification,areas
+  });
+  if(guidance){
+   delete answers.__area_recommendations;
+   answers.__residence_clarification={
+    kind:'mansouriya_unverified',phase:guidance.phase,at:new Date().toISOString()
+   };
+   return {
+    patch:{answers,awaiting_id:a.awaiting_id||null},
+    reply:guidance.reply,agent_action:guidance.action
+   };
+  }
+ }
  const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
  const recommendationPreferences=settings.ai_enabled&&!protocolAction?extractRecommendationPreferences(m.body):[];
  const recommendationMerge=mergeRecommendationProfile(answers.__recommendation_profile,recommendationPreferences);
@@ -488,23 +506,6 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
 
 
- // A geocoder may confuse المنصورية near Giza with similarly named places.
- // A mistaken map hit must never turn into confident 100+ km driving figures.
- if(!protocolAction&&requiresResidenceDisambiguation(m.body)){
-  delete answers.__area_recommendations;
-  answers.__residence_clarification={kind:'mansouriya_unverified',at:new Date().toISOString()};
-  return {
-   patch:{answers,awaiting_id:current?.id||null},
-   reply:'فهمتك، إنت تقصد المنصورية مش المنصورة ✅\nتقصد المنصورية اللي في الجيزة ناحية الهرم؟ لو تقدر تقولّي أقرب معلم أو منطقة معروفة، أرشحلك الشغل القريب بدون ما أخمن مسافات.',
-   agent_action:'clarify_residence_location'
-  };
- }
- if(!protocolAction&&answers.__residence_clarification?.kind==='mansouriya_unverified'
-   &&/^(?:ايوه|أيوه|اه|آه|نعم|صح|بالضبط)\s*[.!؟?]?$/.test(String(m.body||'').trim())){
-  return {patch:{answers,awaiting_id:current?.id||null},
-   reply:'تمام، المنصورية في الجيزة. قولّي أقرب منطقة أو معلم معروف جنبك علشان ما أعتمدش على موقع غلط في حساب المسافة.',
-   agent_action:'clarify_residence_location'};
- }
  if(!protocolAction&&!m.media_path){
   const payment=paymentTimingAdvice({text:m.body,areas,answers});
   if(payment){

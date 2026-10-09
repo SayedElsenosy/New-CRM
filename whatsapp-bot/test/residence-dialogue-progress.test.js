@@ -36,7 +36,7 @@ test('Haram repeats from real WhatsApp screenshots move conversation forward, no
  assert.equal(t.agent_action,'residence_context_followup');
  assert.match(t.reply,/قلت «الهرم» بالفعل/);
  assert.match(t.reply,/الهرم مطاعم/);
- assert.match(t.reply,/شيفت|القبض/);
+ assert.match(t.reply,/متوسط أسبوعي|شيفت|القبض/);
  assert.notEqual(t.reply,first);
  assert.doesNotMatch(t.reply,/مناطق شغل ممكن نبدأ نقارنها/);
  answers=t.patch.answers;

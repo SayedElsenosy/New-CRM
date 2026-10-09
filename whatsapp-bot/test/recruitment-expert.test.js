@@ -120,3 +120,22 @@ test('real question with pending motorcycle answer remains a side question',asyn
  assert.equal(result.patch.answers?.bike,undefined);
  assert.match(result.reply,/العقد|التعاقد/);
 });
+
+
+test('unseen Egyptian wording generalizes to known expert domains without memorized exact prompts',()=>{
+ const novel=[
+  ['هو المرتب ثابت ولا بيختلف حسب الشغل؟','salary_structure'],
+  ['ممكن أعرف هل الشركة بتدي بدل بنزين؟','fuel_expenses'],
+  ['هو التأمين الصحي بيغطي إصابات الشغل؟','insurance'],
+  ['هل لازم يكون معايا رخصة قيادة للدليفري؟','driving_license'],
+  ['ايه أخبار البونص والخصومات؟','bonuses'],
+  ['هو لازم نمضي عقد؟','contract'],
+  ['لو عايز أزود ساعاتي، فيه أوفر تايم؟','overtime'],
+  ['لو فيه نصب في إعلان الوظيفة أعمل ايه؟','recruitment_scams'],
+  ['الموتوسيكل لازم يكون باسمي؟','bike_requirement'],
+  ['الشنطة والتجهيزات بتيجي منين؟','equipment']
+ ];
+ for(const [message,expected] of novel){
+  assert.equal(matchExpertTopic(message)?.topic.id,expected,message);
+ }
+});

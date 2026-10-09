@@ -5,6 +5,7 @@ import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {loadLifetimeMemory} from './lifetime-memory.js';
+import {retrieveHistoricalExcerpts,historicalRecallNeeded} from './historical-retrieval.js';
 import {turnQualitySignals} from './conversation-intelligence.js';
 import {qualityIssueAlertCandidate} from './quality-alerts.js';
 import {enrollNewInboundApplicant} from './pilot-observation.js';
@@ -375,14 +376,25 @@ export class Worker {
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
      let recentMessages=[];
+     let historicalExcerpts=[];
      if(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m)){
       try{
-       const recent=must(await this.db.from('masar_messages').select('direction,sender,body,created_at')
+       const recent=must(await this.db.from('masar_messages').select('sequence,direction,sender,body,created_at')
         .eq('applicant_id',a.id).order('sequence',{ascending:false}).limit(Math.max(4,Math.min(30,Number(c.settings.agent_context_messages||12)))));
        recentMessages=[...recent].reverse();
+       if(historicalRecallNeeded(m.body)){
+        try{
+         historicalExcerpts=await retrieveHistoricalExcerpts(this.db,{
+          applicantId:a.id,currentSequence:m.sequence,query:m.body,
+          recentSequences:recentMessages.map(x=>x.sequence)
+         });
+        }catch(historyError){
+         console.warn('Historical recall unavailable:',historyError.code||historyError.name||'Error');
+        }
+       }
        llmAnalysis=await this.agentRuntime.analyzeTurn({
         applicant:a,message:m,questions:c.questions,areas:c.areas,settings:c.settings,
-        knowledge,recentMessages,office:c.office
+        knowledge,recentMessages,historicalExcerpts,office:c.office
        });
        if(llmAnalysis?.available&&['assist','live'].includes(c.settings.agent_llm_mode)){
         knowledge=this.agentRuntime.reorderKnowledge(knowledge,llmAnalysis.plan,c.settings);
@@ -411,7 +423,7 @@ export class Worker {
        &&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
-        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,
+        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,historicalExcerpts,
         office:c.office,applicant:{...a,answers:turn.patch?.answers||a.answers}
        });
        composerCalled=Number.isFinite(composed?.latency_ms);

@@ -87,3 +87,37 @@ test('irrelevant greetings skip retrieval and excessive/sensitive old text stays
  const selected=selectHistoricalExcerpts([msg(1,'أنا ساكن في الهرم '+'صورة '.repeat(1000))],{query:'فاكر أنا ساكن فين'});
  assert.ok(selected[0].excerpt.length<=190);
 });
+
+import {answerHistoricResidenceRecall} from '../src/historical-recall-answer.js';
+import {planTurn} from '../src/flow.js';
+
+test('actual chat recall: user asks where they lived 400 turns later; no work choice is saved',async()=>{
+ const excerpts=[
+  {sequence:1,role:'applicant',unverified:true,excerpt:'أنا ساكن في المنصورية مش المنصورة'}
+ ];
+ const standalone=answerHistoricResidenceRecall('فاكر أنا ساكن فين؟',excerpts);
+ assert.equal(standalone.agent_action,'historical_residence_recall');
+ assert.match(standalone.reply,/المنصورية، مش المنصورة/);
+ const q={id:'area',field_key:'preferred_work_area',kind:'area',label:'أنهي منطقة تقدر تشتغل فيها؟',active:true,required:true,position:1};
+ const area={id:'haram',name:'الهرم مطاعم',place_key:'الهرم',active:true,recruitment_eligible:true};
+ const t=await planTurn({
+  applicant:{id:'test',bot_enabled:true,answers:{},awaiting_id:'area',stage:'incomplete'},
+  message:{body:'فاكر انا ساكن فين؟'},questions:[q],areas:[area],
+  settings:{ai_enabled:true},interpret:async()=>null,historicalExcerpts:excerpts
+ });
+ assert.equal(t.agent_action,'historical_residence_recall');
+ assert.equal(t.patch.awaiting_id,'area');
+ assert.equal(t.patch.answers.area,undefined);
+ assert.match(t.reply,/مش بيحدد منطقة العمل/);
+});
+test('conflicting recent claim never reuses earlier Mansouriya as certain location',()=>{
+ const memory=[
+  {sequence:1,role:'applicant',unverified:true,excerpt:'أنا ساكن في المنصورية'},
+  {sequence:400,role:'applicant',unverified:true,excerpt:'أنا ساكن في الهرم دلوقتي'}
+ ];
+ assert.equal(answerHistoricResidenceRecall('فاكر أنا ساكن فين؟',memory),null);
+ assert.equal(answerHistoricResidenceRecall('القبض إمتى؟',memory),null);
+ assert.equal(answerHistoricResidenceRecall('فاكر أنا ساكن فين؟',[
+  {sequence:1,role:'agent',unverified:true,excerpt:'أنا ساكن في المنصورية'}
+ ]),null);
+});

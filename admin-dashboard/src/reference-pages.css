@@ -3638,3 +3638,21 @@
 .app-v2 .v2-pilot-actions button.stop{background:#473028;border-color:#ba754d;color:#fff1e4}
 .app-v2 .v2-pilot-actions button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:1080px){.app-v2 .v2-pilot-observation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Per-office pilot controls — every office starts inactive until explicitly enabled. */
+.app-v2 .v2-office-pilot-directory{margin:18px 0;min-width:0}
+.app-v2 .v2-office-pilot-directory h3{display:flex;align-items:center;gap:9px;font-size:16px;color:#edfbff!important}
+.app-v2 .v2-office-pilot-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin:15px 0 0}
+.app-v2 .v2-office-pilot-list button{display:grid;grid-template-columns:1fr auto;gap:7px;align-items:center;text-align:right;min-width:0;padding:15px;background:#082637;border:1px solid #24627c;color:#d7f4ff;border-radius:12px;cursor:pointer;font:inherit}
+.app-v2 .v2-office-pilot-list button:hover,.app-v2 .v2-office-pilot-list button.selected{border-color:#50d4e8;background:#073349}
+.app-v2 .v2-office-pilot-list button strong{color:#f2feff;font-size:13px;overflow-wrap:anywhere}
+.app-v2 .v2-office-pilot-list button span{color:#80e9d2;font-size:12px;font-weight:700}
+.app-v2 .v2-office-pilot-list button span:nth-of-type(2){color:#8dddf3;font-weight:800;font-size:17px}
+.app-v2 .v2-office-pilot-list button small{color:#afcad9;font-size:11px}
+.app-v2 .v2-office-pilot-selector{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:12px 0}
+.app-v2 .v2-office-pilot-selector label{display:grid;gap:7px;min-width:200px;color:#cee9f2;font-size:12px;font-weight:700}
+.app-v2 .v2-office-pilot-selector select{background:#082638;border:1px solid #34748c;color:#eafdff;padding:10px 12px;border-radius:9px;max-width:100%}
+.app-v2 .v2-office-pilot-selector span{color:#ffdba8;font-size:12px}
+.app-v2 .v2-pilot-performance .v2-quality-controls select{max-width:250px;width:100%}
+@media(max-width:680px){.app-v2 .v2-office-pilot-list{grid-template-columns:1fr}.app-v2 .v2-office-pilot-selector label{width:100%}.app-v2 .v2-pilot-performance .v2-quality-controls label{flex:1 1 160px;min-width:120px}}

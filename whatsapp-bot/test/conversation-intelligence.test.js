@@ -103,7 +103,7 @@ test('staff correction produces pending suggestion only, never publishes CRM kno
  const updates=[];
  const past=[
   {id:'m1',direction:'in',sender:'applicant',body:'هل الشيفت صباحي ولا مسائي؟',sequence:1},
-  {id:'m2',direction:'out',sender:'staff',body:'حسب مكتبك الشيفت الصباحي ممكن بعد مراجعة المسؤول.',sequence:2}
+  {id:'m2',direction:'out',sender:'staff',body:'الشيفت الصباحي بيبدأ الساعة التاسعة حسب جدول المكتب.',sequence:2}
  ];
  const db={
   from(table){

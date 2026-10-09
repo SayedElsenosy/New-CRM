@@ -4,10 +4,11 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
+import {conversationIntelligenceMetrics,safeLearningProposal} from './conversation-intelligence.js';
 import {expertBrainSummary} from './recruitment-expert.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
-import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence,loadKnowledge} from './knowledge.js';
+import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,snapshotKnowledgeVersion,recordKnowledgeEvidence,loadKnowledge} from './knowledge.js';
 import {legacyImport} from './legacy.js';
 import {validExpoPushToken} from './push.js';
 import {metaConfig,metaLoginUrl,metaStateHash,exchangeMetaCode,encryptMetaToken,decryptMetaToken,getMetaIdentity,listMetaAdAccounts,fetchMetaAccountSnapshot,normalizeMetaAdAccountId} from './meta.js';
@@ -551,8 +552,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
  const cleanKeywords=value=>Array.isArray(value)?[...new Set(value.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20).map(x=>x.slice(0,80)))]:[];
  async function intelligenceState(){
   try{
-   await promotePendingLearning(db);
-   await rebuildBreadfastSharedBrain(db);
+   // This read endpoint must never approve or publish candidate-derived knowledge.
    const since=new Date(Date.now()-30*24*60*60*1000).toISOString();
    let eventQuery=db.from('masar_events').select('kind,detail,created_at').gte('created_at',since).in('kind',['agent_turn','ai_handoff']).order('created_at',{ascending:false}).limit(5000);
    const [settings,knowledge,suggestions,eventResult]=await Promise.all([
@@ -569,13 +569,9 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
     const reason=String(event.detail?.reason||'unknown');handoffReasons[reason]=(handoffReasons[reason]||0)+1;
    }
    const autonomyRate=turns.length?Math.round((turns.length-handoffTurns.length)/turns.length*1000)/10:null;
-   if(s.ai_learning_enabled===false){
-    try{must(await db.from('masar_settings').update({ai_learning_enabled:true,ai_run_mode:'live',ai_training_started_at:null,ai_training_until:null}).eq('id',true));}
-    catch(e){if(!['42703','PGRST204'].includes(e?.code||''))throw e;}
-   }
    return {configured:true,learning_mode:'continuous',voice_transcription:speech?.snapshot?.()||{available:false,error:'محرك الصوت غير متاح'},settings:{
     ai_knowledge_enabled:s.ai_knowledge_enabled!==false,
-    ai_learning_enabled:true,
+    ai_learning_enabled:s.ai_learning_enabled!==false,
     ai_confidence_threshold:Number(s.ai_confidence_threshold||0.62),
     ai_fallback:s.ai_fallback||'السؤال ده محتاج تأكيد من مسؤول التوظيف، هحوّل المحادثة للفريق علشان يرد عليك بدقة.',
     agent_llm_enabled:s.agent_llm_enabled===true,
@@ -659,7 +655,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const since=new Date(Date.now()-days*86400000).toISOString();
   const maxEvents=5000,maxDecisions=5000,maxRuns=2000;
   const [ev,dc,er,suites]=await Promise.all([
-   db.from('masar_events').select('kind,detail,created_at')
+   db.from('masar_events').select('kind,detail,created_at,applicant_id')
     .gte('created_at',since).eq('kind','agent_turn').order('created_at',{ascending:false}).limit(maxEvents),
    db.from('masar_agent_decisions').select('planner_mode,fallback_used,created_at')
     .gte('created_at',since).order('created_at',{ascending:false}).limit(maxDecisions),
@@ -676,7 +672,8 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const events=safe(ev),decisions=safe(dc),runs=safe(er),history=safe(suites);
   const metrics=qualityMetrics({events,decisions,runs,days,
    truncated:events.length>=maxEvents||decisions.length>=maxDecisions||runs.length>=maxRuns});
-  res.json({...metrics,builtin:{
+  const conversation=conversationIntelligenceMetrics(events,{days});
+  res.json({...metrics,conversation,builtin:{
    last_runs:history.map(x=>({
     created_at:x.created_at,passed:Number(x.detail?.passed||0),
     failed:Number(x.detail?.failed||0),total:Number(x.detail?.total||0),
@@ -867,7 +864,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   if(suggestion.status!=='pending')throw bad('تمت مراجعة الاقتراح بالفعل');
   const question=String(req.body.question||suggestion.question||'').trim(),answer=String(req.body.answer||suggestion.answer||'').trim();
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
-  if(/(?:\+?20)?01[0125]\d{8}|\b\d{14}\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(question+' '+answer))
+  if(!safeLearningProposal(question,answer))
    throw bad('راجع الاقتراح واحذف أرقام الهواتف والبطاقات والبريد الإلكتروني قبل اعتماد المعرفة.');
   const knowledge=must(await db.from('masar_knowledge').insert({
    question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),

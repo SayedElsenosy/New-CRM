@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {BUILTIN_QUALITY_COUNT,qualityMetrics,runBuiltInQualitySuite} from '../src/quality-center.js';
 
 test('synthetic QA suite covers 105 Egyptian recruitment scenarios with zero real candidate data',async()=>{
- assert.equal(BUILTIN_QUALITY_COUNT,540);
+ assert.equal(BUILTIN_QUALITY_COUNT,560);
  const report=await runBuiltInQualitySuite();
  assert.equal(report.dataset,'synthetic');
  assert.equal(report.external_llm_calls,0);
@@ -16,6 +16,8 @@ test('synthetic QA suite covers 105 Egyptian recruitment scenarios with zero rea
  assert.ok(report.results.some(x=>x.category==='multi_tool'));
  assert.ok(report.results.some(x=>x.category==='privacy'));
  assert.equal(report.results.filter(x=>x.category==='expert').length,435);
+ assert.equal(report.results.filter(x=>x.category==='conversation').length,12);
+ assert.equal(report.results.filter(x=>x.category==='privacy').length>=18,true);
 });
 
 test('quality metrics distinguish verified test pass, fallback, handoff, tool success and LLM usage',()=>{

@@ -862,7 +862,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!protocolAction&&!m.media_path&&settings.ai_enabled!==false
    &&settings.agent_expert_enabled!==false&&!compoundStructuredQuestion
    &&!savedAgentFacts.some(x=>x.q.id===current?.id)
-   &&!residenceOnlyWhileChoosingWorkArea(current,m.body)){
+   &&!residenceOnlyWhileChoosingWorkArea(current,m.body)
+   &&!/^(?:القبض|المرتب|الراتب)\s+كام\s*[؟?]?$/.test(norm(m.body))){
   const expert=expertResponse(m.body,{
    knowledge,knowledgeEnabled:settings.ai_knowledge_enabled===true,
    minConfidence:Number(settings.ai_confidence_threshold||.62)
@@ -871,11 +872,11 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    const existingState=Boolean(answers.__agent_state||answers.__ai_handoff);
    if(existingState)clearAgentState(answers);
    const persistAnswers=existingState||savedAgentFacts.length>0||observations.length>0||recommendationProfileChanged;
-   const suffix=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}
      :{...(persistAnswers?{answers}:{}),awaiting_id:null,stage:computedStage({...a,answers},questions,areas)},
-    reply:expert.reply+suffix,
+    reply:expert.reply,
+    followup_reply:sideAnswerFollowup(a,current,areas),
     knowledge_id:expert.knowledge_id||null,
     knowledge_confidence:expert.origin==='office_verified'?expert.confidence:null,
     agent_action:expert.origin==='office_verified'?'expert_office_answer':'expert_general_guidance',

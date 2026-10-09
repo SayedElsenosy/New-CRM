@@ -4,8 +4,9 @@ import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
+import {turnQualitySignals} from './conversation-intelligence.js';
 import {interpret} from './ai.js';
-import {loadKnowledge,schemaMissing,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain} from './knowledge.js';
+import {loadKnowledge,schemaMissing,learnFromConversation} from './knowledge.js';
 import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
@@ -65,8 +66,7 @@ export class Worker {
  multi(){return Boolean(this.connections?.configured);}
  async init(){
   await fs.mkdir(this.spool,{recursive:true});
-  try{await promotePendingLearning(this.db);}catch(e){if(!schemaMissing(e))console.warn('Pending memory promotion failed:',e.code||e.name||'Error');}
-  try{await rebuildBreadfastSharedBrain(this.db);}catch(e){if(!schemaMissing(e))console.warn('Breadfast shared brain rebuild failed:',e.code||e.name||'Error');}
+  // Pending staff corrections are never auto-approved or shared at startup.
   try{await reconcileRecentStaffInterviews(this.db,{hours:36,source:'worker_startup_reconcile'});}catch(e){console.warn('Interview reconciliation failed:',e.code||e.name||'Error');}
   must(await this.db.from('masar_messages').update({status:'uncertain',error:'الخدمة توقفت أثناء الإرسال؛ راجع واتساب قبل إعادة المحاولة.'}).eq('status','sending'));
   this.timer=setInterval(()=>this.tick(),2500);this.timer.unref();
@@ -354,6 +354,11 @@ export class Worker {
        prompt_tokens:reported.reduce((sum,x)=>sum+Number(x.prompt_tokens||0),0),
        completion_tokens:reported.reduce((sum,x)=>sum+Number(x.completion_tokens||0),0)
       };
+      const qualitySignals=turnQualitySignals({
+       message:m.body,reply:turn.reply,turn,awaitingBefore:a.awaiting_id,
+       awaitingAfter:afterAwaiting,
+       llmUnavailable:Boolean(c.settings.agent_llm_enabled===true&&!llmAnalysis?.available&&needsLlmPlanning(m))
+      });
       const eventResult=await this.db.from('masar_events').insert({
        applicant_id:a.id,kind:'agent_turn',
        detail:{
@@ -363,6 +368,7 @@ export class Worker {
         extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null,
         ...(llmUsage.calls>0?{llm_usage:llmUsage}:{}),
         ...(turn.expert_intent?{expert_topic:turn.expert_intent,expert_source:turn.expert_source}:{}),
+        quality_signals:qualitySignals,
         brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[],
         crm_tools:Array.isArray(turn.tool_calls)?turn.tool_calls.map(x=>({name:x.tool,ok:x.ok})):[]
        }

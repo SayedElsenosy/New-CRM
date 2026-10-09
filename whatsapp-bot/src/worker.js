@@ -183,10 +183,18 @@ export class Worker {
     // optional office_id (which can be null for new inbound contacts).
     const account=must(await this.db.from('masar_whatsapp_accounts')
      .select('office_id,active').eq('id',accountId).maybeSingle());
-    if(account?.active===true&&account.office_id)
-     await enrollNewInboundApplicant(this.db,{
-      applicantId:a.id,accountId,officeId:account.office_id
-     });
+    if(account?.active===true&&account.office_id){
+     const [officeRow,officeCfg]=await Promise.all([
+      this.db.from('masar_offices').select('active').eq('id',account.office_id).maybeSingle(),
+      this.db.from('masar_office_settings').select('agent_enabled').eq('office_id',account.office_id).maybeSingle()
+     ]);
+     if(officeRow.error)throw officeRow.error;
+     if(officeCfg.error)throw officeCfg.error;
+     if(officeRow.data?.active===true&&officeCfg.data?.agent_enabled!==false)
+      await enrollNewInboundApplicant(this.db,{
+       applicantId:a.id,accountId,officeId:account.office_id
+      });
+    }
    }catch(error){console.warn('Office pilot enrollment failed:',error?.code||error?.name||'Error');}
   }
   if(isExternalOutbound){

@@ -154,11 +154,16 @@ export class Worker {
    else if(canonical)a=canonical;
   }
 
+  // Keep new candidates in the office associated with the receiving
+  // WhatsApp account. The office's questions/areas must not cross tenants.
+  const linkedAccount=accountId?must(await this.db.from('masar_whatsapp_accounts')
+   .select('office_id,active').eq('id',accountId).maybeSingle()):null;
   const referral=record.referral?.source_id?record.referral:null;
   let applicantWasCreated=false;
   if(!a){
    const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at};
    if(multi)row.whatsapp_account_id=accountId;
+   if(linkedAccount?.office_id)row.office_id=linkedAccount.office_id;
    if(referral)row.answers=withFirstAttribution({},referral);
    a=must(await this.db.from('masar_applicants').insert(row).select().single());
    applicantWasCreated=true;
@@ -181,18 +186,16 @@ export class Worker {
    try{
     // Link to the WhatsApp account's CURRENT office, not the applicant's
     // optional office_id (which can be null for new inbound contacts).
-    const account=must(await this.db.from('masar_whatsapp_accounts')
-     .select('office_id,active').eq('id',accountId).maybeSingle());
-    if(account?.active===true&&account.office_id){
+    if(linkedAccount?.active===true&&linkedAccount.office_id){
      const [officeRow,officeCfg]=await Promise.all([
-      this.db.from('masar_offices').select('active').eq('id',account.office_id).maybeSingle(),
-      this.db.from('masar_office_settings').select('agent_enabled').eq('office_id',account.office_id).maybeSingle()
+      this.db.from('masar_offices').select('active').eq('id',linkedAccount.office_id).maybeSingle(),
+      this.db.from('masar_office_settings').select('agent_enabled').eq('office_id',linkedAccount.office_id).maybeSingle()
      ]);
      if(officeRow.error)throw officeRow.error;
      if(officeCfg.error)throw officeCfg.error;
      if(officeRow.data?.active===true&&officeCfg.data?.agent_enabled!==false)
       await enrollNewInboundApplicant(this.db,{
-       applicantId:a.id,accountId,officeId:account.office_id
+       applicantId:a.id,accountId,officeId:linkedAccount.office_id
       });
     }
    }catch(error){console.warn('Office pilot enrollment failed:',error?.code||error?.name||'Error');}

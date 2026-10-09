@@ -382,7 +382,10 @@ export class Worker {
       turn={...turn,patch:{...turn.patch,answers:{...(turn.patch.answers||a.answers||{}),__brain_memory:brain.memory}}};
      }
      let composerUsage=null,composerCalled=false;
-     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!turn.expert_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
+     if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!turn.expert_grounded
+       // Preserve safety-critical residence state and tested explanation verbatim.
+       &&!['clarify_residence_location','residence_reference_options','residence_context_followup','residence_options_without_distance','residence_handoff'].includes(turn.agent_action)
+       &&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,

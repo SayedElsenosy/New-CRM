@@ -6,6 +6,7 @@ import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {runCrmTools} from './crm-tools.js';
+import {expertResponse} from './recruitment-expert.js';
 import {documentAvailabilityDecision,unavailableDocumentNote} from './document-assistance.js';
 import {conversationalAreaAdvice,extractRecommendationPreferences,mergeRecommendationProfile,recommendationPreferenceAck,availableAreaNames,availableAreaListItems} from './area-advisor.js';
 
@@ -855,6 +856,34 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    return {patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}:{...(persistAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},reply:String(match.answer||'').trim(),followup_reply:sideAnswerFollowup(a,current,areas),knowledge_id:match.id,knowledge_confidence:match.confidence,agent_action:savedAgentFacts.length?'multi_fact_extract':undefined};
   }
  }
+ // Recruitment Expert Brain: office-approved facts win; general guidance is
+ // allowed only for explicit professional questions. Never treat a side
+ // question as a qualification answer or confirmed work-area selection.
+ if(!protocolAction&&!m.media_path&&settings.ai_enabled!==false
+   &&settings.agent_expert_enabled!==false&&!compoundStructuredQuestion
+   &&!savedAgentFacts.some(x=>x.q.id===current?.id)
+   &&!residenceOnlyWhileChoosingWorkArea(current,m.body)){
+  const expert=expertResponse(m.body,{
+   knowledge,knowledgeEnabled:settings.ai_knowledge_enabled===true,
+   minConfidence:Number(settings.ai_confidence_threshold||.62)
+  });
+  if(expert){
+   const existingState=Boolean(answers.__agent_state||answers.__ai_handoff);
+   if(existingState)clearAgentState(answers);
+   const persistAnswers=existingState||savedAgentFacts.length>0||observations.length>0||recommendationProfileChanged;
+   const suffix=current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+   return {
+    patch:current?{...(persistAnswers?{answers}:{}),awaiting_id:current.id}
+     :{...(persistAnswers?{answers}:{}),awaiting_id:null,stage:computedStage({...a,answers},questions,areas)},
+    reply:expert.reply+suffix,
+    knowledge_id:expert.knowledge_id||null,
+    knowledge_confidence:expert.origin==='office_verified'?expert.confidence:null,
+    agent_action:expert.origin==='office_verified'?'expert_office_answer':'expert_general_guidance',
+    expert_intent:expert.intent,expert_source:expert.origin,expert_grounded:true
+   };
+  }
+ }
+
  if(areaQuestion&&!compoundStructuredQuestion&&!committedAreaInTurn){
   let area=null,intent=null;
   if(settings.ai_enabled){intent=await interpret(m.body,current,areas);if(intent?.intent==='area_info')area=areas.find(z=>z.active&&z.id===intent.area_id);}

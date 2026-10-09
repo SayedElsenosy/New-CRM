@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim AS whisper
+FROM public.ecr.aws/docker/library/debian:bookworm-slim AS whisper
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git cmake build-essential && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 RUN git clone --depth 1 --branch v1.9.4 https://github.com/ggml-org/whisper.cpp.git
@@ -7,7 +7,7 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DWHISPER_BUILD_TESTS=OFF -DWHISPE
  && cmake --build build --config Release -j2 \
  && ./models/download-ggml-model.sh small-q8_0
 
-FROM node:22-bookworm-slim AS build
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS build
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
@@ -20,7 +20,7 @@ COPY admin-dashboard admin-dashboard
 COPY whatsapp-bot whatsapp-bot
 RUN npm run build
 
-FROM node:22-bookworm-slim
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
 ENV NODE_ENV=production SESSION_PATH=/data/whatsapp DASHBOARD_DIST=/app/admin-dashboard/dist \
     WHISPER_BIN=/opt/whisper/whisper-cli WHISPER_MODEL=/opt/whisper/models/ggml-small-q8_0.bin \
     WHISPER_LANGUAGE=ar WHISPER_THREADS=2 WHISPER_MAX_SECONDS=180

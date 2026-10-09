@@ -404,7 +404,7 @@ export class Worker {
        console.warn('AI Agent LLM planner failed:',e.code||e.name||'Error');
       }
      }
-     let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
+     let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null,historicalExcerpts});
      if(lifetimeChanged&&turn.patch&&turn.reply){
       turn={...turn,patch:{...turn.patch,answers:{
        ...(turn.patch.answers||a.answers||{}),__lifetime_memory:a.answers.__lifetime_memory
@@ -419,7 +419,7 @@ export class Worker {
      let composerUsage=null,composerCalled=false;
      if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!turn.expert_grounded
        // Preserve safety-critical residence state and tested explanation verbatim.
-       &&!['clarify_residence_location','residence_reference_options','residence_context_followup','residence_options_without_distance','residence_handoff','contextual_area_details','clarify_context_details','clarify_context_area_mode','contextual_resume_work_area'].includes(turn.agent_action)
+       &&!['clarify_residence_location','residence_reference_options','residence_context_followup','residence_options_without_distance','residence_handoff','contextual_area_details','clarify_context_details','clarify_context_area_mode','contextual_resume_work_area','historical_residence_recall'].includes(turn.agent_action)
        &&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({

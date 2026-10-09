@@ -3535,3 +3535,22 @@
 .app-v2 .v2-expert-more:hover{background:#185270}
 @media(max-width:1020px){.app-v2 .v2-expert-topic-list{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){.app-v2 .v2-expert-topic-list{grid-template-columns:1fr}.app-v2 .v2-expert-summary{width:100%}.app-v2 .v2-expert-summary strong{flex:1;text-align:center}}
+
+
+/* Staff-reviewed candidate question knowledge queue, visible only to admin */
+.app-v2 .v2-expert-suggestions{margin-top:20px!important;min-width:0}
+.app-v2 .v2-expert-suggestions .v2-quality-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.app-v2 .v2-expert-suggestions .v2-quality-section-head h3{display:flex;align-items:center;gap:9px;color:#f6fbff!important;font-size:18px}
+.app-v2 .v2-expert-suggestions .v2-quality-section-head p{color:#accddb!important;font-size:12px;line-height:1.7}
+.app-v2 .v2-expert-suggestions .v2-quality-section-head>strong{color:#64e6f9!important;font-size:14px}
+.app-v2 .v2-expert-suggestion-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-top:15px}
+.app-v2 .v2-expert-suggestion-list>article{display:grid;gap:11px;min-width:0;border:1px solid #195a72;border-radius:14px;background:#082338;padding:16px}
+.app-v2 .v2-expert-suggestion-list>article>span{font-size:11px;color:#75daeb!important}
+.app-v2 .v2-expert-suggestion-list label{display:grid;gap:7px;color:#bedde9!important;font-size:12px;font-weight:750;min-width:0}
+.app-v2 .v2-expert-suggestion-list textarea{width:100%;max-width:100%;min-width:0;border:1px solid #28627a;border-radius:10px;background:#041b2e;color:#e8f7ff;padding:12px;line-height:1.7;overflow-wrap:anywhere;resize:vertical}
+.app-v2 .v2-expert-suggestion-list textarea:focus-visible{outline:2px solid #39c7e7;outline-offset:2px}
+.app-v2 .v2-expert-review-actions{display:flex;flex-wrap:wrap;gap:9px}
+.app-v2 .v2-expert-review-actions button{flex:1 1 155px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid #127b6d;border-radius:9px;min-height:44px;background:#0d544b;color:#eafff8;font-size:12px;font-weight:800;cursor:pointer}
+.app-v2 .v2-expert-review-actions button.reject{background:#452625;border-color:#974c49;color:#ffe6df}
+.app-v2 .v2-expert-review-actions button:disabled{opacity:.5;cursor:wait}
+@media(max-width:850px){.app-v2 .v2-expert-suggestion-list{grid-template-columns:1fr}}

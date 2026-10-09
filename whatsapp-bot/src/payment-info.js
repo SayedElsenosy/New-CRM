@@ -6,7 +6,7 @@ import {areaMode,areaPlaceKey} from './area-advisor.js';
 export function asksPaymentTiming(text){
  const n=norm(text);
  const pay=/(?:قبض|مرتبات?|رواتب|راتب|فلوس|صرف)/.test(n);
- const timing=/(?:امتي|امتى|متي|ميعاد|موعد|يوم|تاريخ|اسبوعي|اسبوعيا|شهري|بينزل|تنزل|ينزل|هستلم|استلم|اتأكد|تاكد|تاكيد|اعرف|تقول)/.test(n);
+ const timing=/(?:امتي|امتى|متي|ميعاد|معاد|موعد|يوم|تاريخ|اسبوعي|اسبوعيا|شهري|بينزل|تنزل|ينزل|هستلم|استلم|اتاكد|اتأكد|تاكد|تاكيد|اعرف|تقول)/.test(n);
  return pay&&timing&&!/(?:القبض كام|الراتب كام|المرتب كام|دخل كام)/.test(n);
 }
 function schedule(details){
@@ -49,7 +49,7 @@ export function paymentTimingAdvice({text,areas,answers={}}={}){
   const card=areaMode(a)==='restaurants'?'مطاعم':areaMode(a)==='market'?'ماركت':'الشغل';
   return '• '+a.name+' ('+card+'): '+cadence+(cadence==='أسبوعي'&&/الفيزا/.test(norm(a.details))?' على الفيزا':'');
  }))];
- const insist=/(?:اتأكد|تاكيد|تأكيد|بالتحديد|بالضبط|يوم ايه|انهي يوم|موعد القبض|ميعاد القبض|عايز اعرف|عاوز اعرف)/.test(norm(text));
+ const insist=/(?:اتاكد|اتأكد|تاكيد|تأكيد|بالتحديد|بالضبط|يوم ايه|انهي يوم|موعد القبض|ميعاد القبض|معاد القبض|عايز اعرف|عاوز اعرف)/.test(norm(text));
  const needsHuman=insist&&answers?.__payment_schedule_pending?.kind==='payment_schedule_pending';
  return {
   reply:'نظام القبض المسجل عندنا:\n'+lines.join('\n')+

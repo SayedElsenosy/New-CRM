@@ -326,7 +326,7 @@ function AgentTest({state}){
 }
 
 
-function AgentQualityCenter({state,reload}){
+function AgentQualityCenter({state,reload,onReviewKnowledge}){
   const [days,setDays]=useState(7),[metrics,setMetrics]=useState(null),[result,setResult]=useState(null);
   const [loading,setLoading]=useState(false),[running,setRunning]=useState(false),[error,setError]=useState('');
   const [customBusy,setCustomBusy]=useState(false),[shownCases,setShownCases]=useState(60),[draft,setDraft]=useState({title:'',input_text:'',expected_action:''});
@@ -376,6 +376,7 @@ function AgentQualityCenter({state,reload}){
   const fmtPct=x=>x===null||x===undefined?'—':Number(x).toLocaleString('en-US',{maximumFractionDigits:1})+'%';
   const op=metrics?.operational||{},ev=metrics?.evaluation||{},usage=metrics?.usage||{},expert=state?.expert||{},expertMetrics=metrics?.expert||{};
   const history=metrics?.builtin?.last_runs||[];
+  const conversations=metrics?.conversation||{},patterns=conversations.patterns||[];
   const totalCalls=op.tool_calls||0;
   return <div className="v2-agent-detail v2-quality-center">
     <div className="detail-head">
@@ -396,6 +397,34 @@ function AgentQualityCenter({state,reload}){
         {label:'اجتياز تقييمات الـ LLM',value:metrics?fmtPct(ev.pass_rate):'—',foot:(ev.evaluated||0)+' حالة تم تقييمها'}
       ].map(x=><article key={x.label} className="v2-quality-metric"><small>{x.label}</small><strong>{x.value}</strong><span>{x.foot}</span></article>)}
     </div>
+    <section className="v2-detail-card v2-conversation-intelligence">
+      <div className="v2-quality-section-head">
+        <div>
+          <h3><MessageCircleQuestion size={19}/> ذكاء المحادثات الفعلية</h3>
+          <p>رصد احتمالي من أنواع أخطاء التشغيل، بدون نقل نص الرسائل أو أرقام المتقدمين للتقرير. النتائج للمراجعة البشرية مش للتعلّم التلقائي.</p>
+        </div>
+        <button type="button" onClick={onReviewKnowledge}><ShieldCheck size={16}/> راجع اقتراحات المعرفة</button>
+      </div>
+      <div className="v2-conversation-stats">
+        <div><small>الأدوار اللي تم فحصها</small><strong>{fmt(conversations.sampled_turns)}</strong></div>
+        <div><small>مؤشر حالات محتاجة مراجعة</small><strong>{fmtPct(conversations.flag_rate)}</strong></div>
+        <div><small>حالات مرصودة بعلامات</small><strong>{fmt(conversations.flagged_turns)}</strong></div>
+        <div><small>سياسة التعلّم</small><strong>اعتماد بشري</strong></div>
+      </div>
+      <p className="v2-quality-muted">المؤشرات دي مش نسبة أخطاء مؤكدة؛ بتكشف احتمالات لمراجعتها. المتقدمون الحقيقيون لا يدخلون تلقائيًا إلى اختبارات التدريب.</p>
+      <div className="v2-conversation-patterns">
+       {patterns.map(p=><article className={'v2-conversation-pattern severity-'+p.severity} key={p.key}>
+         <div><strong>{p.label}</strong><small>{p.severity==='high'?'أولوية عالية':p.severity==='medium'?'أولوية متوسطة':'للمتابعة'}</small></div>
+         <b>{fmt(p.count)}</b>
+         <p>{p.advice}</p>
+       </article>)}
+       {!patterns.length&&<div className="v2-quality-muted">لسه ما اتسجلتش علامات كفاية في الفترة المحددة. العلامات الجديدة بتظهر مع الرسائل اللي هتتسجل بعد التحديث.</div>}
+      </div>
+      <div className="v2-conversation-trends">
+        <h4>متابعة الإشارات يوميًا</h4>
+        <div>{(conversations.day_trend||[]).map(row=><span key={row.day}><small>{row.day.slice(5)}</small><strong>{row.flagged}/{row.turns}</strong></span>)}</div>
+      </div>
+    </section>
     <div className="v2-quality-layout">
       <section className="v2-detail-card">
         <div className="v2-quality-section-head"><div><h3>اختبارات المحادثات المصرية</h3><p>تُشغّل الحالات داخل النظام ببيانات وهمية؛ بدون رسائل حقيقية وبدون طلبات LLM.</p></div><button type="button" onClick={runSuite} disabled={running}><Play size={16}/>{running?'جارٍ تشغيل الاختبارات':'تشغيل الاختبارات'}</button></div>
@@ -505,7 +534,7 @@ export function ReferenceAIAgentPage({action}){
     {view==='dashboard'&&<AgentDashboard state={state} onView={setView}/>}
     {view==='knowledge'&&<AgentKnowledge state={state} reload={load}/>}
     {view==='test'&&<AgentTest state={state}/>}
-    {view==='quality'&&<AgentQualityCenter state={state} reload={load}/>}
+    {view==='quality'&&<AgentQualityCenter state={state} reload={load} onReviewKnowledge={()=>setView('knowledge')}/>}
     {view==='settings'&&<AgentSettings state={state} reload={load} action={action}/>}
     {view==='decisions'&&<AgentDecisions state={state}/>}
   </div>;

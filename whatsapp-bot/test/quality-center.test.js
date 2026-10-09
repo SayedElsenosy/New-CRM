@@ -37,6 +37,8 @@ test('quality metrics distinguish verified test pass, fallback, handoff, tool su
  assert.equal(metrics.operational.tool_calls,2);
  assert.equal(metrics.operational.tool_success_rate,50);
  assert.equal(metrics.operational.handoffs,1);
+ assert.equal(metrics.expert.answers,0);
+ assert.equal(metrics.expert.office_verified,0);
  assert.equal(metrics.operational.handoff_rate,50);
  assert.equal(metrics.operational.fallback_rate,50);
  assert.equal(metrics.operational.llm_decisions,1);
@@ -57,4 +59,19 @@ test('quality metrics never claim precision from no data or unknown provider pri
  assert.equal(empty.evaluation.pass_rate,null);
  assert.equal(empty.usage.cost,null);
  assert.equal(empty.sample.turns,0);
+});
+
+
+test('Expert Brain telemetry counts only safe topic metadata, no source message',()=>{
+ const now=Date.parse('2026-10-09T19:00:00Z');
+ const report=qualityMetrics({now,events:[
+  {kind:'agent_turn',created_at:'2026-10-09T18:50:00Z',detail:{action:'expert_general_guidance',expert_topic:'insurance',expert_source:'general_guidance'}},
+  {kind:'agent_turn',created_at:'2026-10-09T18:52:00Z',detail:{action:'expert_office_answer',expert_topic:'insurance',expert_source:'office_verified'}},
+  {kind:'agent_turn',created_at:'2026-10-09T18:53:00Z',detail:{action:'expert_general_guidance',expert_topic:'salary_structure',expert_source:'general_guidance'}}
+ ]});
+ assert.equal(report.expert.answers,3);
+ assert.equal(report.expert.office_verified,1);
+ assert.equal(report.expert.general_guidance,2);
+ assert.deepEqual(report.expert.top_topics[0],{topic:'insurance',count:2});
+ assert.equal(JSON.stringify(report).includes('candidate_id'),false);
 });

@@ -80,3 +80,19 @@ export async function sendHumanInterventionPush(db,{applicant,question,alertId=n
  for(let i=0;i<messages.length;i+=100)await postBatch(messages.slice(i,i+100));
  return {sent:messages.length};
 }
+
+
+/** Generic office quality push: no candidate names, IDs or conversation text. */
+export async function sendOfficeQualityPush(db,{whatsappAccountId,title}={}){
+ if(!whatsappAccountId)return {sent:0};
+ const recipients=await staffRecipients(db,whatsappAccountId);
+ if(!recipients.length)return {sent:0};
+ const messages=recipients.map(to=>({
+  to,title:'تنبيه جودة الـAI Agent',
+  body:String(title||'مشكلة متكررة تحتاج مراجعة').slice(0,120),
+  sound:'default',channelId:'intervention',priority:'high',
+  data:{url:'masar://alerts'}
+ }));
+ for(let i=0;i<messages.length;i+=100)await postBatch(messages.slice(i,i+100));
+ return {sent:messages.length};
+}

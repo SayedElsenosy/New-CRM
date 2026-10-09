@@ -2,7 +2,8 @@ import {activeQuestions,answered,completion,computedStage,validateAnswer,questio
 import {findKnowledgeAnswer,looksLikeQuestion,sameKnowledgeTopic} from './knowledge.js';
 import {qualificationFor} from './qualification.js';
 import {decideConversationAction,extractConversationFacts,extractConversationObservations,nextAgentQuestion} from './ai.js';
-import {asksForNearbyArea,mentionsResidence} from './location.js';
+import {asksForNearbyArea,mentionsResidence,requiresResidenceDisambiguation} from './location.js';
+import {paymentTimingAdvice} from './payment-info.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {runCrmTools} from './crm-tools.js';
@@ -485,6 +486,38 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  }
  const pending=qs.filter(q=>!answered(q,answers,areas)&&!(answers[q.id]?.skipped&&!q.required));
  const current=pending.find(q=>q.id===a.awaiting_id)||nextMissing(qs,answers,areas);
+
+
+ // A geocoder may confuse المنصورية near Giza with similarly named places.
+ // A mistaken map hit must never turn into confident 100+ km driving figures.
+ if(!protocolAction&&requiresResidenceDisambiguation(m.body)){
+  delete answers.__area_recommendations;
+  answers.__residence_clarification={kind:'mansouriya_unverified',at:new Date().toISOString()};
+  return {
+   patch:{answers,awaiting_id:current?.id||null},
+   reply:'فهمتك، إنت تقصد المنصورية مش المنصورة ✅\nتقصد المنصورية اللي في الجيزة ناحية الهرم؟ لو تقدر تقولّي أقرب معلم أو منطقة معروفة، أرشحلك الشغل القريب بدون ما أخمن مسافات.',
+   agent_action:'clarify_residence_location'
+  };
+ }
+ if(!protocolAction&&answers.__residence_clarification?.kind==='mansouriya_unverified'
+   &&/^(?:ايوه|أيوه|اه|آه|نعم|صح|بالضبط)\s*[.!؟?]?$/.test(String(m.body||'').trim())){
+  return {patch:{answers,awaiting_id:current?.id||null},
+   reply:'تمام، المنصورية في الجيزة. قولّي أقرب منطقة أو معلم معروف جنبك علشان ما أعتمدش على موقع غلط في حساب المسافة.',
+   agent_action:'clarify_residence_location'};
+ }
+ if(!protocolAction&&!m.media_path){
+  const payment=paymentTimingAdvice({text:m.body,areas,answers});
+  if(payment){
+   if(payment.needsHuman){
+    const human=handoffTurn({answers,current,applicant:a,questions,areas,settings,message:m,reason:'payment_day_unverified'});
+    return {...human,reply:payment.reply,handoff_note:'تأكيد يوم صرف القبض الفعلي في نظام العمل الذي يستفسر عنه المتقدم.',
+     agent_action:'payment_day_handoff'};
+   }
+   if(payment.markPending)answers.__payment_schedule_pending={kind:'payment_schedule_pending',at:new Date().toISOString()};
+   return {patch:{answers,awaiting_id:current?.id||null},
+    reply:payment.reply,agent_action:'payment_schedule_info'};
+  }
+ }
 
  // Brain 2.0 phase two: execute safe read-only CRM tools for genuinely
  // compound candidate requests, after confirmed facts and qualification stops

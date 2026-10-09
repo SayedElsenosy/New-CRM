@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
+import {recruitmentPerformance,pilotReadiness} from './recruitment-performance.js';
 import {conversationIntelligenceMetrics,safeLearningProposal} from './conversation-intelligence.js';
 import {expertBrainSummary} from './recruitment-expert.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
@@ -647,6 +648,46 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    }
   };
  }
+ // Phase 6 performance is read-only. Pull only metadata (never body, phone,
+ // display_name, notes, answers, media or message text); all applicant IDs
+ // stay inside the server and do not appear in this API response.
+ adminRoute('get','/agent/performance',async(req,res)=>{
+  const days=Number(req.query.days||7);
+  if(!Number.isInteger(days)||days<1||days>30)throw bad('اختار فترة بين 1 و30 يومًا');
+  const since=new Date(Date.now()-days*86400000).toISOString();
+  const cap=1000;
+  const [a,m,d,latestSuite]=await Promise.all([
+   db.from('masar_applicants')
+    .select('id,stage,created_at,last_message_at',{count:'exact'})
+    .gte('created_at',since).order('created_at',{ascending:false}).limit(cap),
+   db.from('masar_messages')
+    .select('applicant_id,created_at,direction,sender',{count:'exact'})
+    .gte('created_at',since).order('created_at',{ascending:false}).limit(cap),
+   db.from('masar_agent_decisions')
+    .select('applicant_id,created_at,latency_ms',{count:'exact'})
+    .gte('created_at',since).order('created_at',{ascending:false}).limit(cap),
+   db.from('masar_events')
+    .select('created_at,detail').eq('kind','agent_quality_suite')
+    .order('created_at',{ascending:false}).limit(1)
+  ]);
+  // Applicants and message tables are core data sources: never replace a
+  // failed query with zero, since that would show misleading performance.
+  const applicants=must(a),messages=must(m);
+  const optional=x=>{
+   if(!x.error)return x.data||[];
+   if(schemaMissing(x.error)||['42703','PGRST204'].includes(x.error.code))return [];
+   throw x.error;
+  };
+  const decisions=optional(d),suite=optional(latestSuite)[0];
+  const qaPassed=suite&&Number(suite.detail?.total)>=560
+   &&Number(suite.detail?.failed)===0&&Number(suite.detail?.passed)===Number(suite.detail?.total)
+   &&Date.parse(suite.created_at)>=Date.now()-7*86400000;
+  const report=recruitmentPerformance({
+   applicants,messages,decisions,days,
+   applicantsTotal:a.count,messagesTotal:m.count,decisionsTotal:d.count
+  });
+  res.json({...report,pilot:pilotReadiness({qualitySuitePassed:Boolean(qaPassed)})});
+ });
  // Admin-only, aggregate-only AI Quality Center. Never return candidate
  // messages, phone numbers, applicant IDs or raw decision traces here.
  adminRoute('get','/agent/quality/metrics',async(req,res)=>{

@@ -15,7 +15,6 @@ export function qualityMetrics({events=[],decisions=[],runs=[],days=7,now=Date.n
  const windowDays=boundedInt(days,7,1,30),since=now-windowDays*86400000;
  const recent=items=>(Array.isArray(items)?items:[]).filter(x=>Date.parse(x.created_at)>=since);
  const turns=recent(events).filter(x=>x.kind==='agent_turn');
- const aiHandoffs=recent(events).filter(x=>x.kind==='ai_handoff');
  const recentDecisions=recent(decisions);
  const evalRuns=recent(runs);
  let toolCount=0,toolSuccess=0,llmCalls=0,promptTokens=0,completionTokens=0,usageCovered=0,toolTurns=0;
@@ -54,12 +53,8 @@ export function qualityMetrics({events=[],decisions=[],runs=[],days=7,now=Date.n
    if(count>0)usageCovered++;
   }
  }
- for(const row of aiHandoffs){
-  const reason=String(row.detail?.reason||'unknown').slice(0,60);
-  handoffReasons[reason]=(handoffReasons[reason]||0)+1;
- }
- // AI handoff events and turn.handoff can describe the SAME case; use
- // turn flags for the rate and reason counts from explicit handoff events.
+ // Handoff alerts and agent_turn often represent the same event. Count
+ // only agent_turn.handoff so the rate and reason totals are consistent.
  const handoffCount=turns.filter(x=>x.detail?.handoff===true).length;
  const fallback=recentDecisions.filter(x=>x.fallback_used===true).length;
  const llmDecisions=recentDecisions.filter(x=>String(x.planner_mode||'').startsWith('llm_')).length;

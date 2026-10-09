@@ -1,4 +1,4 @@
-import {nearestWorkAreas,nearestWorkAreaReply,resolveKnownPlace} from './location.js';
+import {nearestWorkAreas,nearestWorkAreaReply,resolveKnownPlace,requiresResidenceDisambiguation} from './location.js';
 import {extractResidenceLocation,nearestWorkAreasWithGoogleMaps,nearestWorkAreaMapsReply} from './google-maps.js';
 
 // Geoapify's free API can be used without a credit card. Google remains an
@@ -131,6 +131,8 @@ async function routes(origin,locations,config){
  * secondary legacy option. Never use a residence as confirmed work area.
  */
 export async function nearestWorkAreasWithFreeMaps(value,areas,options={}){
+ // Do not geocode an ambiguous residence or silently reuse a stale origin.
+ if(requiresResidenceDisambiguation(value))return null;
  const config=setup(options);
  if(!config.key)return nearestWorkAreasWithGoogleMaps(value,areas,options);
  const local=nearestWorkAreas(value,areas,options);

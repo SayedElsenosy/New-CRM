@@ -315,11 +315,11 @@ export class Worker {
      let composerUsage=null,composerCalled=false;
      if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
-       composerCalled=true;
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,
         office:c.office,applicant:{...a,answers:turn.patch?.answers||a.answers}
        });
+       composerCalled=Number.isFinite(composed?.latency_ms);
        composerUsage=composed?.usage||null;
        if(composed?.applied)turn={...turn,reply:composed.reply,agent_composed:true};
       }catch(e){

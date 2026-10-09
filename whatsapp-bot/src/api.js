@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
 import {must,allRows,config} from './db.js';
 import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
+import {expertBrainSummary} from './recruitment-expert.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
 import {schemaMissing,suggestKeywords,findKnowledgeAnswer,learnFromConversation,promotePendingLearning,rebuildBreadfastSharedBrain,snapshotKnowledgeVersion,recordKnowledgeEvidence,loadKnowledge} from './knowledge.js';
@@ -613,7 +614,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
  }
  async function agentState(){
   const base=await intelligenceState();
-  if(!base.configured)return {...base,llm:agentRuntime?.snapshot?.({})||{configured:false,enabled:false},decisions:[],quality:{cases:[],recent_runs:[]},agent_stats:{}};
+  if(!base.configured)return {...base,llm:agentRuntime?.snapshot?.({})||{configured:false,enabled:false},decisions:[],quality:{cases:[],recent_runs:[]},agent_stats:{},expert:expertBrainSummary()};
   let decisions=[],cases=[],runs=[];
   try{
    const [d,casesResult,runsResult]=await Promise.all([
@@ -636,6 +637,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    const day=String(row.created_at||'').slice(0,10);if(day)growth[day]=(growth[day]||0)+1;
   }
   return {...base,
+   expert:expertBrainSummary(),
    llm:agentRuntime?.snapshot?.(base.settings)||{configured:false,enabled:false},
    decisions:decisions.slice(0,100),
    quality:{cases,recent_runs:runs.slice(0,100)},

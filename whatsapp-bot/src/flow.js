@@ -461,8 +461,16 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   if(guidance){
    delete answers.__area_recommendations;
    answers.__residence_clarification={
-    kind:'mansouriya_unverified',phase:guidance.phase,at:new Date().toISOString()
+    kind:'mansouriya_unverified',phase:guidance.phase,
+    ...(guidance.reference_place?{reference_place:guidance.reference_place}:{}),
+    at:new Date().toISOString()
    };
+   if(guidance.needsHuman){
+    const human=handoffTurn({answers,current:qs.find(q=>q.id===a.awaiting_id)||null,
+     applicant:a,questions,areas,settings,message:m,reason:'repeated_residence_confusion'});
+    return {...human,reply:guidance.reply,handoff_note:'مساعدة المتقدم في اختيار منطقة شغل مناسبة بعد تكرار صعوبة توضيح موقع السكن.',
+     agent_action:guidance.action};
+   }
    return {
     patch:{answers,awaiting_id:a.awaiting_id||null},
     reply:guidance.reply,agent_action:guidance.action

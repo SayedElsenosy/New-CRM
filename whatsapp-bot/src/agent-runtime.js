@@ -1,4 +1,5 @@
 import {brainMemoryContext,buildBrainSteps,validateBrainSteps} from './brain-memory.js';
+import {lifetimeMemoryContext} from './lifetime-memory.js';
 import {matchExpertTopic} from './recruitment-expert.js';
 
 const ALLOWED_ACTIONS=new Set([
@@ -238,6 +239,7 @@ export class AgentRuntime{
    'facts تعني معلومات عن المتقدم فقط، وليست إجابات Knowledge مثل المرتب أو التأمين.',
    'ممنوع وضع preferred_work_area داخل facts من مجرد السكن أو ترشيح أقرب منطقة؛ منطقة العمل لا تصبح حقيقة إلا بعد اختيار/تأكيد صريح من المتقدم.',
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
+   'استخدم lifetime_conversation_memory لتذكر الأسئلة والتصحيحات القديمة طوال المحادثة؛ التاريخ مش دليل على تأكيد منطقة العمل أو صحة معلومة تشغيلية. اختيارات المتقدم المثبتة في known_answers وبيانات CRM لها الأولوية.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
    'لو السؤال عن التوظيف والدليفري استخدم Recruitment Expert Brain في فهم النية وأسلوب الإجابة، لكن الراتب والمزايا والمواعيد والاشتراطات حقائق تخص المكتب ولا تؤخذ من نصائح عامة.',
    'المعرفة العامة للخبير ليست تفويضًا بتقديم قبول أو رفض أو رقم أو ميزة تشغيلية غير مسجلة.',
@@ -253,6 +255,7 @@ export class AgentRuntime{
    })(),
    office_name:trim(office?.name||'مكتب التوظيف',90),
    verified_preference_memory:brainMemoryContext(applicant?.answers),
+   lifetime_conversation_memory:lifetimeMemoryContext(applicant?.answers),
    suggested_readonly_steps:buildBrainSteps(currentText,{hasPendingQuestion:Boolean(applicant?.awaiting_id)}),
    awaiting_field:(questions||[]).find(q=>String(q.id)===String(applicant?.awaiting_id||''))?.field_key||null,
    known_answers:Object.values(applicant?.answers||{}).filter(v=>v&&typeof v==='object'&&v.key).slice(0,10).map(v=>({field_key:v.key,value:v.value,display:trim(v.display,60)})),
@@ -309,6 +312,7 @@ export class AgentRuntime{
    current_message:trim(message?.body,900),
    office_name:trim(office?.name||'مكتب التوظيف',90),
    verified_preference_memory:brainMemoryContext(applicant?.answers),
+   lifetime_conversation_memory:lifetimeMemoryContext(applicant?.answers),
    validated_readonly_steps:Array.isArray(plan?.steps)?plan.steps.slice(0,6):[],
    action:String(turn?.agent_action||''),
    draft_reply:trim(turn?.reply,1800),

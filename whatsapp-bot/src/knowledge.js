@@ -1,4 +1,5 @@
 import {norm,digits} from './domain.js';
+import {safeLearningProposal} from './conversation-intelligence.js';
 
 const QUESTION_WORDS=['ايه','اي','ازاي','فين','كام','امتى','متي','هل','ممكن','عايز اعرف','عاوز اعرف','تفاصيل','مرتب','راتب','قبض','دخل','عنوان','مكان','مواعيد','ميعاد','ساعات','شفت','مميزات','تأمين','تامين','اجازه','اجازة','بونص','تقديم','محاضره','محاضرة','انترفيو'];
 const STOP=new Set(['في','من','على','علي','عن','هو','هي','ده','دي','دا','انا','انت','انتم','يا','لو','و','او','ولا','بس','بقى','بقا','كده','كدا','ايه','هل','ممكن','عايز','عاوز','اعرف','تفاصيل']);
@@ -207,8 +208,8 @@ async function insertAuditSuggestion(db,{applicantId,officeId=null,candidate,sta
   answer:candidate.answer,
   status,
   created_by:staffId||null,
-  reviewed_by:staffId||null,
-  reviewed_at:new Date().toISOString()
+  reviewed_by:status==='approved'?staffId||null:null,
+  reviewed_at:status==='approved'?new Date().toISOString():null
  };
  const result=await db.from('masar_learning_suggestions').insert(row).select('id').maybeSingle();
  if(result&&result.error){
@@ -464,44 +465,26 @@ export async function learnFromConversation(db,{applicantId,officeId=null,staffM
    await recordMemoryEvent(db,{applicantId,kind:'ai_memory_skipped',detail:{staff_message_id:staffMessageId,reason:'case_specific_or_no_stable_context'}});
    return {learned:false,action:'skipped'};
   }
+  // Only human-approved office knowledge may enter the live agent.
+  if(!safeLearningProposal(candidate.question,candidate.answer)){
+   await recordMemoryEvent(db,{applicantId,kind:'ai_memory_skipped',
+    detail:{staff_message_id:staffMessageId,reason:'possible_personal_information'}});
+   return {learned:false,action:'privacy_skipped'};
+  }
   let suggestion=null;
-  try{suggestion=await insertAuditSuggestion(db,{applicantId,officeId,candidate,staffId,status:'approved'});}catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
-  return await upsertOperationalMemory(db,{applicantId,officeId,candidate,staffId,suggestionId:suggestion?.id||null});
+  try{suggestion=await insertAuditSuggestion(db,{applicantId,officeId,candidate,staffId,status:'pending'});}
+  catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
+  return {learned:false,action:suggestion?'awaiting_staff_review':'already_suggested',
+   suggestion_id:suggestion?.id||null};
  }catch(e){
   if(schemaMissing(e))return {learned:false,action:'schema_missing'};
   throw e;
  }
 }
-export async function promotePendingLearning(db,{limit=500}={}){
- try{
-  const pendingResult=await db.from('masar_learning_suggestions').select('*').eq('status','pending').order('created_at',{ascending:true}).limit(limit);
-  if(pendingResult.error)throw pendingResult.error;
-  let promoted=0,skipped=0;
-  for(const suggestion of pendingResult.data||[]){
-   const candidate={
-    question:String(suggestion.question||'').trim(),
-    answer:String(suggestion.answer||'').trim(),
-    source_message_id:suggestion.source_message_id||null,
-    staff_message_id:suggestion.staff_message_id||null,
-    context:''
-   };
-   if(!isOperationalMemoryCandidate(candidate.question,candidate.answer,{force:true})){
-    const rejected=await db.from('masar_learning_suggestions').update({status:'rejected',reviewed_at:new Date().toISOString()}).eq('id',suggestion.id);
-    if(rejected.error)throw rejected.error;
-    skipped++;continue;
-   }
-   let officeId=suggestion.office_id||null;
-   if(!officeId&&suggestion.applicant_id){
-    const applicantResult=await db.from('masar_applicants').select('office_id').eq('id',suggestion.applicant_id).maybeSingle();
-    if(!applicantResult.error)officeId=applicantResult.data?.office_id||null;
-   }
-   await upsertOperationalMemory(db,{applicantId:suggestion.applicant_id,officeId,candidate,staffId:suggestion.created_by,suggestionId:null});
-   const approved=await db.from('masar_learning_suggestions').update({status:'approved',reviewed_by:suggestion.created_by||null,reviewed_at:new Date().toISOString()}).eq('id',suggestion.id);
-   if(approved.error)throw approved.error;
-   promoted++;
-  }
-  return {promoted,skipped};
- }catch(e){if(schemaMissing(e))return {promoted:0,skipped:0};throw e;}
+export async function promotePendingLearning(_db,{limit=500}={}){
+ // Intentionally disabled. Requires an explicit authenticated staff approval
+ // through /intelligence/suggestions/:id/approve.
+ return {promoted:0,skipped:0,awaiting_human_review:true};
 }
 function scoreTextAgainstTarget(q,target){
  if(!q||!target)return 0;

@@ -49,7 +49,7 @@ Now:
 - verifies metadata aggregation never returns applicant IDs, raw text, phone/identity tokens;
 - forbids background approval; verifies staff replies create only a pending review item, never an automatic entry in `masar_knowledge`.
 
-Keep running the existing 540 synthetic QA scenarios from Phase 4. The new diagnostics are **additional**, and normal WhatsApp qualification paths remain unchanged.
+The built-in Quality Center suite now runs **560 synthetic cases**: the previous 540 plus 12 conversation-signal checks and 8 privacy safeguards. Normal WhatsApp qualification paths remain unchanged.
 
 ## Safety and limitations
 

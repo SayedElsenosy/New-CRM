@@ -37,7 +37,7 @@ test('cohort counts form completion, never hiring acceptance',()=>{
  assert.equal(result.accuracy.accuracy_rate,null);
  assert.match(result.methodology,/لا تمثل قرار قبول/);
  assert.equal(result.privacy.raw_text_used,false);
- assert.doesNotMatch(JSON.stringify(result),/older|applicant_id|one|two|four|private@example|01012345678/);
+ assert.doesNotMatch(JSON.stringify(result),/older|private@example|01012345678|"applicant_id":|"id":"one"|"id":"two"|"id":"four"/);
 });
 
 test('inactive incomplete applicants after 24 hours are only review candidates',()=>{

@@ -1,6 +1,7 @@
 import {planTurn} from './flow.js';
 import {runCrmTools} from './crm-tools.js';
 import {updateBrainMemory} from './brain-memory.js';
+import {EXPERT_TRAINING_EXAMPLES,expertResponse} from './recruitment-expert.js';
 
 /**
  * Counts are observational telemetry, not an accuracy estimate.
@@ -254,6 +255,22 @@ for(const [phrase,shift] of [
   const r=updateBrainMemory(null,phrase);
   return {reply:'',patch:{},memory:r.memory};
  },checks({mutate:r=>r.memory?.preferred_shift===shift?[]:['لم يُحفظ تفضيل '+shift]})]);
+}
+// Expert Brain curriculum: synthetic, office-independent questions. These
+// cases test retrieval, topic routing and non-fabricated guidance only.
+for(const item of EXPERT_TRAINING_EXAMPLES){
+ qualityScenarios.push(['expert',item.input,async()=>{
+  const answer=expertResponse(item.input,{knowledge:[],knowledgeEnabled:false});
+  return {reply:answer?.reply||'',patch:{},expert_intent:answer?.intent,
+   expert_origin:answer?.origin};
+ },checks({mutate:r=>{
+  const failures=[];
+  if(r.expert_intent!==item.intent)failures.push('تعرف مجال التوظيف غلط');
+  if(r.expert_origin!=='general_guidance')failures.push('نصائح عامة تحولت لشروط مكتب بدون دليل');
+  if(!r.reply.trim())failures.push('لا يوجد رد متخصص');
+  if(/\b\d{4,6}\s*(?:جنيه|جم)\b/.test(r.reply))failures.push('رقم مالي غير موثق');
+  return failures;
+ }}))]);
 }
 export const BUILTIN_QUALITY_COUNT=qualityScenarios.length;
 export async function runBuiltInQualitySuite(){

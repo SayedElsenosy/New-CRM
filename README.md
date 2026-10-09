@@ -45,6 +45,16 @@
 
 التكامل قراءة فقط: يسحب الحسابات الإعلانية والحملات والإعلانات وSpend، ولا ينشئ أو يوقف أو يعدّل حملات Meta. Access Token لا يُحفظ كنص صريح؛ يتم تشفيره على الخادم قبل التخزين. حذف المكتب نهائياً يحذف أيضاً ربط Meta والحملات والإعلانات وبيانات المكتب التابعة له.
 
+## Phase 6 — Recruitment Performance & Pilot (تجهيز قبل الإطلاق)
+
+**Backup للكود قبل أي تعديل:** [backup/pre-recruitment-pilot-phase6-2026-10-09](https://github.com/SayedElsenosy/New-CRM/tree/backup/pre-recruitment-pilot-phase6-2026-10-09) على SHA `e1bf7996`.
+
+**حالة المرحلة:** تم تجهيز لوحة الأداء والتجربة على فرع تطوير فقط، والتجربة على المتقدمين الحقيقيين **غير مفعّلة**. لا يوجد حتى الآن Backup كامل ومُختبر لقاعدة بيانات وملفات Supabase؛ لذلك نمنع النشر أو التفعيل حتى يتأكد المسؤول من النسختين ونتيجة اختبار الاسترجاع.
+
+الواجهة بعد الاعتماد: **AI Agent → الأداء والتجربة**، تقيس إكمال الاستمارة (وليس قبول التوظيف)، التفاعل، المتوقفين 24 ساعة، أحجام الرسائل وأزمنة تخطيط LLM المرصودة؛ مع إظهار القيم غير المتاحة بدل التخمين.
+
+خطة الـBackup الآمنة على Supabase Free، تعاريف المؤشرات، وخطوات اختبار 50–100 متقدم: [docs/RECRUITMENT_PERFORMANCE_PHASE6.md](docs/RECRUITMENT_PERFORMANCE_PHASE6.md).
+
 ## Real Conversation Intelligence — المرحلة الخامسة
 
 **نسخة الكود الاحتياطية قبل البدء:** [backup/pre-conversation-intelligence-2026-10-09](https://github.com/SayedElsenosy/New-CRM/tree/backup/pre-conversation-intelligence-2026-10-09)، مثبتة على `6af730b8`. دي **مش نسخة من بيانات Supabase**.

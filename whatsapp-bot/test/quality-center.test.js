@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {BUILTIN_QUALITY_COUNT,qualityMetrics,runBuiltInQualitySuite} from '../src/quality-center.js';
 
-test('synthetic QA suite covers 20+ recruitment situations with zero real candidate data',async()=>{
- assert.ok(BUILTIN_QUALITY_COUNT>=20);
+test('synthetic QA suite covers 105 Egyptian recruitment scenarios with zero real candidate data',async()=>{
+ assert.equal(BUILTIN_QUALITY_COUNT,105);
  const report=await runBuiltInQualitySuite();
  assert.equal(report.dataset,'synthetic');
  assert.equal(report.external_llm_calls,0);

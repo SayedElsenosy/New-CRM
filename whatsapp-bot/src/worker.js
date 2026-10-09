@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
+import {loadLifetimeMemory} from './lifetime-memory.js';
 import {turnQualitySignals} from './conversation-intelligence.js';
 import {qualityIssueAlertCandidate} from './quality-alerts.js';
 import {enrollNewInboundApplicant} from './pilot-observation.js';
@@ -355,6 +356,22 @@ export class Worker {
       must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
       continue;
      }
+
+     // Backfill the entire existing history once, then incrementally index
+     // every previously unseen message, including staff replies and corrections.
+     // A memory-index failure must never prevent the applicant getting a reply.
+     let lifetimeChanged=false;
+     try{
+      const loaded=await loadLifetimeMemory(this.db,{
+       applicantId:a.id,throughSequence:m.sequence,existing:a.answers?.__lifetime_memory
+      });
+      if(loaded.changed){
+       a.answers={...(a.answers||{}),__lifetime_memory:loaded.memory};
+       lifetimeChanged=true;
+      }
+     }catch(memoryError){
+      console.warn('Lifetime conversation memory unavailable:',memoryError.code||memoryError.name||'Error');
+     }
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
      let recentMessages=[];
@@ -376,6 +393,12 @@ export class Worker {
       }
      }
      let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null});
+     if(lifetimeChanged&&turn.patch&&turn.reply){
+      turn={...turn,patch:{...turn.patch,answers:{
+       ...(turn.patch.answers||a.answers||{}),__lifetime_memory:a.answers.__lifetime_memory
+      }}};
+     }
+
      // Persist only explicit preferences, not freeform conversation or guesses.
      const brain=updateBrainMemory(a.answers?.__brain_memory,m.body);
      if(brain.changed&&turn.reply&&turn.patch){

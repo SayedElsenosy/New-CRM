@@ -165,6 +165,96 @@ const qualityScenarios=[
   return {reply:result?.reply||'',patch:{}};
  },checks({excludes:['99999','راتب سري']})]
 ];
+
+// Dialect variants make the release gate stronger than one idealized message
+// per topic. Every variant is executed through real deterministic agent logic,
+// with a separate pass/fail result in the Quality Center.
+for(const phrase of ['مش معايا','معنديش','مش عندي','معيش','مفيش','لا مش معايا']){
+ qualityScenarios.push(['docs','مستندات: '+phrase,async()=>simulate(phrase,app({awaiting_id:'docs'})),
+  checks({action:'clarify_unavailable_documents',includes:['البطاقة','رخصة الموتوسيكل'],awaiting:'docs'})]);
+}
+for(const phrase of ['مش معايا البطاقة','معنديش البطاقة','ما عنديش البطاقة','مش معايا الرخصة',
+ 'معنديش رخصة الموتوسيكل','الرخصة ضاعت']){
+ qualityScenarios.push(['docs','تحويل عند فقدان مستند: '+phrase,
+  async()=>simulate(phrase,app({awaiting_id:'docs'})),
+  checks({handoff:true,includes:['مسؤول التوظيف'],awaiting:'docs'})]);
+}
+for(const phrase of [
+ 'تفاصيل ماركت العبور','ممكن تفاصيل ماركت العبور','تفاصيل الشغل في العبور ماركت',
+ 'مرتب ماركت العبور','الشيفت في ماركت العبور','مميزات ماركت العبور',
+ 'شغل ماركت العبور','نظام ماركت العبور','العبور ماركت تفاصيلها','عايز أعرف نظام ماركت العبور'
+]){
+ qualityScenarios.push(['details','صيغة ماركت: '+phrase,async()=>simulate(phrase),
+  checks({action:'explain_area_mode',includes:[officeAreas[0].details],excludes:['99999']})]);
+}
+for(const phrase of [
+ 'تفاصيل مطاعم العبور','ممكن تفاصيل مطاعم العبور','تفاصيل الشغل في العبور مطاعم',
+ 'مرتب مطاعم العبور','الشيفت في مطاعم العبور','مميزات مطاعم العبور',
+ 'شغل مطاعم العبور','نظام مطاعم العبور','العبور مطاعم تفاصيلها','عايز أعرف نظام مطاعم العبور'
+]){
+ qualityScenarios.push(['details','صيغة مطاعم: '+phrase,async()=>simulate(phrase),
+  checks({action:'explain_area_mode',includes:[officeAreas[1].details],excludes:['99999']})]);
+}
+for(const phrase of [
+ 'حالة طلبي وصلت لفين؟','ناقصني ايه في التقديم؟','فاضل ايه في التقديم؟',
+ 'حالة التقديم ايه؟','موقف التقديم عندي ايه؟','خلصت التقديم؟',
+ 'بياناتي اكتملت؟','ايه اللي ناقص؟','اتقبلت ولا لأ؟','أنا كده وصلت لفين في التقديم؟'
+]){
+ qualityScenarios.push(['progress','صيغة حالة طلب: '+phrase,async()=>simulate(phrase),
+  checks({action:'crm_tools_multi_step',includes:['حالة طلبك'],excludes:['تم التعيين']})]);
+}
+for(const phrase of [
+ 'تفاصيل ماركت العبور وناقصني ايه في التقديم؟',
+ 'ممكن تفاصيل ماركت العبور وحالة طلبي وصلت لفين؟',
+ 'تفاصيل مطاعم العبور وناقصني ايه؟',
+ 'عايز تفاصيل مطاعم العبور وموقف التقديم عندي ايه؟',
+ 'مرتب ماركت العبور كام وناقصني ايه؟',
+ 'شغل ماركت العبور نظامه ايه وفاضل ايه في التقديم؟',
+ 'تفاصيل مطاعم العبور وحالة التقديم ايه؟',
+ 'تفاصيل ماركت العبور وبياناتي اكتملت؟'
+]){
+ qualityScenarios.push(['multi_tool','سؤال مركب: '+phrase,async()=>simulate(phrase),
+  checks({action:'crm_tools_multi_step',includes:['اكتمال الأسئلة'],excludes:['99999']})]);
+}
+for(const area of officeAreas.filter(x=>x.active)){
+ qualityScenarios.push(['flow','معاينة بالزر: '+area.name,async()=>simulate('area_preview:'+area.id),
+  checks({includes:[area.details],noAutoArea:true})]);
+ qualityScenarios.push(['privacy','تأكيد بدون معاينة: '+area.name,async()=>simulate('confirm_area:'+area.id),
+  checks({noAutoArea:true})]);
+}
+for(const phrase of [
+ 'أنا ساكن في عين شمس فين أقرب شغل؟','انا من إمبابة، انهي منطقة قريبة؟',
+ 'أنا ساكن العبور أنهي شغل قريب؟','أنا من أكتوبر ايه الأقرب؟',
+ 'أنا ساكن في عين شمس وعايز شغل قريب','أنا من الزيتون، فين أقرب فرصة؟',
+ 'أنا ساكن في مدينة نصر، رشح أقرب منطقة','أنا من المرج، أنهي منطقة أقرب؟',
+ 'أنا عايش في المعادي، ايه أقرب شغل؟','أنا ساكن في التجمع، عايز شغل قريب'
+]){
+ qualityScenarios.push(['privacy','سكن ≠ عمل: '+phrase,async()=>simulate(phrase),
+  checks({noAutoArea:true,excludes:['99999']})]);
+}
+for(const phrase of [
+ 'قارن الماركت والمطاعم في العبور','ايه الفرق بين الماركت والمطاعم في العبور؟',
+ 'محتار بين ماركت العبور ومطاعم العبور','مين احسن ماركت ولا مطاعم في العبور؟',
+ 'انهي افضل، ماركت العبور ولا المطاعم؟','عايز مقارنة ماركت ومطاعم العبور',
+ 'الفرق بين الشغل في ماركت العبور ومطاعم العبور',
+ 'ترشحلي ماركت ولا مطاعم في العبور؟'
+]){
+ qualityScenarios.push(['compare','مقارنة باللهجة المصرية: '+phrase,async()=>simulate(phrase),
+  checks({action:'compare_area_modes',includes:['ماركت','مطاعم'],excludes:['99999']})]);
+}
+for(const [phrase,shift] of [
+ ['أنا عايز شيفت صباحي','morning'],['بفضل الشيفت الصباحي','morning'],
+ ['نفسي اشتغل الصبح','morning'],['محتاج شيفت صباحي','morning'],
+ ['الشيفت الصباحي مناسب ليا وعايزه','morning'],
+ ['أنا عايز شيفت مسائي','evening'],['بفضل الشيفت المسائي','evening'],
+ ['نفسي اشتغل بالليل','evening'],['محتاج شيفت مسائي','evening'],
+ ['قصدي شيفت مسائي مش صباحي','evening']
+]){
+ qualityScenarios.push(['memory','تفضيل شيفت: '+phrase,async()=>{
+  const r=updateBrainMemory(null,phrase);
+  return {reply:'',patch:{},memory:r.memory};
+ },checks({mutate:r=>r.memory?.preferred_shift===shift?[]:['لم يُحفظ تفضيل '+shift]})]);
+}
 export const BUILTIN_QUALITY_COUNT=qualityScenarios.length;
 export async function runBuiltInQualitySuite(){
  const started=Date.now(),results=[];

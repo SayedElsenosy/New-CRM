@@ -601,6 +601,24 @@ function AgentPerformance(){
    </div>
    <p className="v2-quality-muted">النتائج للمكتب المختار فقط، ومن المحادثات المرصودة ضمن العينة. دقة الإجابات تحتاج مراجعة بشرية؛ عدم توفر قيمة مش معناه صفر أخطاء. {report.office_quality.sample?.truncated?'تنبيه: البيانات المعروضة عينة جزئية.':''}</p>
   </section>}
+  {report?.office_quality?.issues&&<section className="v2-detail-card">
+   <h3><BellRing size={18}/> المشاكل المتكررة — {report.office_name}</h3>
+   <p className="v2-quality-muted">رصد آلي للأنماط المتكررة في محادثات المكتب المختار؛ مجرد إشارات محتاجة مراجعة بشرية، مش أخطاء مؤكدة أو دقة تقييم.</p>
+   <div className="v2-pilot-facts">
+    <div><span>المحادثات المرصودة (أدوار)</span><b>{fmt(report.office_quality.issues.sampled_turns)}</b></div>
+    <div><span>أدوار ظهرت فيها إشارات</span><b>{fmt(report.office_quality.issues.flagged_turns)}</b></div>
+   </div>
+   {report.office_quality.issues.patterns.length?
+    <div className="v2-pilot-bars">{report.office_quality.issues.patterns.map(issue=>
+     <div key={issue.key}>
+      <div><span>{issue.label} — {issue.priority==='review'?'تحتاج مراجعة':'تحت المراقبة'}</span><b>{fmt(issue.count)} {issue.rate==null?'':'· '+pct(issue.rate)}</b></div>
+      <p className="v2-quality-muted">{issue.advice}</p>
+     </div>
+    )}</div>
+    :<p className="v2-quality-muted">{report.office_quality.issues.sampled_turns?'مفيش إشارات من الأنواع المتابعة ظهرت في العينة.':'لسه مفيش محادثات مرصودة في الفترة المختارة.'}</p>}
+   {report.office_quality.issues.partial_sample&&<p className="v2-quality-muted">تنبيه: دي عينة جزئية؛ النسب وأولويات المراجعة ممكن تكون غير ممثلة لكل محادثات المكتب.</p>}
+   <p className="v2-quality-muted">لا يتم إيقاف البوت، أو تغيير قواعد التأهيل، أو اعتماد معلومات جديدة تلقائيًا بناءً على المؤشرات دي.</p>
+  </section>}
   <section className="v2-detail-card v2-office-pilot-directory">
    <div className="v2-quality-section-head"><div><h3><Briefcase size={19}/> مقارنة تجارب المكاتب</h3>
     <p>كل مكتب جديد يبدأ بدون تجربة مفعّلة. اضغط على المكتب علشان تظهر تفاصيله وتتحكم في عدد المتقدمين.</p>

@@ -257,10 +257,66 @@ function AgentDashboard({state,onView}){
 function WifiIcon(){return <Activity size={18}/>;}
 
 function AgentKnowledge({state,reload}){
-  const [q,setQ]=useState(''),[form,setForm]=useState({question:'',answer:'',keywords:''}),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const items=(state.knowledge||[]).filter(x=>!q||((x.question||'')+' '+(x.answer||'')).toLowerCase().includes(q.toLowerCase()));
-  const add=async e=>{e.preventDefault();setBusy(true);try{await send('/intelligence/knowledge',{question:form.question,answer:form.answer,keywords:form.keywords.split(/[،,]/).map(x=>x.trim()).filter(Boolean),active:true});setForm({question:'',answer:'',keywords:''});await reload();setError('');}catch(err){setError(err.message);}finally{setBusy(false);}};
-  return <div className="v2-agent-detail"><div className="detail-head"><div><h2>مخزن المعرفة</h2><p>كل المعلومات اللي يقدر الـAgent يرجع لها في الرد والقرار.</p></div><div className="search"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ابحث في المعرفة..."/></div></div>{error&&<div className="v2-error">{error}</div>}<div className="v2-knowledge-layout"><form className="v2-detail-card" onSubmit={add}><h3>إضافة مصدر معرفة</h3><label>السؤال أو الموضوع<input required value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/></label><label>الإجابة<textarea required rows={6} value={form.answer} onChange={e=>setForm({...form,answer:e.target.value})}/></label><label>كلمات مفتاحية<input value={form.keywords} onChange={e=>setForm({...form,keywords:e.target.value})} placeholder="مرتب، منطقة، مواعيد"/></label><button disabled={busy}><Plus size={15}/> {busy?'جارٍ الإضافة...':'إضافة للمعرفة'}</button></form><div className="v2-knowledge-list">{items.map(k=><article key={k.id}><div><span>{k.knowledge_scope||'office'}</span><em>{k.memory_status||'verified'}</em></div><h3>{k.question}</h3><p>{k.answer}</p><footer><span>ثقة {Math.round(n(k.confidence||.8)*100)}%</span><span>{fmt(k.usage_count)} استخدام</span></footer></article>)}{!items.length&&<div className="v2-empty">مفيش نتائج.</div>}</div></div></div>;
+ const [q,setQ]=useState(''),[form,setForm]=useState({question:'',answer:'',keywords:''}),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [reviewDraft,setReviewDraft]=useState({});
+ const items=(state.knowledge||[]).filter(x=>!q||((x.question||'')+' '+(x.answer||'')).toLowerCase().includes(q.toLowerCase()));
+ const pending=(state.suggestions||[]).filter(x=>x.status==='pending').slice(0,35);
+ const add=async e=>{e.preventDefault();setBusy(true);try{
+  await send('/intelligence/knowledge',{question:form.question,answer:form.answer,keywords:form.keywords.split(/[،,]/).map(x=>x.trim()).filter(Boolean),active:true});
+  setForm({question:'',answer:'',keywords:''});await reload();setError('');
+ }catch(err){setError(err.message);}finally{setBusy(false);}};
+ const review=async(item,approve)=>{
+  if(!approve&&!window.confirm('رفض اقتراح المعرفة ده؟'))return;
+  const edited=reviewDraft[item.id]||{};
+  const question=String(edited.question??item.question??'').trim(),answer=String(edited.answer??item.answer??'').trim();
+  if(approve&&(!question||!answer)){setError('اكتب السؤال والإجابة الصحيحة قبل الاعتماد.');return;}
+  setBusy(true);
+  try{
+   await send('/intelligence/suggestions/'+item.id+'/'+(approve?'approve':'reject'),approve?{question,answer}:{});
+   await reload();setError('');
+  }catch(err){setError(err.message);}finally{setBusy(false);}
+ };
+ return <div className="v2-agent-detail v2-expert-knowledge">
+  <div className="detail-head"><div><h2>مخزن المعرفة</h2><p>كل المعلومات اللي يقدر الـAgent يرجع لها في الرد والقرار، مع مراجعة الاقتراحات الجديدة قبل الاعتماد.</p></div>
+   <div className="search"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="ابحث في المعرفة..."/></div>
+  </div>
+  {error&&<div className="v2-error" role="alert">{error}</div>}
+  <div className="v2-knowledge-layout">
+   <form className="v2-detail-card" onSubmit={add}>
+    <h3>إضافة مصدر معرفة</h3>
+    <label>السؤال أو الموضوع<input required value={form.question} onChange={e=>setForm({...form,question:e.target.value})}/></label>
+    <label>الإجابة<textarea required rows={6} value={form.answer} onChange={e=>setForm({...form,answer:e.target.value})}/></label>
+    <label>كلمات مفتاحية<input value={form.keywords} onChange={e=>setForm({...form,keywords:e.target.value})} placeholder="مرتب، منطقة، مواعيد"/></label>
+    <button disabled={busy}><Plus size={15}/> {busy?'جارٍ الإضافة...':'إضافة للمعرفة'}</button>
+   </form>
+   <div className="v2-knowledge-list">
+    {items.map(k=><article key={k.id}>
+     <div><span>{k.knowledge_scope||'office'}</span><em>{k.memory_status||'verified'}</em></div>
+     <h3>{k.question}</h3><p>{k.answer}</p>
+     <footer><span>ثقة {Math.round(n(k.confidence||.8)*100)}%</span><span>{fmt(k.usage_count)} استخدام</span></footer>
+    </article>)}
+    {!items.length&&<div className="v2-empty">مفيش نتائج.</div>}
+   </div>
+  </div>
+  <section className="v2-detail-card v2-expert-suggestions">
+   <div className="v2-quality-section-head"><div><h3><ShieldCheck size={18}/> مراجعة أسئلة المتقدمين الجديدة</h3>
+    <p>الاقتراحات دي من محادثاتنا اللي رد عليها مسؤول. راجع السؤال والإجابة وشيل أي بيانات شخصية أو تفاصيل غير مؤكدة قبل الاعتماد.</p></div>
+    <strong>{pending.length} في انتظار المراجعة</strong>
+   </div>
+   {pending.length?<div className="v2-expert-suggestion-list">{pending.map(item=>{
+    const edited=reviewDraft[item.id]||{};
+    return <article key={item.id}>
+     <span>اقتراح من محادثة مكتب {item.office_id?'(خاص بالمكتب)':'(عام)'}</span>
+     <label>السؤال بعد المراجعة<textarea rows={2} maxLength={2000} value={edited.question??item.question??''} onChange={e=>setReviewDraft(v=>({...v,[item.id]:{...v[item.id],question:e.target.value}}))}/></label>
+     <label>الإجابة الصحيحة المعتمدة<textarea rows={3} maxLength={4000} value={edited.answer??item.answer??''} onChange={e=>setReviewDraft(v=>({...v,[item.id]:{...v[item.id],answer:e.target.value}}))}/></label>
+     <div className="v2-expert-review-actions">
+      <button type="button" disabled={busy} onClick={()=>review(item,true)}><CheckCircle2 size={16}/> اعتماد بعد المراجعة</button>
+      <button type="button" className="reject" disabled={busy} onClick={()=>review(item,false)}>رفض الاقتراح</button>
+     </div>
+    </article>;
+   })}</div>:<p className="v2-quality-muted">مفيش اقتراحات في انتظار المراجعة حاليًا.</p>}
+  </section>
+ </div>;
 }
 
 function AgentTest({state}){

@@ -45,6 +45,16 @@
 
 التكامل قراءة فقط: يسحب الحسابات الإعلانية والحملات والإعلانات وSpend، ولا ينشئ أو يوقف أو يعدّل حملات Meta. Access Token لا يُحفظ كنص صريح؛ يتم تشفيره على الخادم قبل التخزين. حذف المكتب نهائياً يحذف أيضاً ربط Meta والحملات والإعلانات وبيانات المكتب التابعة له.
 
+## Real Conversation Intelligence — المرحلة الخامسة
+
+**نسخة الكود الاحتياطية قبل البدء:** [backup/pre-conversation-intelligence-2026-10-09](https://github.com/SayedElsenosy/New-CRM/tree/backup/pre-conversation-intelligence-2026-10-09)، مثبتة على `6af730b8`. دي **مش نسخة من بيانات Supabase**.
+
+داخل **AI Agent → مركز الجودة → ذكاء المحادثات الفعلية** تقدر تتابع إشارات المشاكل الحقيقية بشكل تجميعي: فشل أدوات الـCRM، الرد غير الواضح، تكرار التوقف عند نفس السؤال، الرجوع للـLLM Fallback، والتحويل للبشر. التقييم مبني على **metadata فقط** بدون إرسال نصوص أو بيانات شخصية جديدة لخدمات خارجية.
+
+تصحيحات الموظفين تدخل **قائمة مراجعة** بدل ما تتحول تلقائيًا لقواعد معرفة؛ لازم مسؤول يعتمدها بعد إزالة البيانات الحساسة. فحص المحادثات الخام على نطاق واسع مؤجل حتى يتوفر **Backup مستقل ومتحقق منه من Supabase والملفات**. لا توجد migrations جديدة.
+
+التفاصيل: [docs/CONVERSATION_INTELLIGENCE_PHASE5.md](docs/CONVERSATION_INTELLIGENCE_PHASE5.md).
+
 ## Recruitment Expert Brain — المرحلة الرابعة
 
 قبل ما نبدأ المرحلة الرابعة، اتعمل **Source Backup** لنسخة النظام الأصلية في [backup/pre-recruitment-expert-brain-2026-10-09](https://github.com/SayedElsenosy/New-CRM/tree/backup/pre-recruitment-expert-brain-2026-10-09)، مثبت على commit `65ef24ee`. ده Backup للكود وليس نسخة من قاعدة بيانات Supabase.

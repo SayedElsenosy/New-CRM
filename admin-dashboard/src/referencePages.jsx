@@ -511,6 +511,88 @@ function AgentQualityCenter({state,reload,onReviewKnowledge}){
   </div>;
 }
 
+function AgentPerformance(){
+ const [days,setDays]=useState(7),[report,setReport]=useState(null);
+ const [loading,setLoading]=useState(false),[error,setError]=useState('');
+ const load=useCallback(async()=>{
+  setLoading(true);
+  try{setReport(await api('/agent/performance?days='+days));setError('');}
+  catch(e){setError(e.message);}
+  finally{setLoading(false);}
+ },[days]);
+ useEffect(()=>{load();},[load]);
+ const pct=x=>x==null?'—':Number(x).toLocaleString('en-US',{maximumFractionDigits:1})+'%';
+ const funnel=report?.funnel||{},volume=report?.volume||{},accuracy=report?.accuracy||{},pilot=report?.pilot;
+ const counts=funnel.by_stage||{},cohort=report?.sample?.cohort_applicants||0;
+ const cards=[
+  {label:'تسجيلات جديدة',value:report?fmt(funnel.registered):'—',desc:'متقدمون أُنشئت ملفاتهم خلال الفترة'},
+  {label:'إكمال بيانات التقديم',value:pct(funnel.completion_rate),desc:fmt(funnel.form_completed)+' ملفات مكتملة حاليًا، مش قبول أو تعيين'},
+  {label:'متقدمون تفاعلوا',value:pct(funnel.engagement_rate),desc:fmt(funnel.engaged)+' متقدمين بعتوا رسالة خلال الفترة'},
+  {label:'توقف أكثر من 24 ساعة',value:pct(funnel.stalled_rate),desc:fmt(funnel.stalled_24h)+' من غير المكتملين'},
+  {label:'دقة المراجعة البشرية',value:pct(accuracy.accuracy_rate),desc:'لسه محتاجين تقييمات بشرية موثّقة'},
+  {label:'زمن إكمال التقديم',value:volume.completion_duration_minutes==null?'غير متاح':fmt(volume.completion_duration_minutes)+' د',desc:'مش بنحسبه من وقت آخر تعديل على الملف'}
+ ];
+ return <div className="v2-agent-detail v2-pilot-performance">
+  <div className="detail-head">
+   <div><h2>أداء التوظيف والتجربة الميدانية</h2><p>قياس فعلي من بيانات تشغيل الـCRM بدون قراءة محتوى الرسائل، والتجربة على المتقدمين الحقيقيين لسه غير مفعّلة.</p></div>
+   <div className="v2-quality-controls">
+    <label>الفترة <select value={days} onChange={e=>setDays(Number(e.target.value))}><option value={1}>آخر يوم</option><option value={7}>آخر 7 أيام</option><option value={30}>آخر 30 يوم</option></select></label>
+    <button type="button" onClick={load} disabled={loading}><RefreshCw size={16}/>{loading?'جارٍ التحميل':'تحديث'}</button>
+   </div>
+  </div>
+  {error&&<div className="v2-error" role="alert">{error}</div>}
+  {report?.partial_sample&&<div className="v2-quality-notice">عدد السجلات أكبر من حد القراءة؛ الأرقام المعروضة من عينة فقط، والنسب غير متاحة علشان ما تدّيش نتيجة مضللة.</div>}
+  <div className="v2-pilot-stat-grid">{cards.map(x=><article key={x.label}><small>{x.label}</small><strong>{x.value}</strong><p>{x.desc}</p></article>)}</div>
+  <div className="v2-pilot-panels">
+   <section className="v2-detail-card">
+    <h3><TrendingUp size={18}/> مراحل التقديم الحالية</h3>
+    <p className="v2-quality-muted">النسب خاصة بالمتقدمين اللي اتسجلوا خلال الفترة المحددة، حسب حالتهم الحالية. دي مش نسب قبول التوظيف.</p>
+    <div className="v2-pilot-bars">
+    {[
+     {key:'new',label:'جديد'},
+     {key:'incomplete',label:'لم يكمل'},
+     {key:'complete',label:'أكمل البيانات'},
+     {key:'lecture',label:'المحاضرة'},
+     {key:'working',label:'بدأ الشغل'},
+     {key:'unknown',label:'حالة أخرى'}
+    ].map(x=>{
+     const n=counts[x.key]||0;
+     return <div key={x.key}><div><span>{x.label}</span><b>{fmt(n)}</b></div><progress max={Math.max(1,cohort)} value={n}/></div>;
+    })}
+    </div>
+   </section>
+   <section className="v2-detail-card">
+    <h3><Clock3 size={18}/> نشاط المحادثات</h3>
+    <div className="v2-pilot-facts">
+     <div><span>الرسائل الواردة من متقدمي الفترة</span><b>{fmt(volume.inbound_messages)}</b></div>
+     <div><span>رسائل رد البوت</span><b>{fmt(volume.bot_messages)}</b></div>
+     <div><span>متوسط الوارد لكل ملف</span><b>{volume.avg_inbound_per_applicant==null?'—':volume.avg_inbound_per_applicant}</b></div>
+     <div><span>وسيط زمن تخطيط الـLLM</span><b>{volume.median_planner_latency_ms==null?'—':fmt(volume.median_planner_latency_ms)+' ms'}</b></div>
+    </div>
+    <p className="v2-quality-muted">زمن التخطيط مش مدة إكمال طلب التوظيف. الحالات القديمة أو البيانات غير المكتملة مش بنعوضها بتقديرات.</p>
+   </section>
+  </div>
+  <section className="v2-detail-card v2-pilot-gate">
+    <div className="v2-quality-section-head">
+     <div><h3><ShieldCheck size={20}/> جاهزية الإطلاق التدريجي</h3><p>الهدف بعد التأمين: تجربة محدودة من 50 إلى 100 متقدم، ثم مراجعة النتائج قبل التوسع.</p></div>
+     <strong>التجربة غير مفعّلة</strong>
+    </div>
+    <div className="v2-pilot-checks">{(pilot?.checks||[]).map(c=><div key={c.id}>
+     {c.ready?<CheckCircle2 size={18} className="ready"/>:<Clock3 size={18}/>}
+     <span>{c.label}</span><b>{c.ready?'متحقق':'لم يُتحقق بعد'}</b>
+    </div>)}</div>
+    <p className="v2-quality-muted">حتى بعد اكتمال القائمة، التشغيل مش تلقائي: لازم موافقة صريحة جديدة قبل اختيار أرقام أو إرسال رسائل. ما بنخزّنش أي بيانات متقدمين في خطة التجربة دي.</p>
+    <a href="https://supabase.com/dashboard/project/oflepwasoawmuspxgnal/database/backups" target="_blank" rel="noreferrer">مراجعة إعدادات Backup في Supabase</a>
+  </section>
+  <section className="v2-detail-card">
+    <h3>تسجيلات كل يوم</h3>
+    <p className="v2-quality-muted">توزيع حسب يوم إنشاء الملف، واكتمال البيانات حسب الحالة الحالية، مش تاريخ الإكمال الفعلي.</p>
+    <div className="v2-pilot-days">{(report?.daily_cohort||[]).map(d=><div key={d.day}><small>{d.day}</small><span>سجّل {d.registered}</span><strong>مكتمل حاليًا {d.currently_completed}</strong></div>)}
+    {!(report?.daily_cohort||[]).length&&<p className="v2-quality-muted">لا توجد بيانات في الفترة المختارة.</p>}</div>
+  </section>
+ </div>;
+}
+
 function AgentSettings({state,reload,action}){
   const [form,setForm]=useState({...state.settings}),[busy,setBusy]=useState(false),[error,setError]=useState('');
   useEffect(()=>setForm({...state.settings}),[state.settings]);
@@ -529,12 +611,13 @@ export function ReferenceAIAgentPage({action}){
   if(!state)return <div className="v2-agent-loading"><BrainCircuit size={44}/><strong>جارٍ تشغيل AI Agent...</strong>{error&&<small>{error}</small>}</div>;
   return <div className="v2-page v2-agent">
     <section className="v2-hero v2-agent-hero"><div className="v2-hero-copy"><h1>الوكيل الذكي</h1><p>إدارة وتدريب ومتابعة أداء الوكيل الذكي داخل المنصة</p></div><img src="/reference/hero-rider.webp" alt="" aria-hidden="true"/></section>
-    <div className="v2-agent-toolbar"><button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}><BrainCircuit/> الرئيسية</button><button className={view==='knowledge'?'active':''} onClick={()=>setView('knowledge')}><Database/> المعرفة</button><button className={view==='decisions'?'active':''} onClick={()=>setView('decisions')}><Activity/> القرارات</button><button className={view==='test'?'active':''} onClick={()=>setView('test')}><Play/> التدريب</button><button className={view==='quality'?'active':''} onClick={()=>setView('quality')}><ShieldCheck/> مركز الجودة</button><button className={view==='settings'?'active':''} onClick={()=>setView('settings')}><Settings2/> الإعدادات</button><span className={'v2-agent-state '+(state.llm?.configured?'on':'')}><i/>{state.llm?.configured?'LLM READY':'CORE ACTIVE'}</span></div>
+    <div className="v2-agent-toolbar"><button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}><BrainCircuit/> الرئيسية</button><button className={view==='knowledge'?'active':''} onClick={()=>setView('knowledge')}><Database/> المعرفة</button><button className={view==='decisions'?'active':''} onClick={()=>setView('decisions')}><Activity/> القرارات</button><button className={view==='test'?'active':''} onClick={()=>setView('test')}><Play/> التدريب</button><button className={view==='quality'?'active':''} onClick={()=>setView('quality')}><ShieldCheck/> مركز الجودة</button><button className={view==='performance'?'active':''} onClick={()=>setView('performance')}><TrendingUp/> الأداء والتجربة</button><button className={view==='settings'?'active':''} onClick={()=>setView('settings')}><Settings2/> الإعدادات</button><span className={'v2-agent-state '+(state.llm?.configured?'on':'')}><i/>{state.llm?.configured?'LLM READY':'CORE ACTIVE'}</span></div>
     {error&&<div className="v2-error">{error}<button onClick={load}><RefreshCw size={15}/> إعادة المحاولة</button></div>}
     {view==='dashboard'&&<AgentDashboard state={state} onView={setView}/>}
     {view==='knowledge'&&<AgentKnowledge state={state} reload={load}/>}
     {view==='test'&&<AgentTest state={state}/>}
     {view==='quality'&&<AgentQualityCenter state={state} reload={load} onReviewKnowledge={()=>setView('knowledge')}/>}
+    {view==='performance'&&<AgentPerformance/>}
     {view==='settings'&&<AgentSettings state={state} reload={load} action={action}/>}
     {view==='decisions'&&<AgentDecisions state={state}/>}
   </div>;

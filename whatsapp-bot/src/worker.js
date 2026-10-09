@@ -312,12 +312,15 @@ export class Worker {
      if(brain.changed&&turn.reply&&turn.patch){
       turn={...turn,patch:{...turn.patch,answers:{...(turn.patch.answers||a.answers||{}),__brain_memory:brain.memory}}};
      }
+     let composerUsage=null,composerCalled=false;
      if(this.agentRuntime&&llmAnalysis?.available&&c.settings?.agent_llm_mode==='live'&&!turn.maps_grounded&&!turn.tools_grounded&&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
+       composerCalled=true;
        const composed=await this.agentRuntime.composeTurn({
         message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,
         office:c.office,applicant:{...a,answers:turn.patch?.answers||a.answers}
        });
+       composerUsage=composed?.usage||null;
        if(composed?.applied)turn={...turn,reply:composed.reply,agent_composed:true};
       }catch(e){
        console.warn('AI Agent response composer failed:',e.code||e.name||'Error');
@@ -344,6 +347,13 @@ export class Worker {
       const action=turn.agent_action||(turn.handoff?'handoff':turn.knowledge_id?'knowledge_answer':turn.followup_reply?'answer_and_continue':'flow_turn');
       const afterAwaiting=Object.prototype.hasOwnProperty.call(turn.patch||{},'awaiting_id')?turn.patch.awaiting_id:a.awaiting_id;
       const extracted=Object.values(turn.patch?.answers||{}).filter(v=>v?.agent_extracted===true).length;
+      const reported=[llmAnalysis?.usage,composerUsage].filter(x=>x&&Number.isFinite(Number(x.prompt_tokens))&&Number.isFinite(Number(x.completion_tokens)));
+      const llmUsage={
+       calls:Number(llmAnalysis?.available===true)+Number(composerCalled),
+       tokens_reported_calls:reported.length,
+       prompt_tokens:reported.reduce((sum,x)=>sum+Number(x.prompt_tokens||0),0),
+       completion_tokens:reported.reduce((sum,x)=>sum+Number(x.completion_tokens||0),0)
+      };
       const eventResult=await this.db.from('masar_events').insert({
        applicant_id:a.id,kind:'agent_turn',
        detail:{
@@ -351,6 +361,7 @@ export class Worker {
         handoff:Boolean(turn.handoff),handoff_reason:turn.handoff_reason||null,
         knowledge_id:turn.knowledge_id||null,knowledge_confidence:turn.knowledge_confidence??null,
         extracted_facts:extracted,awaiting_before:a.awaiting_id||null,awaiting_after:afterAwaiting||null,
+        ...(llmUsage.calls>0?{llm_usage:llmUsage}:{}),
         brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[],
         crm_tools:Array.isArray(turn.tool_calls)?turn.tool_calls.map(x=>({name:x.tool,ok:x.ok})):[]
        }

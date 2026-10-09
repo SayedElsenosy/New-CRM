@@ -182,14 +182,15 @@ test('approved knowledge answers a side question without immediately repeating t
  assert.equal(r.followup_reply,null);
 });
 
-test('unknown side question stays with the agent before human escalation',async()=>{
+test('general holiday question gets bounded domain guidance without inventing office policy',async()=>{
  const a={...applicant,awaiting_id:'name'};
  const r=await planTurn({applicant:a,message:{body:'الإجازات الرسمية بتتحسب ازاي؟'},questions,areas,settings:{...settings,ai_knowledge_enabled:true,ai_confidence_threshold:.6,ai_fallback:'هحوّل سؤالك لمسؤول التوظيف'},interpret,knowledge:[]});
  assert.equal(r.handoff,undefined);
  assert.equal(r.patch.bot_enabled,undefined);
  assert.equal(r.patch.awaiting_id,'name');
- assert.equal(r.patch.answers.__agent_state.attempts,1);
- assert.match(r.reply,/مش عندي إجابة مؤكدة|مش هخمن/);
+ assert.equal(r.agent_action,'expert_general_guidance');
+ assert.match(r.reply,/المكتب|نظام|شروط/);
+ assert.doesNotMatch(r.reply,/الإجازات مدفوعة|بالضرورة/);
 });
 
 test('office scoping uses local plus verified Breadfast shared brain and excludes legacy global staff rows',()=>{

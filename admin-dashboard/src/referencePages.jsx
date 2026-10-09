@@ -270,9 +270,10 @@ function AgentTest({state}){
 }
 
 
-function AgentQualityCenter(){
+function AgentQualityCenter({state,reload}){
   const [days,setDays]=useState(7),[metrics,setMetrics]=useState(null),[result,setResult]=useState(null);
   const [loading,setLoading]=useState(false),[running,setRunning]=useState(false),[error,setError]=useState('');
+  const [customBusy,setCustomBusy]=useState(false),[draft,setDraft]=useState({title:'',input_text:'',expected_action:''});
   const load=useCallback(async()=>{
     setLoading(true);
     try{
@@ -291,6 +292,30 @@ function AgentQualityCenter(){
       await load();
     }catch(e){setError(e.message);}
     finally{setRunning(false);}
+  };
+  const createCase=async e=>{
+    e.preventDefault();setCustomBusy(true);
+    try{
+      await send('/agent/quality/cases',{
+       title:draft.title,input_text:draft.input_text,
+       expected:draft.expected_action?{action:draft.expected_action}:{},tags:['quality-center']
+      });
+      setDraft({title:'',input_text:'',expected_action:''});await reload();setError('');
+    }catch(err){setError(err.message);}
+    finally{setCustomBusy(false);}
+  };
+  const runCase=async id=>{
+    setCustomBusy(true);
+    try{await send('/agent/quality/cases/'+id+'/run',{});await reload();setError('');}
+    catch(err){setError(err.message);}
+    finally{setCustomBusy(false);}
+  };
+  const deleteCase=async id=>{
+    if(!window.confirm('حذف حالة الاختبار؟'))return;
+    setCustomBusy(true);
+    try{await send('/agent/quality/cases/'+id,{},'DELETE');await reload();setError('');}
+    catch(err){setError(err.message);}
+    finally{setCustomBusy(false);}
   };
   const fmtPct=x=>x===null||x===undefined?'—':Number(x).toLocaleString('en-US',{maximumFractionDigits:1})+'%';
   const op=metrics?.operational||{},ev=metrics?.evaluation||{},usage=metrics?.usage||{};
@@ -348,6 +373,29 @@ function AgentQualityCenter(){
         </div>
       </section>
     </div>
+    <section className="v2-detail-card v2-quality-custom">
+      <div className="v2-quality-section-head"><div><h3>حالات تقييم مخصصة للـ Planner</h3><p className="v2-quality-muted">اكتب سيناريو افتراضيًا والقرار المتوقع. التشغيل ده يحتاج LLM متصل، بخلاف الاختبارات الآلية المجانية فوق.</p></div></div>
+      <form onSubmit={createCase} className="v2-quality-custom-form">
+        <label>اسم السيناريو<input required minLength={2} maxLength={200} value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="مثلاً: متقدم بيصحح منطقة الشغل"/></label>
+        <label>رسالة افتراضية<textarea required minLength={2} maxLength={4000} rows={3} value={draft.input_text} onChange={e=>setDraft({...draft,input_text:e.target.value})} placeholder="استخدم أمثلة وهمية فقط، من غير أرقام تليفون أو بيانات حقيقية."/></label>
+        <label>القرار المتوقع<select value={draft.expected_action} onChange={e=>setDraft({...draft,expected_action:e.target.value})}>
+          <option value="">اختبار استكشافي بدون تقييم Pass/Fail</option>
+          {['answer_question','save_facts','ask_next','clarify','recommend_area','compare_areas','change_answer','resume_flow','handoff','none'].map(x=><option value={x} key={x}>{x}</option>)}
+        </select></label>
+        <button type="submit" disabled={customBusy}>إضافة حالة الاختبار</button>
+      </form>
+      <div className="v2-quality-history v2-quality-custom-list">
+      {(state?.quality?.cases||[]).slice(0,30).map(c=>{
+        const last=(state?.quality?.recent_runs||[]).find(x=>x.case_id===c.id);
+        return <div key={c.id}><span><strong>{c.title}</strong><small>{(c.tags||[]).join(' · ')}</small></span>
+        <span>{!last?'لم تُختبر بعد':last.passed===true?'PASS':last.passed===false?'FAIL':'استكشافي'}</span>
+        <button type="button" onClick={()=>runCase(c.id)} disabled={customBusy||!state.llm?.configured}>اختبار LLM</button>
+        <button type="button" className="quality-remove" onClick={()=>deleteCase(c.id)} disabled={customBusy}>حذف</button>
+        </div>;
+      })}
+      {!(state?.quality?.cases||[]).length&&<p className="v2-quality-muted">لا توجد حالات مخصصة محفوظة حتى الآن.</p>}
+      </div>
+    </section>
     <section className="v2-detail-card v2-quality-chart">
       <h3>نشاط الـ Agent اليومي</h3>
       <p className="v2-quality-muted">عدد الأدوار المسجلة يوميًا، ومش مؤشر على جودة الإجابة لوحده.</p>
@@ -382,7 +430,7 @@ export function ReferenceAIAgentPage({action}){
     {view==='dashboard'&&<AgentDashboard state={state} onView={setView}/>}
     {view==='knowledge'&&<AgentKnowledge state={state} reload={load}/>}
     {view==='test'&&<AgentTest state={state}/>}
-    {view==='quality'&&<AgentQualityCenter/>}
+    {view==='quality'&&<AgentQualityCenter state={state} reload={load}/>}
     {view==='settings'&&<AgentSettings state={state} reload={load} action={action}/>}
     {view==='decisions'&&<AgentDecisions state={state}/>}
   </div>;

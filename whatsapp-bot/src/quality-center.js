@@ -50,7 +50,7 @@ export function qualityMetrics({events=[],decisions=[],runs=[],days=7,now=Date.n
    llmCalls+=count;
    promptTokens+=prompt;
    completionTokens+=completion;
-   if(count>0)usageCovered++;
+   if(boundedInt(usage.tokens_reported_calls,0,0,10)>0)usageCovered++;
   }
  }
  // Handoff alerts and agent_turn often represent the same event. Count

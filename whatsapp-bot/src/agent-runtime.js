@@ -1,4 +1,5 @@
 import {brainMemoryContext,buildBrainSteps,validateBrainSteps} from './brain-memory.js';
+import {matchExpertTopic} from './recruitment-expert.js';
 
 const ALLOWED_ACTIONS=new Set([
  'answer_question','save_facts','ask_next','clarify','recommend_area','compare_areas',
@@ -237,11 +238,18 @@ export class AgentRuntime{
    'ممنوع وضع preferred_work_area داخل facts من مجرد السكن أو ترشيح أقرب منطقة؛ منطقة العمل لا تصبح حقيقة إلا بعد اختيار/تأكيد صريح من المتقدم.',
    'لو المستخدم يصحح معلومة قديمة استخدم change_answer وحدد field_key.',
    'لو عنده سؤال وله معرفة موثوقة استخدم answer_question وحدد knowledge_id.',
+   'لو السؤال عن التوظيف والدليفري استخدم Recruitment Expert Brain في فهم النية وأسلوب الإجابة، لكن الراتب والمزايا والمواعيد والاشتراطات حقائق تخص المكتب ولا تؤخذ من نصائح عامة.',
+   'المعرفة العامة للخبير ليست تفويضًا بتقديم قبول أو رفض أو رقم أو ميزة تشغيلية غير مسجلة.',
    'لو السؤال غير موثوق استخدم clarify أو handoff بدل التخمين.',
    trim(settings.agent_system_instructions||'',320)
   ].filter(Boolean).join('\n');
   const payload={
    current_message:currentText.slice(0,900),
+   recruitment_expert_hint:(()=>{
+    const matched=matchExpertTopic(currentText);
+    return matched?{topic:matched.topic.id,policy:matched.topic.policy,
+      safe_general_guidance:trim(matched.topic.reply,200)}:null;
+   })(),
    office_name:trim(office?.name||'مكتب التوظيف',90),
    verified_preference_memory:brainMemoryContext(applicant?.answers),
    suggested_readonly_steps:buildBrainSteps(currentText,{hasPendingQuestion:Boolean(applicant?.awaiting_id)}),

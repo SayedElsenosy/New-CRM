@@ -156,7 +156,7 @@ export class Worker {
 
   // Keep new candidates in the office associated with the receiving
   // WhatsApp account. The office's questions/areas must not cross tenants.
-  const linkedAccount=accountId?must(await this.db.from('masar_whatsapp_accounts')
+  const linkedAccount=!a&&accountId?must(await this.db.from('masar_whatsapp_accounts')
    .select('office_id,active').eq('id',accountId).maybeSingle()):null;
   const referral=record.referral?.source_id?record.referral:null;
   let applicantWasCreated=false;

@@ -304,7 +304,7 @@ for(const [label,reply,turn,wanted] of qualitySignalsTraining){
    awaitingBefore:'area',awaitingAfter:'area',llmUnavailable:_llmUnavailable===true
   });
   return {reply:'',patch:{},signals};
- },checks({mutate:r=>r.signals?.includes(wanted)?[]:['لم يرصد النظام إشارة '+wanted]}))]);
+ },checks({mutate:r=>r.signals?.includes(wanted)?[]:['لم يرصد النظام إشارة '+wanted]})]);
 }
 for(const q of [
  'رقمي 01012345678','موبايلي 01155555555',
@@ -314,7 +314,7 @@ for(const q of [
 ]){
  qualityScenarios.push(['privacy','منع بيانات شخصية: '+q.replace(/[\d]/g,'*'),async()=>({
   reply:'',patch:{},safeguarded:!safeLearningProposal(q,'القبض حسب تفاصيل المكتب')
- }),checks({mutate:r=>r.safeguarded?[]:['قد يتم حفظ معلومة شخصية كمعرفة عامة']}))]);
+ }),checks({mutate:r=>r.safeguarded?[]:['قد يتم حفظ معلومة شخصية كمعرفة عامة']})]);
 }
 export const BUILTIN_QUALITY_COUNT=qualityScenarios.length;
 export async function runBuiltInQualitySuite(){

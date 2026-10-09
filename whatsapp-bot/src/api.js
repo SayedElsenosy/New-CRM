@@ -867,6 +867,8 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   if(suggestion.status!=='pending')throw bad('تمت مراجعة الاقتراح بالفعل');
   const question=String(req.body.question||suggestion.question||'').trim(),answer=String(req.body.answer||suggestion.answer||'').trim();
   if(question.length<2||question.length>2000||answer.length<2||answer.length>4000)throw bad('راجع السؤال والإجابة');
+  if(/(?:\+?20)?01[0125]\d{8}|\b\d{14}\b|[\w.+-]+@[\w.-]+\.[a-z]{2,}/i.test(question+' '+answer))
+   throw bad('راجع الاقتراح واحذف أرقام الهواتف والبطاقات والبريد الإلكتروني قبل اعتماد المعرفة.');
   const knowledge=must(await db.from('masar_knowledge').insert({
    question,answer,keywords:cleanKeywords(req.body.keywords?.length?req.body.keywords:suggestKeywords(question)),
    examples:[question],active:true,source:'staff',office_id:suggestion.office_id||null,

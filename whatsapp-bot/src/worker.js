@@ -177,9 +177,17 @@ export class Worker {
   const isExternalOutbound=record.direction==='out'||record.from_me===true;
   // Enroll only brand-new, inbound WhatsApp contacts. This is audit-only:
   // don't send anything, edit answers, or change the existing bot behavior.
-  if(applicantWasCreated&&!isExternalOutbound){
-   try{await enrollNewInboundApplicant(this.db,{applicantId:a.id,accountId:accountId||a.whatsapp_account_id});}
-   catch(error){console.warn('Pilot observation enrollment failed:',error?.code||error?.name||'Error');}
+  if(applicantWasCreated&&!isExternalOutbound&&accountId){
+   try{
+    // Link to the WhatsApp account's CURRENT office, not the applicant's
+    // optional office_id (which can be null for new inbound contacts).
+    const account=must(await this.db.from('masar_whatsapp_accounts')
+     .select('office_id,active').eq('id',accountId).maybeSingle());
+    if(account?.active===true&&account.office_id)
+     await enrollNewInboundApplicant(this.db,{
+      applicantId:a.id,accountId,officeId:account.office_id
+     });
+   }catch(error){console.warn('Office pilot enrollment failed:',error?.code||error?.name||'Error');}
   }
   if(isExternalOutbound){
    const prepared=await this.prepareRecordMedia(record,a.id,accountId);

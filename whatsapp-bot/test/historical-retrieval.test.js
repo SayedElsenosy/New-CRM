@@ -73,7 +73,7 @@ test('prompt uses retrieved excerpts as unverified context, without any new qual
  assert.equal(context.retrieved_historical_applicant_excerpts.length,1);
  assert.equal(context.retrieved_historical_applicant_excerpts[0].verified,false);
  assert.ok(!JSON.stringify(context).includes('preferred_work_area":true'));
- assert.match(p[0].content,/غير موثقة/);
+ assert.match(p[0].content,/غير موثق/);
  const composer=runtime.buildComposerMessages({...inputs,turn:{reply:'تمام، أي منطقة تقدر تشتغل فيها يوميًا؟'}});
  assert.match(composer[1].content,/retrieved_historical_applicant_excerpts/);
  assert.match(composer[0].content,/draft_reply هو مصدر الحقيقة الوحيد/);

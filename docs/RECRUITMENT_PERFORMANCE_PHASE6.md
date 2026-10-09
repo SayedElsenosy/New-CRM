@@ -7,7 +7,7 @@
 - Pinned commit: e1bf7996dd1f3ad81cfcc201a671124021cffcf6
 - [View backup](https://github.com/SayedElsenosy/New-CRM/tree/backup/pre-recruitment-pilot-phase6-2026-10-09)
 
-**Production DB / Storage backup is NOT complete or verified.** Supabase project: Recruitment-System (ref oflepwasoawmuspxgnal, Free plan). The connected Supabase commands can read schema/query metadata but do not provide backup creation/download/restoration for both Postgres and actual Storage files. Do NOT merge/deploy this feature or start a pilot until the separate backup and recovery test below are verified. No migrations or writes to production Supabase were executed during development.
+**Production DB / Storage backup is NOT complete or verified.** Supabase project: Recruitment-System (ref oflepwasoawmuspxgnal, Free plan). The connected Supabase commands can read schema/query metadata but do not provide backup creation/download/restoration for both Postgres and actual Storage files. The user explicitly chose to defer the full backup; deploying the **read-only dashboard** is allowed because this phase changes no schema or applicant data. Do NOT activate a real pilot, perform bulk transcript mining, or alter production data structures until the independent backup and recovery test below are verified.
 
 Supabase documentation states Free projects should manually export database data, and DB backups **do not include actual Storage objects**:
 - [Database Backups](https://supabase.com/docs/guides/platform/backups)

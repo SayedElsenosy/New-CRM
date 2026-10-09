@@ -609,14 +609,14 @@ function AgentPerformance(){
   </section>
   <section className="v2-detail-card v2-pilot-gate">
     <div className="v2-quality-section-head">
-     <div><h3><ShieldCheck size={20}/> جاهزية الإطلاق التدريجي</h3><p>الهدف بعد التأمين: تجربة محدودة من 50 إلى 100 متقدم، ثم مراجعة النتائج قبل التوسع.</p></div>
-     <strong>التجربة غير مفعّلة</strong>
+     <div><h3><ShieldCheck size={20}/> جاهزية التوسع والإرسال التلقائي</h3><p>مراقبة أول 50 محادثة واردة شغالة بشكل مستقل. إرسال حملات جديدة أو توسعة التفعيل يحتاج موافقة منفصلة.</p></div>
+     <strong>التوسع التلقائي غير مفعّل</strong>
     </div>
     <div className="v2-pilot-checks">{(pilot?.checks||[]).map(c=><div key={c.id}>
      {c.ready?<CheckCircle2 size={18} className="ready"/>:<Clock3 size={18}/>}
      <span>{c.label}</span><b>{c.ready?'متحقق':'لم يُتحقق بعد'}</b>
     </div>)}</div>
-    <p className="v2-quality-muted">حتى بعد اكتمال القائمة، التشغيل مش تلقائي: لازم موافقة صريحة جديدة قبل اختيار أرقام أو إرسال رسائل. ما بنخزّنش أي بيانات متقدمين في خطة التجربة دي.</p>
+    <p className="v2-quality-muted">القائمة دي تخص التوسّع والإرسال الاستباقي فقط، مش مراقبة أول 50 محادثة واردة. أي مراسلة جديدة أو تفعيل لمكاتب إضافية هيحتاج موافقة صريحة.</p>
     <a href="https://supabase.com/dashboard/project/oflepwasoawmuspxgnal/database/backups" target="_blank" rel="noreferrer">مراجعة إعدادات Backup في Supabase</a>
   </section>
   <section className="v2-detail-card">

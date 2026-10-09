@@ -6,6 +6,7 @@ import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {paymentTimingAdvice} from './payment-info.js';
 import {mansouriyaGuidance} from './residence-guidance.js';
 import {contextualAreaFollowup,rememberAreaDetails} from './contextual-area-followup.js';
+import {answerHistoricResidenceRecall} from './historical-recall-answer.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
 import {runCrmTools} from './crm-tools.js';
@@ -376,7 +377,7 @@ function areaComparisonReply(items){
  return 'دي مقارنة من التفاصيل المسجلة عندنا فقط 👇\n\n'+blocks.join('\n\n────────\n\n')+'\n\nلو عايز تقارن نقطة محددة زي المرتب أو الشيفت أو مكان الاستلام قولّي.';
 }
 
-export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null,mapsOptions={}}) {
+export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null,historicalExcerpts=[],mapsOptions={}}) {
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
@@ -452,6 +453,13 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
      handoff_note:unavailableDocumentNote(waitingDocument,m.body,missing.document)};
    }
   }
+ }
+ // Explicit memory questions can be answered from the applicant's old words.
+ // This never changes pending questions, selected work area or qualification.
+ if(!protocolAction&&!m.media_path){
+  const recall=answerHistoricResidenceRecall(m.body,historicalExcerpts);
+  if(recall)return {patch:{answers,awaiting_id:a.awaiting_id||null},
+   reply:recall.reply,agent_action:recall.agent_action};
  }
  // Handle follow-up messages about the ambiguous residence BEFORE facts, CRM
  // tools, or LLM navigation can interpret them as a work-area commitment.

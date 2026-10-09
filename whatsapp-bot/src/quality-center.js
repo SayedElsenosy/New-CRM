@@ -270,7 +270,7 @@ for(const item of EXPERT_TRAINING_EXAMPLES){
   if(!r.reply.trim())failures.push('لا يوجد رد متخصص');
   if(/\b\d{4,6}\s*(?:جنيه|جم)\b/.test(r.reply))failures.push('رقم مالي غير موثق');
   return failures;
- }}))]);
+  }})]);
 }
 export const BUILTIN_QUALITY_COUNT=qualityScenarios.length;
 export async function runBuiltInQualitySuite(){

@@ -513,26 +513,33 @@ function AgentQualityCenter({state,reload,onReviewKnowledge}){
 
 function AgentPerformance(){
  const [days,setDays]=useState(7),[report,setReport]=useState(null),[pilotBusy,setPilotBusy]=useState(false);
+ const [officeId,setOfficeId]=useState(''),[capacity,setCapacity]=useState(50);
  const [loading,setLoading]=useState(false),[error,setError]=useState('');
  const load=useCallback(async()=>{
   setLoading(true);
-  try{setReport(await api('/agent/performance?days='+days));setError('');}
+  try{const data=await api('/agent/performance?days='+days+(officeId?'&office_id='+encodeURIComponent(officeId):''));
+   setReport(data);if(!officeId&&data.office_id)setOfficeId(data.office_id);setError('');}
   catch(e){setError(e.message);}
   finally{setLoading(false);}
- },[days]);
+ },[days,officeId]);
  useEffect(()=>{load();},[load]);
+ useEffect(()=>{const selected=(report?.offices||[]).find(x=>x.id===officeId);
+  if(selected?.pilot_capacity)setCapacity(selected.pilot_capacity);
+ },[officeId,report?.offices]);
  const pilotAction=async active=>{
   if(!window.confirm(active
-   ?'بدء مراقبة أول 50 متقدم جديد يتواصلوا بنفسهم؟ مش هيتم إرسال رسائل جماعية أو تغيير تشغيل البوت.'
+   ?('بدء مراقبة أول '+capacity+' متقدم جديد في المكتب المحدد؟ مش هيتم إرسال رسائل جماعية أو تغيير تشغيل البوت.')
    :'إيقاف متابعة التجربة؟ ده مش هيوقف البوت الأساسي.'))return;
   setPilotBusy(true);
-  try{await send('/agent/pilot/'+(active?'start':'stop'),{});await load();setError('');}
+  try{await send('/agent/pilot/'+(active?'start':'stop'),{office_id:officeId,...(active?{capacity}:{})});await load();setError('');}
   catch(e){setError(e.message);}
   finally{setPilotBusy(false);}
  };
  const pct=x=>x==null?'—':Number(x).toLocaleString('en-US',{maximumFractionDigits:1})+'%';
  const funnel=report?.funnel||{},volume=report?.volume||{},accuracy=report?.accuracy||{},pilot=report?.pilot;
  const pilotObservation=report?.pilot_observation;
+ const office=(report?.offices||[]).find(x=>x.id===officeId);
+ const offices=report?.offices||[];
  const counts=funnel.by_stage||{},cohort=report?.sample?.cohort_applicants||0;
  const cards=[
   {label:'تسجيلات جديدة',value:report?fmt(funnel.registered):'—',desc:'متقدمون أُنشئت ملفاتهم خلال الفترة'},
@@ -544,8 +551,9 @@ function AgentPerformance(){
  ];
  return <div className="v2-agent-detail v2-pilot-performance">
   <div className="detail-head">
-   <div><h2>أداء التوظيف والتجربة الميدانية</h2><p>قياس فعلي من بيانات تشغيل الـCRM بدون قراءة محتوى الرسائل، والتجربة على المتقدمين الحقيقيين لسه غير مفعّلة.</p></div>
+   <div><h2>أداء التوظيف والتجارب حسب المكتب</h2><p>لكل مكتب عينة مستقلة وتشغيل ومؤشرات منفصلة. متابعة الرسائل الواردة فقط؛ مش حملة مراسلات تلقائية.</p></div>
    <div className="v2-quality-controls">
+    <label>المكتب <select value={officeId} onChange={e=>setOfficeId(e.target.value)}>{offices.map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select></label>
     <label>الفترة <select value={days} onChange={e=>setDays(Number(e.target.value))}><option value={1}>آخر يوم</option><option value={7}>آخر 7 أيام</option><option value={30}>آخر 30 يوم</option></select></label>
     <button type="button" onClick={load} disabled={loading}><RefreshCw size={16}/>{loading?'جارٍ التحميل':'تحديث'}</button>
    </div>
@@ -582,41 +590,60 @@ function AgentPerformance(){
     <p className="v2-quality-muted">زمن التخطيط مش مدة إكمال طلب التوظيف. الحالات القديمة أو البيانات غير المكتملة مش بنعوضها بتقديرات.</p>
    </section>
   </div>
+  <section className="v2-detail-card v2-office-pilot-directory">
+   <div className="v2-quality-section-head"><div><h3><Briefcase size={19}/> مقارنة تجارب المكاتب</h3>
+    <p>كل مكتب جديد يبدأ بدون تجربة مفعّلة. اضغط على المكتب علشان تظهر تفاصيله وتتحكم في عدد المتقدمين.</p>
+   </div></div>
+   <div className="v2-office-pilot-list">{offices.map(item=>
+    <button type="button" key={item.id} onClick={()=>setOfficeId(item.id)} className={officeId===item.id?'selected':''}>
+     <strong>{item.name}</strong>
+     <span>{item.pilot_active?'شغالة':'متوقفة'}</span>
+     <span>{fmt(item.enrolled)} / {fmt(item.pilot_capacity)}</span>
+     <small>{item.linked_accounts} رقم واتساب نشط</small>
+    </button>
+   )}</div>
+   {!offices.length&&<p className="v2-quality-muted">لسه مفيش مكاتب مسجلة. أضف مكتب واربط رقم واتساب من إدارة المكاتب.</p>}
+  </section>
   <section className="v2-detail-card v2-pilot-observation">
    <div className="v2-quality-section-head">
-    <div><h3><Users size={20}/> التجربة الفعلية للمتقدمين الجدد</h3>
-     <p>مراقبة أول 50 متقدم جديد يراسلوا الرقم الرئيسي بنفسهم، من غير إرسال جماعي أو تغيير قواعد البوت الحالي.</p>
+    <div><h3><Users size={20}/> تجربة المكتب: {office?.name||'—'}</h3>
+     <p>كل مكتب له تجربة محددة بعدد تختاره، بتبدأ فقط لما تفعلها. واتساب الوارد الجديد فقط، ومش هيأثر على باقي المكاتب.</p>
     </div>
     <strong className={pilotObservation?.active?'running':'inactive'}>{pilotObservation?.active?'المراقبة شغالة':'المراقبة متوقفة'}</strong>
    </div>
    <div className="v2-pilot-observation-stats">
     {[
-     {label:'دخلوا التجربة',value:fmt(pilotObservation?.enrolled),foot:'من أصل 50'},
-     {label:'أماكن متبقية',value:fmt(pilotObservation?.remaining),foot:'مش هنضيف غير أول 50'},
+     {label:'دخلوا التجربة',value:pilotObservation?fmt(pilotObservation.enrolled):'—',foot:'من أصل '+(pilotObservation?.capacity||capacity)},
+     {label:'أماكن متبقية',value:pilotObservation?fmt(pilotObservation.remaining):'—',foot:'حد مستقل للمكتب'},
      {label:'أكملوا بياناتهم',value:fmt(pilotObservation?.form_completed),foot:'حالة البيانات الحالية'},
      {label:'احتاجوا تدخل موظف',value:fmt(pilotObservation?.staff_intervention_candidates),foot:'من متقدمي التجربة فقط'}
     ].map(x=><article key={x.label}><small>{x.label}</small><strong>{x.value}</strong><span>{x.foot}</span></article>)}
    </div>
+   <div className="v2-office-pilot-selector">
+    <label>عدد المتقدمين في التجربة <select value={capacity} disabled={pilotBusy||pilotObservation?.active} onChange={e=>setCapacity(Number(e.target.value))}>{[10,25,50,100,200].map(n=><option value={n} key={n}>{n} متقدم</option>)}</select></label>
+    {office&&office.linked_accounts===0&&<span>اربط رقم واتساب نشط بالمكتب الأول علشان تقدر تبدأ.</span>}
+    {office&&!office.agent_enabled&&<span>Agent المكتب متوقف حاليًا؛ شغّله من إعدادات المكتب الأول.</span>}
+   </div>
    <div className="v2-pilot-actions">
-    <button type="button" disabled={pilotBusy||loading||!pilotObservation||pilotObservation.active} onClick={()=>pilotAction(true)}>
+    <button type="button" disabled={pilotBusy||loading||!pilotObservation||pilotObservation.active||!office?.active||!office?.agent_enabled||!office?.linked_accounts} onClick={()=>pilotAction(true)}>
       <Play size={16}/> {pilotBusy?'جارٍ الحفظ':'بدء التجربة على الرسائل الجديدة'}
     </button>
     <button type="button" className="stop" disabled={pilotBusy||loading||!pilotObservation||!pilotObservation.active} onClick={()=>pilotAction(false)}>
       <ShieldCheck size={16}/> إيقاف مراقبة التجربة
     </button>
    </div>
-   <p className="v2-quality-muted">ده تشغيل لمراقبة عينة محدودة من المحادثات الواردة، مش حملة مراسلة. وقف المراقبة مش هيوقف Agent المكتب؛ تقدر تتحكم في البوت نفسه من إعدادات المكتب. اللي خارج العينة يفضل على تشغيل البوت المعتاد.</p>
+   <p className="v2-quality-muted">إيقاف متابعة المكتب ده لا يوقف البوت أو أي تجربة في مكتب تاني. لتغيير حجم العينة بعد البدء، أوقف المراقبة وابدأ تجربة جديدة. اللي خارج العينة يفضل على تشغيل البوت المعتاد.</p>
   </section>
   <section className="v2-detail-card v2-pilot-gate">
     <div className="v2-quality-section-head">
-     <div><h3><ShieldCheck size={20}/> جاهزية التوسع والإرسال التلقائي</h3><p>مراقبة أول 50 محادثة واردة شغالة بشكل مستقل. إرسال حملات جديدة أو توسعة التفعيل يحتاج موافقة منفصلة.</p></div>
+     <div><h3><ShieldCheck size={20}/> ضوابط التشغيل المتقدم</h3><p>متابعة المكتب الحالي منفصلة عن باقي المكاتب. إرسال حملات استباقية أو تغيير طريقة توظيف المتقدمين مش جزء من التجربة.</p></div>
      <strong>التوسع التلقائي غير مفعّل</strong>
     </div>
     <div className="v2-pilot-checks">{(pilot?.checks||[]).map(c=><div key={c.id}>
      {c.ready?<CheckCircle2 size={18} className="ready"/>:<Clock3 size={18}/>}
      <span>{c.label}</span><b>{c.ready?'متحقق':'لم يُتحقق بعد'}</b>
     </div>)}</div>
-    <p className="v2-quality-muted">القائمة دي تخص التوسّع والإرسال الاستباقي فقط، مش مراقبة أول 50 محادثة واردة. أي مراسلة جديدة أو تفعيل لمكاتب إضافية هيحتاج موافقة صريحة.</p>
+    <p className="v2-quality-muted">القائمة دي تخص المراسلة الاستباقية والتوسع غير المقيد. تشغيل متابعة مكتب جديد من زر التجربة مش هيبعت رسائل إضافية؛ وكل مكتب جديد يبدأ متوقف افتراضيًا.</p>
     <a href="https://supabase.com/dashboard/project/oflepwasoawmuspxgnal/database/backups" target="_blank" rel="noreferrer">مراجعة إعدادات Backup في Supabase</a>
   </section>
   <section className="v2-detail-card">

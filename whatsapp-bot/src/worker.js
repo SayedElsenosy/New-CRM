@@ -347,7 +347,7 @@ export class Worker {
       const action=turn.agent_action||(turn.handoff?'handoff':turn.knowledge_id?'knowledge_answer':turn.followup_reply?'answer_and_continue':'flow_turn');
       const afterAwaiting=Object.prototype.hasOwnProperty.call(turn.patch||{},'awaiting_id')?turn.patch.awaiting_id:a.awaiting_id;
       const extracted=Object.values(turn.patch?.answers||{}).filter(v=>v?.agent_extracted===true).length;
-      const reported=[llmAnalysis?.usage,composerUsage].filter(x=>x&&Number.isFinite(Number(x.prompt_tokens))&&Number.isFinite(Number(x.completion_tokens)));
+      const reported=[llmAnalysis?.usage,composerUsage].filter(x=>x&&Number.isSafeInteger(x.prompt_tokens)&&Number.isSafeInteger(x.completion_tokens));
       const llmUsage={
        calls:Number(llmAnalysis?.available===true)+Number(composerCalled),
        tokens_reported_calls:reported.length,

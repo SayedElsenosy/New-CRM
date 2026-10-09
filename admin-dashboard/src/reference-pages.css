@@ -3580,3 +3580,43 @@
 .app-v2 .v2-conversation-trends strong{color:#eeffff!important}
 @media(max-width:1110px){.app-v2 .v2-conversation-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.app-v2 .v2-conversation-patterns{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.app-v2 .v2-conversation-patterns{grid-template-columns:1fr}.app-v2 .v2-conversation-stats{gap:8px}.app-v2 .v2-conversation-stats strong{font-size:17px}.app-v2 .v2-conversation-intelligence .v2-quality-section-head button{width:100%}}
+
+
+/* Phase 6 — recruitment performance: informational only, no pilot activation */
+.app-v2 .v2-pilot-performance{min-width:0;color:#edf8ff}
+.app-v2 .v2-pilot-performance .detail-head{flex-wrap:wrap;align-items:flex-start;gap:15px}
+.app-v2 .v2-pilot-performance .v2-quality-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.app-v2 .v2-pilot-stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:18px 0}
+.app-v2 .v2-pilot-stat-grid article{min-width:0;background:#092638;border:1px solid #19637d;padding:17px;border-radius:15px;display:flex;flex-direction:column;gap:8px}
+.app-v2 .v2-pilot-stat-grid small{color:#bbd9e6!important;font-size:12px}
+.app-v2 .v2-pilot-stat-grid strong{font-size:26px;line-height:1.3;color:#5fe8f8!important;overflow-wrap:anywhere}
+.app-v2 .v2-pilot-stat-grid p{color:#a9cfdd!important;font-size:12px;line-height:1.6;margin:0}
+.app-v2 .v2-pilot-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+.app-v2 .v2-pilot-panels section{min-width:0}
+.app-v2 .v2-pilot-panels h3,.app-v2 .v2-pilot-gate h3{display:flex;align-items:center;gap:9px;font-size:17px;color:#f2fcff!important}
+.app-v2 .v2-pilot-bars{display:grid;gap:13px;margin:16px 0}
+.app-v2 .v2-pilot-bars>div>div{display:flex;justify-content:space-between;gap:12px;margin-bottom:6px}
+.app-v2 .v2-pilot-bars span{color:#badbe6!important;font-size:12px}
+.app-v2 .v2-pilot-bars b{color:#ecffff!important;font-size:13px}
+.app-v2 .v2-pilot-bars progress{width:100%;height:9px;accent-color:#30d6ef;border:0;border-radius:999px}
+.app-v2 .v2-pilot-facts{display:grid;gap:8px;margin:15px 0}
+.app-v2 .v2-pilot-facts>div{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid #1b5169;background:#071f30;border-radius:10px}
+.app-v2 .v2-pilot-facts span{color:#b9d9e8!important;font-size:12px}
+.app-v2 .v2-pilot-facts b{color:#e4faff!important;font-size:14px;white-space:nowrap}
+.app-v2 .v2-pilot-gate{margin:17px 0;border-color:#8e692e!important;background:#102431!important}
+.app-v2 .v2-pilot-gate .v2-quality-section-head>strong{background:#422a17;border:1px solid #ac7d33;border-radius:9px;padding:10px 13px;color:#ffdda0!important;white-space:nowrap;font-size:12px}
+.app-v2 .v2-pilot-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:18px 0}
+.app-v2 .v2-pilot-checks>div{display:flex;gap:9px;align-items:center;background:#071e30;border:1px solid #25526a;border-radius:9px;padding:12px;min-width:0}
+.app-v2 .v2-pilot-checks svg{color:#ffcf87;flex:0 0 auto}
+.app-v2 .v2-pilot-checks svg.ready{color:#61e9b6}
+.app-v2 .v2-pilot-checks span{flex:1;color:#d1e8f2!important;font-size:12px;line-height:1.5}
+.app-v2 .v2-pilot-checks b{font-size:11px;white-space:nowrap;color:#ffdd97!important}
+.app-v2 .v2-pilot-checks svg.ready~b{color:#8ef3d1!important}
+.app-v2 .v2-pilot-gate>a{display:inline-block;color:#9ce9ff!important;text-decoration:underline;font-size:13px;font-weight:750;margin-top:10px}
+.app-v2 .v2-pilot-days{display:grid;gap:8px;margin-top:14px}
+.app-v2 .v2-pilot-days>div{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:11px 13px;border-radius:9px;border:1px solid #195269;background:#082338}
+.app-v2 .v2-pilot-days small,.app-v2 .v2-pilot-days span{color:#b6d6e1!important;font-size:12px}
+.app-v2 .v2-pilot-days strong{color:#e7faff!important;font-size:12px}
+@media(max-width:1160px){.app-v2 .v2-pilot-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.app-v2 .v2-pilot-panels{grid-template-columns:1fr}}
+@media(max-width:750px){.app-v2 .v2-pilot-checks{grid-template-columns:1fr}.app-v2 .v2-pilot-performance .v2-quality-controls{width:100%}.app-v2 .v2-pilot-performance .v2-quality-controls label{flex:1}.app-v2 .v2-pilot-stat-grid{gap:9px}.app-v2 .v2-pilot-stat-grid article{padding:13px}.app-v2 .v2-pilot-stat-grid strong{font-size:22px}}
+@media(max-width:385px){.app-v2 .v2-pilot-stat-grid{grid-template-columns:1fr}}

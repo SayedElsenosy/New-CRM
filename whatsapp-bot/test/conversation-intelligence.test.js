@@ -102,8 +102,8 @@ test('legacy background bulk promotion remains a harmless no-op',async()=>{
 test('staff correction produces pending suggestion only, never publishes CRM knowledge',async()=>{
  const updates=[];
  const past=[
-  {id:'m1',direction:'in',sender:'applicant',body:'هل الشيفت صباحي ولا مسائي؟',sequence:1},
-  {id:'m2',direction:'out',sender:'staff',body:'الشيفت الصباحي بيبدأ الساعة التاسعة حسب جدول المكتب.',sequence:2}
+  {id:'m1',direction:'in',sender:'applicant',body:'معايا رخصة بس منتهية',sequence:1},
+  {id:'m2',direction:'out',sender:'staff',body:'ينفع تكمل التقديم، ومسؤول التوظيف هيراجع حالة الرخصة.',sequence:2}
  ];
  const db={
   from(table){

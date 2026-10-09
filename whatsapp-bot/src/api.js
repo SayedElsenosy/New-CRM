@@ -6,7 +6,7 @@ import {must,allRows,config} from './db.js';
 import {qualityMetrics,runBuiltInQualitySuite} from './quality-center.js';
 import {recruitmentPerformance,pilotReadiness} from './recruitment-performance.js';
 import {loadPilotControl,loadPilotEnrollments,pilotCohortSummary,PILOT_LIMIT,validPilotSize} from './pilot-observation.js';
-import {conversationIntelligenceMetrics,safeLearningProposal} from './conversation-intelligence.js';
+import {conversationIntelligenceMetrics,officeConversationIssues,safeLearningProposal} from './conversation-intelligence.js';
 import {expertBrainSummary} from './recruitment-expert.js';
 import {STAGES,computedStage,completion,csvCell,norm} from './domain.js';
 import {qualificationFor,qualificationReasonLabels,funnelFor,RECRUITMENT_ZONES} from './qualification.js';
@@ -750,8 +750,9 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   // Office-scoped operational signals only; synthetic suite is global and is not counted as office accuracy.
   const officeQuality=qualityMetrics({events:turns,decisions:[],runs:[],days,
    truncated:Boolean(officeTurns.count>turns.length)||Boolean(a.count>applicants.length)});
+  const officeIssues=officeConversationIssues(turns,{applicantIds:ids,days,truncated:officeQuality.sample.truncated});
   res.json({...report,office_quality:{sample:officeQuality.sample,operational:officeQuality.operational,
-   handoff_reasons:officeQuality.handoff_reasons,accuracy_rate:null,
+   handoff_reasons:officeQuality.handoff_reasons,issues:officeIssues,accuracy_rate:null,
    accuracy_note:'دقة إجابات المكتب لا تُحسب قبل وجود مراجعات بشرية موثقة.'},office_id:office.id,office_name:office.name,offices,
    pilot:pilotReadiness({qualitySuitePassed:Boolean(qaPassed)}),
    pilot_observation:await officePilotReport(office)});

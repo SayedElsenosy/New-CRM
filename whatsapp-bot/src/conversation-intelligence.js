@@ -110,3 +110,38 @@ export function safeLearningProposal(question,answer){
  if(sensitive.test(value))return false;
  return true;
 }
+
+
+/**
+ * Read-only office-scoped pattern summary. Whitelist applicant IDs from a
+ * server-side office-specific query, never from request query parameters.
+ * Identity is needed in memory for repeat detection only, and is never
+ * serialized in the returned report.
+ */
+export function officeConversationIssues(events=[],{applicantIds=[],days=7,now=Date.now(),truncated=false}={}){
+ const allowedApplicants=new Set((Array.isArray(applicantIds)?applicantIds:[])
+  .filter(id=>typeof id==='string'&&id.length>0));
+ const scoped=(Array.isArray(events)?events:[]).filter(row=>
+  row?.kind==='agent_turn'&&allowedApplicants.has(row?.applicant_id)
+ );
+ const metrics=conversationIntelligenceMetrics(scoped,{days,now});
+ const partial=truncated===true;
+ const enoughToPrioritize=metrics.sampled_turns>=10&&!partial;
+ const focus=new Set(['repeated_stall','tool_failure','llm_fallback','handoff','knowledge_gap','ambiguous_reply']);
+ const patterns=metrics.patterns.filter(item=>focus.has(item.key)).slice(0,6)
+  .map(item=>({
+   key:item.key,label:item.label,severity:item.severity,count:item.count,
+   rate:partial?null:item.rate,advice:item.advice,
+   priority:enoughToPrioritize&&item.count>=3&&item.rate>=20?'review':'watch'
+  }));
+ return {
+  sampled_turns:metrics.sampled_turns,
+  flagged_turns:metrics.flagged_turns,
+  flagged_rate:partial?null:metrics.flag_rate,
+  partial_sample:partial,
+  patterns,
+  requires_human_approval:true,
+  automatic_actions:false,
+  note:'إشارات رصد احتمالية تخص العينة الحالية من المكتب، وليست حكمًا على دقة الردود. لا يتم تغيير قرارات التوظيف أو المعرفة تلقائيًا.'
+ };
+}

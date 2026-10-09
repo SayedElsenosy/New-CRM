@@ -21,7 +21,8 @@ const PLAN_FORMAT={type:'json_schema',json_schema:{name:'agent_plan',strict:true
    field_key:{type:'string'},value:{type:['string','number','boolean','null']},display:{type:'string'},
    confidence:{type:'number',minimum:0,maximum:1},source:{type:'string'}
   },required:['field_key','value','display','confidence','source']}},
-  steps:{type:'array',maxItems:6,items:{type:'string',enum:['understand_message','read_office_areas','compare_registered_areas','check_nearest_work_areas','read_verified_knowledge','ask_pending_question','request_confirmation','request_clarification','human_handoff']}},
+  // Keep provider-side JSON typing, but validate allowed steps locally: strict enum generation can return Groq HTTP 400.
+  steps:{type:'array',maxItems:6,items:{type:'string'}},
   knowledge_ranking:{type:'array',maxItems:12,items:{type:'object',additionalProperties:false,properties:{
    id:{type:'string'},score:{type:'number',minimum:0,maximum:1}
   },required:['id','score']}}

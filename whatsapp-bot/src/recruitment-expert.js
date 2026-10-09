@@ -208,9 +208,11 @@ const PII_PATTERN=/(?:\+?20)?01[0125]\d{8}|\b\d{12,16}\b|[^\s@]+@[^\s@]+\.[^\s@]
 export function matchExpertTopic(text){
  const raw=String(text||'').trim();
  if(raw.length<5||raw.length>500||PII_PATTERN.test(raw))return null;
- if(!questionCue.test(raw)&&!looksLikeQuestion(raw))return null;
  const q=normalize(raw),hit=exact.get(q);
  if(hit)return {topic:byId.get(hit),confidence:1,match:'curated_example'};
+ // Safety reports ("حد بعتلي لينك غريب") are meaningful even without ?.
+ const safetyReport=/(?:لينك غريب|رساله مشبوهه|رسالة مشبوهة|نصب|احتيال|حادث)/.test(q);
+ if(!safetyReport&&!questionCue.test(raw)&&!looksLikeQuestion(raw))return null;
  let best=null;
  const qWords=new Set(words(q));
  for(const topic of EXPERT_TOPICS){

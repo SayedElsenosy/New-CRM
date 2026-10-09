@@ -113,3 +113,12 @@ export function nearestWorkAreaReply(result){
   +'\n\nقولّي اسم المنطقة اللي حابب تعرف تفاصيلها. ولو محتار بينهم أقدر أقارنهم لك، ولو حابب أزرار اختيارات اكتب «الاختيارات».'
   +'\n\nملحوظة: الترشيح تقريبي حسب موقع المناطق، ومش بيحسب زحمة الطريق أو وقت المواصلات.';
 }
+
+
+// The Mansouriya village/neighborhood name has multiple map matches in Egypt.
+// Never reuse a geocoder's first match as an exact road-distance origin without
+// an independently confirmed location. In particular: المنصورية ≠ المنصورة.
+export function requiresResidenceDisambiguation(value){
+ const text=norm(value).replace(/[،,.!?؟؛:()[\]{}"'ـ]/g,' ').replace(/\s+/g,' ').trim();
+ return /(?:^|\s)(?:المنصوريه|منصوريه)(?:\s|$)/.test(text);
+}

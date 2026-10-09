@@ -2,7 +2,7 @@ import {useCallback,useEffect,useMemo,useState} from 'react';
 import {
   Activity,ArrowLeft,BarChart3,BellRing,BookOpen,BrainCircuit,CalendarDays,
   CheckCircle2,ClipboardCheck,Cpu,Database,FileText,Gauge,Globe2,MessageCircle,
-  Megaphone,Play,Plus,RefreshCw,Search,Send,Settings2,ShieldCheck,Sparkles,
+  Megaphone,Play,Plus,RefreshCw,Search,Send,Settings2,ShieldCheck,Sparkles,MessageCircleQuestion,
   Target,Users,Zap,MapPin,TrendingUp,Briefcase,Clock3,FolderOpen,ChevronLeft,CalendarCheck,UserPlus,Bot,MessageSquare,Filter
 } from 'lucide-react';
 import {api,send,date,personName} from './api';

@@ -2,7 +2,7 @@ import {norm} from './domain.js';
 import {areaPlaceKey,areaMode} from './area-advisor.js';
 
 /** Read-only answers to employment side questions. Never qualify an applicant. */
-const SHIFT_INTENT=/(?:شفت|شيفت|الورديه|ورديه|ورديات|مواعيد\s+(?:العمل|الشغل)|ساعات\s+(?:العمل|الشغل)|من\s+كام\s+(?:ل|الي|الى)\s+كام)/;
+const SHIFT_INTENT=/(?:شفت|شيفت|الورديه|ورديه|ورديات|مواعيد\s+(?:العمل|عمل|الشغل|شغل)|ساعات\s+(?:العمل|عمل|الشغل|شغل)|من\s+كام\s+(?:ل|الي|الى)?\s*كام)/;
 const REQUIREMENT_INTENT=/(?:عربيه|عربيات|موتوسيكل|موتوسكل|موتسيكل|متوسيكل|مكنه|موتور)/;
 const REQUIREMENT_QUESTION=/(?:لازم|مطلوب|شرط|ينفع|المميزات|مميزات|هل|ايه|محتاج)/;
 const DIGITS='٠١٢٣٤٥٦٧٨٩';
@@ -52,6 +52,11 @@ export function initialApplicantQuestion({text='',areas=[]}={}){
 export function contextualShiftQuestion({text='',answers={},areas=[]}={}){
  const n=normalizeText(text);
  if(!SHIFT_INTENT.test(n))return null;
+ // Explicit queries such as "الشيفت في ماركت العبور" belong to the existing
+ // full job-details advisor. Only short contextual followups use this handler.
+ if(/(?:^|\s)(?:ماركت|مطاعم|مطعم)(?:\s|$)/.test(n)
+  &&(areas||[]).some(a=>a?.active===true&&n.includes(norm(areaPlaceKey(a)))))
+  return null;
  const area=currentArea(answers,areas);
  if(area?.ambiguous)return {
   action:'clarify_context_shift_mode',

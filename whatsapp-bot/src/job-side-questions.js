@@ -49,6 +49,14 @@ export function initialApplicantQuestion({text='',areas=[]}={}){
   +(benefits.length?'\nالمميزات هناك: '+benefits.slice(0,3).join('، ')+'.':'')
   +'\n\nإيه منطقة الشغل اللي تقدر تلتزم بيها يوميًا علشان أوضح لك شروطها بالتحديد؟';
 }
+export function clarifyUnlocatedNearbyRequest(text=''){
+ const n=normalizeText(text);
+ if(!/(?:اقرب|قريب|القريب)/.test(n)||!/(?:السلام|مدينه السلام)/.test(n))return null;
+ return {
+  action:'clarify_nearby_origin',
+  reply:'تقصد مدينة السلام في القاهرة؟ لو أيوه، قولّي أقرب شارع أو معلم عندك علشان أساعدك نقارن المناطق المتاحة. اسم المنطقة لوحده مش كفاية إني أضمن لك أنهي مكان شغل الأقرب من غير عنوان موقع عمل دقيق.'
+ };
+}
 export function contextualShiftQuestion({text='',answers={},areas=[]}={}){
  const n=normalizeText(text);
  if(!SHIFT_INTENT.test(n))return null;

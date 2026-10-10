@@ -1,3 +1,4 @@
+import {summarizePipelineEvents} from './agent-pipeline.js';
 import express from 'express';
 import {normalizeReplyMode} from './reply-scope.js';
 import cors from 'cors';
@@ -870,6 +871,21 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
    if(!schemaMissing(e))throw e;
   }
   res.json(result);
+ });
+ adminRoute('get','/agent/pipeline',async(_req,res)=>{
+  // Administrator-only metadata. Never return message text, candidate phone,
+  // prompts, full decision facts, or raw audit payload.
+  const recent=must(await db.from('masar_events')
+   .select('id,created_at,detail').eq('kind','agent_turn')
+   .order('created_at',{ascending:false}).limit(25));
+  const ids=recent.map(x=>x.detail?.message_id).filter(x=>/^[a-f0-9-]{36}$/i.test(String(x||'')));
+  let outgoing=[];
+  if(ids.length){
+   outgoing=must(await db.from('masar_messages')
+    .select('reply_to,status,sender').in('reply_to',ids).eq('direction','out').limit(100));
+  }
+  res.json({observed_at:new Date().toISOString(),
+   traces:summarizePipelineEvents(recent,outgoing)});
  });
  adminRoute('get','/agent',async(_req,res)=>res.json(await agentState()));
  adminRoute('put','/agent/settings',async(req,res)=>{

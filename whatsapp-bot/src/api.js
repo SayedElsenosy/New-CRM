@@ -876,7 +876,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   // Administrator-only metadata. Never return message text, candidate phone,
   // prompts, full decision facts, or raw audit payload.
   const recent=must(await db.from('masar_events')
-   .select('id,created_at,detail').eq('kind','agent_turn')
+   .select('id,kind,created_at,detail').in('kind',['agent_turn','agent_pipeline_failed'])
    .order('created_at',{ascending:false}).limit(25));
   const ids=recent.map(x=>x.detail?.message_id).filter(x=>/^[a-f0-9-]{36}$/i.test(String(x||'')));
   let outgoing=[];

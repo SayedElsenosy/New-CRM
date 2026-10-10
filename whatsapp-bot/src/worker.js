@@ -16,6 +16,7 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush,sendOfficeQualityPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
+import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,initialHistoryReview,historicalChatMark} from './reply-scope.js';
 import {questionPrompt,areaDetails} from './domain.js';
 import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
@@ -171,6 +172,7 @@ export class Worker {
  }
  async ingest(record){
   const accountId=record.whatsapp_account_id||null,multi=this.multi();
+  const historic=historicalChatMark(record);
   const cutoff=await this.resetCutoff(record,accountId);
   if(cutoff){
    const received=Date.parse(record.received_at||record.created_at||0),reset=Date.parse(cutoff);
@@ -201,18 +203,20 @@ export class Worker {
   // Keep new candidates in the office associated with the receiving
   // WhatsApp account. The office's questions/areas must not cross tenants.
   const linkedAccount=!a&&accountId?must(await this.db.from('masar_whatsapp_accounts')
-   .select('office_id,active').eq('id',accountId).maybeSingle()):null;
-  const referral=record.referral?.source_id?record.referral:null;
+   .select('office_id,active,reply_mode').eq('id',accountId).maybeSingle()):null;
+  const referral=hasVerifiedAdReferral(record.referral)?record.referral:null;
   let applicantWasCreated=false;
   if(!a){
-   const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at};
+   const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at,
+    bot_enabled:false,answers:{__history_review:initialHistoryReview({source:historic?'imported_whatsapp_history':'first_seen_after_link'})}};
    if(multi)row.whatsapp_account_id=accountId;
    if(linkedAccount?.office_id)row.office_id=linkedAccount.office_id;
    if(referral)row.answers=withFirstAttribution({},referral);
    a=must(await this.db.from('masar_applicants').insert(row).select().single());
    applicantWasCreated=true;
   }else{
-   const patch={contact_id:record.contact_id,last_message_at:record.created_at,updated_at:new Date().toISOString()};
+   const patch={contact_id:record.contact_id,updated_at:new Date().toISOString()};
+   if(!historic)patch.last_message_at=record.created_at;
    if(record.phone)patch.phone=record.phone;
    if(referral){const nextAnswers=withFirstAttribution(a.answers,referral);if(nextAnswers!==a.answers)patch.answers=nextAnswers;}
    must(await this.db.from('masar_applicants').update(patch).eq('id',a.id));
@@ -226,7 +230,7 @@ export class Worker {
   const isExternalOutbound=record.direction==='out'||record.from_me===true;
   // Enroll only brand-new, inbound WhatsApp contacts. This is audit-only:
   // don't send anything, edit answers, or change the existing bot behavior.
-  if(applicantWasCreated&&!isExternalOutbound&&accountId){
+  if(applicantWasCreated&&!historic&&!isExternalOutbound&&accountId){
    try{
     // Link to the WhatsApp account's CURRENT office, not the applicant's
     // optional office_id (which can be null for new inbound contacts).
@@ -245,11 +249,35 @@ export class Worker {
    }catch(error){console.warn('Office pilot enrollment failed:',error?.code||error?.name||'Error');}
   }
   if(isExternalOutbound){
-   const prepared=await this.prepareRecordMedia(record,a.id,accountId);
+   const prepared=historic?{body:String(record.body||'').slice(0,10000),media_path:null,media_type:null,media_error:null,is_audio:false}:await this.prepareRecordMedia(record,a.id,accountId);
    const source=must(await this.db.from('masar_messages').select('id,body').eq('applicant_id',a.id).eq('direction','in').order('sequence',{ascending:false}).limit(1).maybeSingle());
    const messageRow={applicant_id:a.id,wa_id:record.id,direction:'out',sender:'staff',body:prepared.body,media_path:prepared.media_path,media_type:prepared.media_type,media_error:prepared.media_error,status:'sent',reply_to:source?.id||null,created_at:record.created_at};
    if(multi)messageRow.whatsapp_account_id=accountId;
    const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
+  if(historic)return;
+  if(applicantWasCreated){
+   // A first appearance in the CRM is NOT evidence that the WhatsApp chat is
+   // new. Leave the bot paused until staff inspects the imported history.
+   try{
+    must(await this.db.from('masar_alerts').insert({
+     applicant_id:a.id,whatsapp_account_id:accountId,source_message_id:saved.id,
+     kind:'history_review',title:'مراجعة محادثة سابقة قبل تشغيل البوت',
+     body:'الرقم ظهر لأول مرة في CRM. راجع سجل واتساب المستورد، ولو ناقص ارجع للموبايل أو اسأل الموظف قبل الموافقة على تشغيل الرد الآلي.',
+     status:'open',updated_at:new Date().toISOString()
+    }));
+   }catch(error){console.warn('History review alert failed:',error.code||error.name||'Error');}
+  }
+   if(historic){
+    // Historical device messages must not be mistaken for a fresh staff reply:
+    // do not learn from them, resolve alerts, or send followups.
+    if(a.bot_enabled!==false){
+     must(await this.db.from('masar_applicants').update({
+      bot_enabled:false,answers:{...(a.answers||{}),__history_review:initialHistoryReview({source:'prior_staff_conversation'})},
+      updated_at:new Date().toISOString()
+     }).eq('id',a.id));
+    }
+    return;
+   }
 
    let settings=null;
    try{settings=must(await this.db.from('masar_settings').select('*').eq('id',true).single());}
@@ -275,9 +303,10 @@ export class Worker {
    return;
   }
 
-  if(referral){
+  if(referral&&!historic){
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'ad_referral',detail:{...referral,whatsapp_account_id:accountId}}));
    try{
+    if(!referral.source_id)throw new Error('ad source id unavailable');
     const current=must(await this.db.from('masar_ads').select('*').eq('ad_id',referral.source_id).maybeSingle());
     const metadata={headline:referral.title||current?.headline||'',source_url:referral.source_url||current?.source_url||null,source_app:referral.source_app||current?.source_app||null,source_type:referral.source_type||current?.source_type||'ad',last_seen_at:record.created_at};
     if(current)must(await this.db.from('masar_ads').update(metadata).eq('ad_id',referral.source_id));
@@ -285,9 +314,9 @@ export class Worker {
    }catch(e){console.warn('Ad attribution metadata not indexed yet:',e.code||e.name);}
   }
 
-  const prepared=await this.prepareRecordMedia(record,a.id,accountId);
+  const prepared=historic?{body:String(record.body||'').slice(0,10000),media_path:null,media_type:null,media_error:null,is_audio:false}:await this.prepareRecordMedia(record,a.id,accountId);
   const messageRow={applicant_id:a.id,wa_id:record.id,direction:'in',sender:'applicant',body:prepared.body,media_path:prepared.media_path,media_type:prepared.media_type,media_error:prepared.media_error,created_at:record.created_at};
-  if(prepared.is_audio&&(!prepared.transcribed||!prepared.transcription_trusted))messageRow.status='processed';
+  if(historic||prepared.is_audio&&(!prepared.transcribed||!prepared.transcription_trusted))messageRow.status='processed';
   if(multi)messageRow.whatsapp_account_id=accountId;
   const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
   if(prepared.is_audio){
@@ -321,6 +350,11 @@ export class Worker {
   for(const a of candidates){
    const key=a.office_id||'__global__';if(!configCache.has(key))configCache.set(key,await config(this.db,a.office_id||null));
    const c=configCache.get(key);if(c.settings?.agent_enabled===false||c.settings?.followup_enabled!==true)continue;
+   const account=a.whatsapp_account_id?must(await this.db.from('masar_whatsapp_accounts').select('reply_mode,active')
+    .eq('id',a.whatsapp_account_id).maybeSingle()):null;
+   if(account?.active===false||a.whatsapp_account_id&&!accountCanReply(account?.reply_mode||'all',{
+    firstAttribution:a.answers?.__attribution
+   })||historyReviewRequired({answers:a.answers}))continue;
    const hours=Math.max(1,Math.min(72,Number(c.settings?.followup_hours)||8));
    if(blocked.has(a.id)||!followupDue(a,{now,hours}))continue;
    const body=buildFollowupMessage(a,c.questions,c.areas);
@@ -350,6 +384,14 @@ export class Worker {
     if(prior.length){blocked.add(m.applicant_id);continue;}
     try{
      const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db,a.office_id||null);
+     const account=a.whatsapp_account_id?must(await this.db.from('masar_whatsapp_accounts')
+      .select('reply_mode,active').eq('id',a.whatsapp_account_id).maybeSingle()):null;
+     if(account?.active===false||a.whatsapp_account_id&&!accountCanReply(account?.reply_mode||'all',{
+      firstAttribution:a.answers?.__attribution
+     })||historyReviewRequired({answers:a.answers})){
+      must(await this.db.from('masar_messages').update({status:'processed',error:null}).eq('id',m.id));
+      continue;
+     }
      if(c.settings?.agent_enabled===false){
       // Office-level agent pause. Learning from staff continues 24/7, but the
       // agent does not reply to applicants in this office.

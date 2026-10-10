@@ -112,6 +112,56 @@ whether text data can be sent to a specific provider lawfully and securely,
 perform per-office access review, set usage limits, and evaluate actual answer
 quality rather than assuming Python itself produces better text.
 
+## Phase 3 — optional REAL LLM experiment (NOT ENABLED)
+
+An opt-in Groq-compatible HTTPS client now exists in
+shadow_ai.llm_provider, with a fixed Groq endpoint, bounded timeouts,
+maximum **180 generated tokens** and a hard cap of **10 requests per
+run**. It operates **only** on the synthetic benchmark file bundled with
+this repository. It must not be given actual candidates' WhatsApp chats,
+phone numbers, residence addresses, personal IDs or credentials.
+
+### Without model calls or costs (default)
+
+    cd python-ai-engine
+    python -m unittest discover -s tests -v
+
+The tests inject mock provider outputs, check request bounds and do not
+access external services.
+
+### Only if you approve provider data use and pricing
+
+Use a **separate evaluation-only Groq key**; never reuse/copy the live
+production key into GitHub or chat. API access may incur charges even if
+a particular model has a free tier. The script has no hard monetary cap
+because providers set prices and quotas independently.
+
+On Windows PowerShell:
+
+    cd python-ai-engine
+    $env:SHADOW_LLM_NETWORK_ENABLED = 'YES'
+    $env:SHADOW_GROQ_MODEL = '<model-supported-by-your-account>'
+    $env:SHADOW_GROQ_API_KEY = '<your-evaluation-key>'
+    python -m shadow_ai.live_eval --live --synthetic-only-confirmed --max-cases 3
+
+Without **all** those values and flags the script exits before a
+network request. Maximum max-cases is 10; default is 3. The model
+is called with temperature 0 and JSON output. Afterwards clear:
+
+    Remove-Item Env:SHADOW_GROQ_API_KEY
+
+### What is measured
+
+- Proposed action, policy acceptance, fallback and labeled intent agreement
+- Token counts reported by provider, median API response latency
+- NOT human-level understanding or candidate-facing reply quality:
+  this is solely a read-only model-assisted planning experiment
+
+No keys are stored in files, Railway or CI. The Python lab is NOT
+connected to WhatsApp. Running this external trial requires explicit
+approval for potential charges and for transmitting synthetic prompts
+to that provider.
+
 ## Safe migration steps
 
 1. Run and review synthetic offline fixtures.

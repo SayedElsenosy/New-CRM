@@ -27,6 +27,9 @@ export function historyReviewRequired({newApplicant=false,historyImported=false,
 export function initialHistoryReview({source='unverified_prior_history'}={}){
  return {status:'pending',source,at:new Date().toISOString()};
 }
+export function shouldCreateHistoryReviewAlert({historical=false,answers={}}={}){
+ return !historical&&historyReviewRequired({answers});
+}
 export function historicalChatMark(record){
  return record?.historical===true||record?.upsert_type==='history';
 }

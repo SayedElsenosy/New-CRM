@@ -184,7 +184,7 @@ function numberFrom(value){
 export function areaProfile(area){
  const raw=digits(String(area?.details||''));
  const n=norm(raw);
- const fixed=n.match(/مرتب\s+(?:شهري\s+)?ثابت\s*[:\/-]?\s*([0-9][0-9,]*)/);
+ const fixed=n.match(/(?:مرتب|راتب)\s+(?:شهري\s+)?ثابت\s*[:\/-]?\s*([0-9][0-9,]*)/);
  const weeklyRange=n.match(/متوسط\s+القبض\s+الاسبوعي[\s\S]{0,80}?من\s*([0-9][0-9,]*)\s*(?:ل|لـ|الي|الى|إلى|-)+\s*([0-9][0-9,]*)/);
  const weeklyAverage=n.match(/متوسط\s+الدخل(?:\s+الاسبوعي)?\s*([0-9][0-9,]*)/);
  const weeklyMax=n.match(/(?:بيوصل|يوصل)\s*(?:لي|ل|الي|الى|إلى)?\s*([0-9][0-9,]*)/);

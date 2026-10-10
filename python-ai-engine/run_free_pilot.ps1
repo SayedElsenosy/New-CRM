@@ -11,7 +11,7 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Groq Free pilot — 3 synthetic cases only; NO real CRM conversations." -ForegroundColor Cyan
+    Write-Host "Groq Free pilot - 3 synthetic cases only; NO real CRM conversations." -ForegroundColor Cyan
     Write-Host "Before proceeding, open Groq Console > Settings > Billing"
     Write-Host "Verify the current organization says FREE (not Developer),"
     Write-Host "and don't upgrade or add a payment method. Free usage has rate limits."

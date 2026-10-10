@@ -37,3 +37,30 @@ jobs:
       - name: Python shared-fixture contract
         working-directory: python-ai-engine
         run: python -m shadow_ai.paired_eval --python-only --fail-on-python
+
+  windows-powershell-free-pilot:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Parse using Windows PowerShell 5.1 and reject ambiguous encodings
+        shell: powershell
+        run: |
+          $path = (Resolve-Path 'python-ai-engine/run_free_pilot.ps1').Path
+          $script = [System.IO.File]::ReadAllText($path)
+          if ($script.ToCharArray() | Where-Object { [int][char]$_ -gt 127 }) {
+            throw 'PowerShell pilot must use ASCII-only text for Windows PowerShell 5.1.'
+          }
+          $tokens = $null
+          $issues = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$issues)
+          if ($issues.Count -gt 0) {
+            throw ('PowerShell parse failed: ' + ($issues | Out-String))
+          }
+      - name: Execute no-network Windows PowerShell dry run
+        shell: powershell
+        working-directory: python-ai-engine
+        run: |
+          .\run_free_pilot.ps1 -DryRun

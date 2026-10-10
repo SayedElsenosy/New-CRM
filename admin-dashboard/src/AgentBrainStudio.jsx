@@ -4,6 +4,7 @@ import {
  RefreshCw,ArrowLeft,Clock3,Zap,GitBranch,AlertTriangle,CheckCircle2
 } from 'lucide-react';
 import './AgentBrainStudio.css';
+import AgentPipelineMonitor from './AgentPipelineMonitor';
 
 const number=value=>Number.isFinite(Number(value))?Number(value):0;
 const format=value=>number(value).toLocaleString('en-US');
@@ -185,6 +186,7 @@ export default function AgentBrainStudio({state={},onNavigate,reload,updatedAt})
     <button type="button" className="abs-open-btn" onClick={()=>onNavigate('decisions')}>تفاصيل القرارات <ArrowLeft size={17}/></button>
    </section>
   </div>
+  <AgentPipelineMonitor/>
   <footer className="abs-disclaimer"><Clock3 size={14}/> الرسوم المتحركة محاكاة بصرية لشبكة عصبية، وليست عرضًا للأفكار الداخلية للنموذج. المقاييس المعروضة مأخوذة من واجهة بيانات الـAgent ولا تتضمن محادثات شخصية.</footer>
  </div>;
 }

@@ -123,6 +123,14 @@ def _memory(history: list[dict[str, Any]]) -> dict[str, Any]:
         if extracted:
             residence = extracted
             confidence_turn = index
+        elif residence and _CORRECTION.search(text) and " مش " in f" {text} ":
+            # A later explicit correction to an earlier stated residence
+            # supersedes the old coarse label, even if it comes 100 turns later.
+            positive = text.split(" مش ", 1)[0]
+            positive = re.sub(r"^.*?(?:قصدي|اقصد|اصحح)\s+", "", positive).strip()
+            if 2 < len(positive) < 50 and not re.search(r"\d|@", positive):
+                residence = " ".join(positive.split()[-3:])
+                confidence_turn = index
         for label, pattern in _MAIN_PRIORITY:
             if pattern.search(text):
                 priority = label
@@ -159,6 +167,7 @@ def _job_facts(area: dict[str, Any]) -> dict[str, Any]:
     allowed = ("id", "name", "place_key", "work_mode", "shift_hours",
                "weekly_income_min", "weekly_income_max",
                "monthly_fixed_salary", "order_price", "delivery_zone_km",
+               "shift_start_time", "shift_end_time",
                "motorcycle_required", "benefits")
     facts = {key: area[key] for key in allowed if key in area and area[key] is not None}
     return facts

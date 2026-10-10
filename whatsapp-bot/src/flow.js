@@ -392,6 +392,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
   &&['prior_staff_conversation','imported_whatsapp_history'].includes(answers.__history_review?.source);
  if(isFreshApplicationStart(a,m)&&openingFacts.length===0&&!approvedPrelinkHistory){
   const first=nextMissing(qs,answers,areas)||qs[0];
+  const sideAnswer=initialApplicantQuestion({text:m.body,areas});
+  if(sideAnswer)return {patch:{awaiting_id:first.id,stage:'new'},reply:sideAnswer,agent_action:'initial_job_requirements'};
   const welcome=String(settings.welcome||'').trim();
   const firstQuestion=openingQuestionPrompt(first,areas);
   return welcome

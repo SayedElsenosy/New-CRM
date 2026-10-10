@@ -377,7 +377,7 @@ function areaComparisonReply(items){
  return 'دي مقارنة من التفاصيل المسجلة عندنا فقط 👇\n\n'+blocks.join('\n\n────────\n\n')+'\n\nلو عايز تقارن نقطة محددة زي المرتب أو الشيفت أو مكان الاستلام قولّي.';
 }
 
-export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null,historicalExcerpts=[],mapsOptions={}}) {
+export async function planTurn({applicant:a,message:m,questions,areas,settings,interpret,knowledge=[],llmPlan=null,historicalExcerpts=[],conversationEpisodes=[],mapsOptions={}}) {
  if(!a.bot_enabled)return {patch:{},reply:''};
  const qs=activeQuestions(questions);const answers={...a.answers};
  if(!qs.length)return {patch:{},reply:'التقديم متوقف مؤقتاً لحين تجهيز الأسئلة. مسؤول التوظيف هيتابع معاك.'};
@@ -642,7 +642,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
    const compareContinuation=['compare_places','compare_places_followup'].includes(advice.action)&&current?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
-    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')+advice.reply+compareContinuation,
+    reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')
+      +(conversationEpisodes.length>0&&['compare_places','compare_places_followup','compare_area_modes'].includes(advice.action)
+        ?'فاكر إننا اتكلمنا عن مقارنة مناطق الشغل. هراجعها معاك من البيانات المسجلة حاليًا، لأن التفاصيل ممكن تتغير.\n\n':'')
+      +advice.reply+compareContinuation,
     knowledge_id:sideMatch?.id||null,
     knowledge_confidence:sideMatch?.confidence??null,
     agent_action:advice.action||'area_advisor'

@@ -230,7 +230,7 @@ export class Worker {
    if(referral){const nextAnswers=withFirstAttribution(a.answers,referral);if(nextAnswers!==a.answers)patch.answers=nextAnswers;}
    if(eligibleForAutoAdStart({
     historical:historic,outbound:external,account:linkedAccount,referral,
-    answers:patch.answers||a.answers,existing:true
+    answers:patch.answers||a.answers,existing:true,stage:a.stage
    })){
     // A paused contact imported under the older policy may resume only if
     // the saved conversation contains no human outbound messages. Never
@@ -239,7 +239,7 @@ export class Worker {
      .eq('applicant_id',a.id).eq('direction','out').eq('sender','staff').limit(1));
     if(eligibleForAutoAdStart({
       historical:historic,outbound:external,account:linkedAccount,referral,
-      answers:patch.answers||a.answers,existing:true,hasStaffHistory:staff.length>0
+      answers:patch.answers||a.answers,existing:true,stage:a.stage,hasStaffHistory:staff.length>0
     })){
      patch.bot_enabled=true;
      patch.answers={...(patch.answers||a.answers||{}),__history_review:automaticAdReview()};

@@ -59,7 +59,10 @@ def _synthetic_turns(history: list[dict[str, Any]]) -> list[str]:
     texts = []
     for turn in history:
         if turn.get("role") in ("applicant", "user") and isinstance(turn.get("text"), str):
-            texts.append(turn["text"].strip()[:550])
+            text = turn["text"].strip()
+            if len(text) > 550:
+                raise ValueError("Synthetic utterance exceeds safety bound")
+            texts.append(text)
     return texts
 
 

@@ -255,11 +255,13 @@ export class Worker {
    if(multi)messageRow.whatsapp_account_id=accountId;
    const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
   if(historic)return;
-  if(applicantWasCreated){
+  if(historyReviewRequired({answers:a.answers})){
    // A first appearance in the CRM is NOT evidence that the WhatsApp chat is
    // new. Leave the bot paused until staff inspects the imported history.
    try{
-    must(await this.db.from('masar_alerts').insert({
+    const prior=must(await this.db.from('masar_alerts').select('id')
+     .eq('applicant_id',a.id).eq('kind','history_review').eq('status','open').limit(1));
+    if(!prior.length)must(await this.db.from('masar_alerts').insert({
      applicant_id:a.id,whatsapp_account_id:accountId,source_message_id:saved.id,
      kind:'history_review',title:'مراجعة محادثة سابقة قبل تشغيل البوت',
      body:'الرقم ظهر لأول مرة في CRM. راجع سجل واتساب المستورد، ولو ناقص ارجع للموبايل أو اسأل الموظف قبل الموافقة على تشغيل الرد الآلي.',
@@ -594,6 +596,18 @@ export class Worker {
     if(snapshot?.status!=='connected')continue;
     const a=must(await this.db.from('masar_applicants').select('contact_id,awaiting_id,bot_enabled,answers,office_id').eq('id',m.applicant_id).single());
     const cfgKey=a.office_id||'__global__';if(!sendConfigCache.has(cfgKey))sendConfigCache.set(cfgKey,await config(this.db,a.office_id||null));const sendConfig=sendConfigCache.get(cfgKey);
+    if(m.sender==='bot'){
+     const acc=accountId?this.connections?.snapshot?.(accountId):null;
+     if(a.bot_enabled===false||historyReviewRequired({answers:a.answers})||
+       acc?.active===false||accountId&&!accountCanReply(acc?.reply_mode||'all',{
+        firstAttribution:a.answers?.__attribution
+       })){
+      must(await this.db.from('masar_messages').update({
+       status:'processed',error:'تم إلغاء الرد الآلي بسبب وضع الرقم أو مراجعة المحادثة.'
+      }).eq('id',m.id));
+      continue;
+     }
+    }
     if(m.sender==='bot'&&sendConfig?.settings?.agent_enabled===false){
      must(await this.db.from('masar_messages').update({status:'processed',error:'تم إلغاء الرد الآلي لأن Agent المكتب متوقف.'}).eq('id',m.id));
      continue;

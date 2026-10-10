@@ -89,7 +89,7 @@
 @media(prefers-reduced-motion:reduce){.abs-studio *, .abs-studio *:before, .abs-studio *:after{animation:none!important;transition:none!important}}
 
 .abs-activity-list:not(.expanded)>div:nth-child(n+4){display:none}
-.abs-more-activity{display:block;margin:13px auto 1px;padding:8px 14px;background:rgba(20,107,147,.17);border:1px solid rgba(58,175,208,.38);border-radius:9px;color:#84dff5;cursor:pointer;font:700 12px inherit;font-family:inherit}
+.abs-more-activity{display:block;margin:13px auto 1px;padding:8px 14px;background:rgba(20,107,147,.17);border:1px solid rgba(58,175,208,.38);border-radius:9px;color:#84dff5;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit}
 .abs-more-activity:hover{background:rgba(40,150,185,.24)}
 .abs-activity-help{color:#88aebe!important;font-size:11px!important;margin:11px 0 0!important}
 .abs-studio .abs-detail-header strong{color:#65e4fd!important}

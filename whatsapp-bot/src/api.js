@@ -1065,7 +1065,10 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
  adminRoute('post','/intelligence/live',async(_req,res)=>res.status(410).json({error:'تشغيل Agent أصبح مستقل لكل مكتب من إعدادات المكتب.'}));
  adminRoute('post','/intelligence/pause',async(_req,res)=>res.status(410).json({error:'إيقاف Agent أصبح مستقل لكل مكتب من إعدادات المكتب.'}));
  for(const type of ['areas','questions']){
-  permissionRoute(type,'post','/'+type,async(req,res)=>{await serial(async()=>{
+  // Area metadata edits are database writes, independent of long WhatsApp LLM
+  // processing. Only applicant-sensitive operations need the worker serial.
+  const editAreaWithoutWorkerQueue=task=>task();
+  permissionRoute(type,'post','/'+type,async(req,res)=>{await (type==='areas'?editAreaWithoutWorkerQueue:serial)(async()=>{
    const b=req.body,officeId=await scopedOfficeId(req);let row;
    if(type==='areas'){
     if(typeof b.name!=='string'||!b.name.trim()||b.name.length>100||typeof b.details!=='string'||b.details.length>4000)throw bad('راجع اسم المنطقة وتفاصيلها');

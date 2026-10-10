@@ -30,10 +30,30 @@ class DisabledNetwork(RuntimeError):
     """Opt-in protections refused a remote request."""
 
 
+# Only explicitly documented Groq permission codes can leave the client.
+# No API error messages, arbitrary remote codes, headers or payload content.
+SAFE_GROQ_403_CODES = frozenset({
+    "model_permission_blocked_org",
+    "model_permission_blocked_project",
+})
+
+
+def groq_permission_code(body: bytes) -> str | None:
+    """Read an allowlisted error CODE, never disclose the provider's error text."""
+    try:
+        raw = json.loads(body)
+        error = raw.get("error") if isinstance(raw, dict) else None
+        code = error.get("code") if isinstance(error, dict) else None
+        return code if isinstance(code, str) and code in SAFE_GROQ_403_CODES else None
+    except (UnicodeError, ValueError, TypeError):
+        return None
+
+
 class ProviderCallError(RuntimeError):
-    """Only safe status categories, never raw remote error bodies or credentials."""
-    def __init__(self, status: str):
+    """Only safe status/code categories; never raw remote errors or credentials."""
+    def __init__(self, status: str, *, permission_code: str | None = None):
         self.status = status
+        self.permission_code = permission_code if permission_code in SAFE_GROQ_403_CODES else None
         super().__init__("Provider request failed (" + status + ")")
 
 
@@ -128,10 +148,16 @@ def _post_groq(payload: dict[str, Any], token: str, timeout: int) -> dict[str, A
         with urlopen(req, timeout=timeout) as response:
             raw = response.read(15000)
     except HTTPError as error:
-        # Only an HTTP status number is exposed. Never log response body,
-        # exception strings, request headers or raw prompts.
+        # Read at most 2 KiB to inspect a documented, allowlisted JSON
+        # permissions code. Never log or surface the raw error body.
         status = int(error.code) if 100 <= int(error.code) <= 599 else 0
-        raise ProviderCallError("http_" + str(status)) from None
+        safe_code = None
+        if status == 403:
+            try:
+                safe_code = groq_permission_code(error.read(2048))
+            except (AttributeError, OSError, ValueError):
+                pass
+        raise ProviderCallError("http_" + str(status), permission_code=safe_code) from None
     except (URLError, TimeoutError, OSError):
         raise ProviderCallError("network_or_timeout") from None
     try:

@@ -1,5 +1,6 @@
 import json
 import unittest
+import io
 from unittest.mock import patch
 from urllib.error import HTTPError
 
@@ -8,7 +9,7 @@ from shadow_ai.evaluate import AREAS, user, preview
 from shadow_ai.llm_provider import (
     DisabledNetwork, EvaluationConfig, GroqSyntheticProposer,
     checked_synthetic_context, request_payload, MAX_CASES,
-    ProviderCallError, _post_groq
+    ProviderCallError, _post_groq, groq_permission_code
 )
 from shadow_ai.live_eval import run_synthetic, check_free_pilot, FREE_PILOT_CASE_IDS
 from shadow_ai.model_boundary import safe_model_action
@@ -172,6 +173,54 @@ class LiveLLMSafetyTests(unittest.TestCase):
                 _post_groq({"test": True}, KEY, 12)
         self.assertEqual(context.exception.status, "http_400")
         self.assertNotIn("SECRET", str(context.exception))
+
+    def test_restricted_org_or_project_returns_safe_permission_code(self):
+        for code in ("model_permission_blocked_org", "model_permission_blocked_project"):
+            with self.subTest(code=code):
+                body = json.dumps({"error": {
+                    "code": code,
+                    "message": "API key SECRET, user phone 01000000000"
+                }}).encode("utf-8")
+                http_error = HTTPError("https://api.groq.com", 403,
+                                       "PRIVATE", {}, io.BytesIO(body))
+                with patch("shadow_ai.llm_provider.urlopen", side_effect=http_error):
+                    with self.assertRaises(ProviderCallError) as raised:
+                        _post_groq({"test": True}, KEY, 12)
+                self.assertEqual(raised.exception.status, "http_403")
+                self.assertEqual(raised.exception.permission_code, code)
+                self.assertNotIn("SECRET", str(raised.exception))
+                self.assertNotIn("PRIVATE", str(raised.exception))
+
+    def test_untrusted_provider_codes_and_messages_never_leave_error(self):
+        for body in [
+            b'{"error":{"code":"secret-USER-AND-KEY-123","message":"PRIVATE"}}',
+            b'not-json',
+            b'{"error":{"code":"model_permission_blocked_org","message":"PRIVATE"}}' * 200,
+        ]:
+            with self.subTest(size=len(body)):
+                http_error = HTTPError("https://api.groq.com", 403,
+                                       "PRIVATE", {}, io.BytesIO(body))
+                with patch("shadow_ai.llm_provider.urlopen", side_effect=http_error):
+                    with self.assertRaises(ProviderCallError) as raised:
+                        _post_groq({"test": True}, KEY, 12)
+                self.assertIsNone(raised.exception.permission_code)
+                self.assertNotIn("PRIVATE", str(raised.exception))
+                self.assertNotIn("secret-", str(raised.exception))
+
+    def test_permission_code_survives_in_sanitized_single_attempt_report(self):
+        attempts = []
+        def blocked(*args):
+            attempts.append(1)
+            raise ProviderCallError(
+                "http_403", permission_code="model_permission_blocked_project")
+        proposer = GroqSyntheticProposer(config(True), transport=blocked)
+        report = run_synthetic(config(True), max_cases=3, proposer=proposer)
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(report["cases_evaluated"], 1)
+        self.assertEqual(report["cases"][0]["provider_error_status"], "http_403")
+        self.assertEqual(report["cases"][0]["provider_permission_code"],
+                         "model_permission_blocked_project")
+        self.assertNotIn(KEY, json.dumps(report))
 
     def test_first_provider_failure_stops_without_three_wasted_calls(self):
         requests = []

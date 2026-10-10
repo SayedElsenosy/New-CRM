@@ -16,7 +16,7 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush,sendOfficeQualityPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
-import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,shouldCreateHistoryReviewAlert,initialHistoryReview,historicalChatMark,eligibleForAutoAdStart,automaticAdReview} from './reply-scope.js';
+import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,shouldCreateHistoryReviewAlert,initialHistoryReview,historicalChatMark,eligibleForAutoAdStart,automaticAdReview,pauseOnHistoricalStaffReply} from './reply-scope.js';
 import {questionPrompt,areaDetails} from './domain.js';
 import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
@@ -237,7 +237,10 @@ export class Worker {
     // override an explicitly stopped or staff-taken-over conversation.
     const staff=must(await this.db.from('masar_messages').select('id')
      .eq('applicant_id',a.id).eq('direction','out').eq('sender','staff').limit(1));
-    if(!staff.length){
+    if(eligibleForAutoAdStart({
+      historical:historic,outbound:external,account:linkedAccount,referral,
+      answers:patch.answers||a.answers,existing:true,hasStaffHistory:staff.length>0
+    })){
      patch.bot_enabled=true;
      patch.answers={...(patch.answers||a.answers||{}),__history_review:automaticAdReview()};
      try{
@@ -294,8 +297,9 @@ export class Worker {
     // Imported device-side outgoing messages are prior human history, not
     // real-time staff replies. They should never trigger staff learning,
     // alerts resolution or fresh outbound sends.
-    if(a.answers?.__history_review?.status!=='approved'
-      &&accountId&&linkedAccount?.review_new_contacts===true){
+    if(pauseOnHistoricalStaffReply({
+      historical:historic,outbound:external,account:linkedAccount,answers:a.answers
+    })){
      must(await this.db.from('masar_applicants').update({
       bot_enabled:false,
       answers:{...(a.answers||{}),__history_review:initialHistoryReview({source:'prior_staff_conversation'})},

@@ -1,4 +1,5 @@
 import express from 'express';
+import {normalizeReplyMode} from './reply-scope.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import {rateLimit} from 'express-rate-limit';
@@ -503,9 +504,24 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const offices=await officeState(req),officeId=req.role==='admin'?(req.body.office_id?String(req.body.office_id):null):req.officeId;
   if(offices.configured&&!officeId)throw bad('اختر مكتب التوظيف الخاص برقم واتساب');
   if(officeId)await ensureOfficeAccess(req,officeId);
-  const insertRow={name,legacy_session:false,active:true};if(officeId)insertRow.office_id=officeId;
+  const insertRow={name,legacy_session:false,active:true,reply_mode:'off'};if(officeId)insertRow.office_id=officeId;
   const row=must(await db.from('masar_whatsapp_accounts').insert(insertRow).select().single());
   await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));
+ });});
+ managerRoute('put','/whatsapp/accounts/:id/reply-mode',async(req,res)=>{await serial(async()=>{
+  if(!whatsapp.configured||!uuid(req.params.id))throw bad('معرف رقم واتساب غير صحيح');
+  await ensureAccountAccess(req,req.params.id);
+  const mode=String(req.body?.reply_mode||'');
+  if(normalizeReplyMode(mode)!==mode)throw bad('وضع الرد غير صحيح');
+  const row=must(await db.from('masar_whatsapp_accounts')
+   .update({reply_mode:mode,updated_at:new Date().toISOString()})
+   .eq('id',req.params.id).select().single());
+  const linked=whatsapp.item?.(req.params.id);
+  if(linked)linked.account={...linked.account,...row};
+  must(await db.from('masar_events').insert({kind:'whatsapp_reply_mode_changed',
+   staff_id:req.user.id,detail:{account_id:row.id,office_id:row.office_id,reply_mode:mode}}));
+  res.json(whatsapp.snapshot(req.params.id)||row);
+  worker.tick();
  });});
  managerRoute('put','/whatsapp/accounts/:id',async(req,res)=>{await serial(async()=>{
   if(!whatsapp.configured||!uuid(req.params.id))throw bad('معرف رقم واتساب غير صحيح');
@@ -1352,7 +1368,13 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
     if(b.bot_enabled){
      const officeCfg=await config(db,a.office_id||null);
      if(officeCfg.settings?.agent_enabled===false)throw bad('Agent المكتب متوقف حاليًا. مدير المكتب يقدر يشغّله من إعدادات المكتب.',409);
-     const answers={...(a.answers||{})};delete answers.__ai_handoff;patch.answers=answers;
+     const answers={...(a.answers||{})};
+     if(answers.__history_review?.status==='pending'){
+      if(b.history_review_approved!==true)throw bad('راجع محادثة الرقم القديمة أولاً، ثم أكد المراجعة صراحةً قبل تشغيل البوت.',409);
+      answers.__history_review={...answers.__history_review,status:'approved',approved_at:new Date().toISOString(),
+       reviewed_by:req.user.id};
+     }
+     delete answers.__ai_handoff;patch.answers=answers;
      const lastOut=must(await db.from('masar_messages').select('sequence').eq('applicant_id',a.id).eq('direction','out').order('sequence',{ascending:false}).limit(1).maybeSingle());
      let q=db.from('masar_messages').select('id,sequence,status,media_error').eq('applicant_id',a.id).eq('direction','in').eq('status','processed').order('sequence',{ascending:false}).limit(1);
      if(lastOut?.sequence)q=q.gt('sequence',lastOut.sequence);

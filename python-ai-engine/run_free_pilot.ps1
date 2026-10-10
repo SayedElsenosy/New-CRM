@@ -1,6 +1,6 @@
 # SET CRM: Groq Free-only 3-case synthetic pilot on Windows.
 # Never stores or transmits the key to GitHub/ChatGPT. Runs locally only.
-param([switch]$DryRun)
+param([switch]$DryRun, [ValidateRange(1,3)][int]$MaxCases = 1)
 $ErrorActionPreference = "Stop"
 Push-Location $PSScriptRoot
 try {
@@ -11,7 +11,7 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Groq Free pilot - 3 synthetic cases only; NO real CRM conversations." -ForegroundColor Cyan
+    Write-Host "Groq Free pilot - up to 3 synthetic cases; first retry is 1 case only." -ForegroundColor Cyan
     Write-Host "Before proceeding, open Groq Console > Settings > Billing"
     Write-Host "Verify the current organization says FREE (not Developer),"
     Write-Host "and don't upgrade or add a payment method. Free usage has rate limits."
@@ -34,7 +34,7 @@ try {
     $env:SHADOW_GROQ_FREE_TIER_CONFIRMED = "YES"
     $env:SHADOW_GROQ_MODEL = "openai/gpt-oss-20b"
 
-    py -3 -m shadow_ai.live_eval --live --synthetic-only-confirmed --confirm-free-tier --max-cases 3
+    py -3 -m shadow_ai.live_eval --live --synthetic-only-confirmed --confirm-free-tier --max-cases $MaxCases
     if ($LASTEXITCODE -ne 0) { throw "Evaluation failed; see only the safe error above" }
 }
 finally {

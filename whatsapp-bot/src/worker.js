@@ -16,7 +16,7 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush,sendOfficeQualityPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
-import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,initialHistoryReview,historicalChatMark} from './reply-scope.js';
+import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,shouldCreateHistoryReviewAlert,initialHistoryReview,historicalChatMark} from './reply-scope.js';
 import {questionPrompt,areaDetails} from './domain.js';
 import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
@@ -256,28 +256,16 @@ export class Worker {
    const messageRow={applicant_id:a.id,wa_id:record.id,direction:'out',sender:'staff',body:prepared.body,media_path:prepared.media_path,media_type:prepared.media_type,media_error:prepared.media_error,status:'sent',reply_to:source?.id||null,created_at:record.created_at};
    if(multi)messageRow.whatsapp_account_id=accountId;
    const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
-  if(historic)return;
-  if(historyReviewRequired({answers:a.answers})){
-   // A first appearance in the CRM is NOT evidence that the WhatsApp chat is
-   // new. Leave the bot paused until staff inspects the imported history.
-   try{
-    const prior=must(await this.db.from('masar_alerts').select('id')
-     .eq('applicant_id',a.id).eq('kind','history_review').eq('status','open').limit(1));
-    if(!prior.length)must(await this.db.from('masar_alerts').insert({
-     applicant_id:a.id,whatsapp_account_id:accountId,source_message_id:saved.id,
-     kind:'history_review',title:'مراجعة محادثة سابقة قبل تشغيل البوت',
-     body:'الرقم ظهر لأول مرة في CRM. راجع سجل واتساب المستورد، ولو ناقص ارجع للموبايل أو اسأل الموظف قبل الموافقة على تشغيل الرد الآلي.',
-     status:'open',updated_at:new Date().toISOString()
-    }));
-   }catch(error){console.warn('History review alert failed:',error.code||error.name||'Error');}
-  }
    if(historic){
-    // Historical device messages must not be mistaken for a fresh staff reply:
-    // do not learn from them, resolve alerts, or send followups.
-    if(a.bot_enabled!==false&&accountId&&must(await this.db.from('masar_whatsapp_accounts')
-     .select('review_new_contacts').eq('id',accountId).maybeSingle())?.review_new_contacts===true){
+    // Imported device-side outgoing messages are prior human history, not
+    // real-time staff replies. They should never trigger staff learning,
+    // alerts resolution or fresh outbound sends.
+    if(a.bot_enabled!==false&&a.answers?.__history_review?.status!=='approved'
+      &&accountId&&must(await this.db.from('masar_whatsapp_accounts')
+       .select('review_new_contacts').eq('id',accountId).maybeSingle())?.review_new_contacts===true){
      must(await this.db.from('masar_applicants').update({
-      bot_enabled:false,answers:{...(a.answers||{}),__history_review:initialHistoryReview({source:'prior_staff_conversation'})},
+      bot_enabled:false,
+      answers:{...(a.answers||{}),__history_review:initialHistoryReview({source:'prior_staff_conversation'})},
       updated_at:new Date().toISOString()
      }).eq('id',a.id));
     }
@@ -302,7 +290,7 @@ export class Worker {
    try{await syncRecruitmentStageFromConversation(this.db,a.id,{source:'linked_whatsapp_staff_reply'});}
    catch(e){console.warn('Conversation stage inference failed:',e.code||e.name||'Error');}
    try{
-    const result=await this.db.from('masar_alerts').update({status:'resolved',resolved_at:new Date().toISOString(),resolution:'linked_whatsapp_reply',updated_at:new Date().toISOString()}).eq('applicant_id',a.id).eq('status','open');
+    const result=await this.db.from('masar_alerts').update({status:'resolved',resolved_at:new Date().toISOString(),resolution:'linked_whatsapp_reply',updated_at:new Date().toISOString()}).eq('applicant_id',a.id).eq('status','open').neq('kind','history_review');
     if(result.error)throw result.error;
    }catch(e){if(!schemaMissing(e)&&e.code!=='PGRST204')throw e;}
    return;
@@ -324,6 +312,22 @@ export class Worker {
   if(historic||prepared.is_audio&&(!prepared.transcribed||!prepared.transcription_trusted))messageRow.status='processed';
   if(multi)messageRow.whatsapp_account_id=accountId;
   const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
+  if(historic)return;
+  if(shouldCreateHistoryReviewAlert({historical:historic,answers:a.answers})){
+   // Never send a new automation before the staff can see why it was paused.
+   // Historical synced messages should be recorded silently; an actual live
+   // inbound message creates a single actionable review alert.
+   try{
+    const prior=must(await this.db.from('masar_alerts').select('id')
+     .eq('applicant_id',a.id).eq('kind','history_review').eq('status','open').limit(1));
+    if(!prior.length)must(await this.db.from('masar_alerts').insert({
+     applicant_id:a.id,whatsapp_account_id:accountId,source_message_id:saved.id,
+     kind:'history_review',title:'مراجعة المحادثة قبل تشغيل البوت',
+     body:'الرد الآلي متوقف مؤقتًا لمراجعة محادثة واتساب القديمة قبل أول رد. لو سجل الرسائل ناقص، ارجع لواتساب أو مسؤول التوظيف ثم اعتمد تشغيل البوت من ملف المتقدم.',
+     status:'open',updated_at:new Date().toISOString()
+    }));
+   }catch(error){console.warn('History review alert failed:',error.code||error.name||'Error');}
+  }
   if(prepared.is_audio){
    must(await this.db.from('masar_events').insert({applicant_id:a.id,kind:'voice_message',detail:{message_id:saved.id,direction:'in',transcribed:Boolean(prepared.transcribed),transcription_trusted:Boolean(prepared.transcription_trusted),transcription_confidence:prepared.transcription_confidence}}));
   }

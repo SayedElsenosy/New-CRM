@@ -151,8 +151,9 @@ def _intent_tags(text: str, distinct_places: list[str]) -> list[str]:
         intents.append("pay_details")
     if _NEARBY.search(text):
         intents.append("nearby_work")
-    if _EXPLICIT_WORK.search(text) and distinct_places and not _NEGATION.search(
-            text[max(0, text.find(distinct_places[0]) - 12):text.find(distinct_places[0])]):
+    if distinct_places and any(
+            not _NEGATION.search(text[max(0, match.start() - 9):match.start()])
+            for match in _EXPLICIT_WORK.finditer(text)):
         intents.append("work_area_proposal")
     if _CORRECTION.search(text):
         intents.append("correction")
@@ -235,6 +236,9 @@ def plan(payload: dict[str, Any]) -> dict[str, Any]:
     elif "work_area_proposal" in intents:
         action = "request_explicit_work_area_confirmation"
         next_question = "تؤكد إن دي منطقة الشغل اللي تقدر تلتزم بيها يوميًا؟"
+    elif "continue_application" in intents:
+        action = "resume_application_without_reset"
+        next_question = None
     else:
         action = "clarify_or_continue"
         next_question = None

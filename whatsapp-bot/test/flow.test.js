@@ -449,10 +449,11 @@ test('bot compares two explicitly named areas without inventing missing details'
   questions,areas:liveAreas,settings,interpret,knowledge:[]
  });
  assert.match(r.reply,/أكتوبر/);
- assert.match(r.reply,/الشفت 9 ساعات/);
+ assert.match(r.reply,/شيفت 9 ساعات/);
  assert.match(r.reply,/الشيخ زايد/);
- assert.match(r.reply,/تفاصيل المنطقة لسه مش مضافة/);
- assert.match(r.reply,/اسمك بالكامل/);
+ assert.match(r.reply,/تفاصيل الوظيفة غير مسجلة/);
+ assert.doesNotMatch(r.reply,/نكمل التقديم:|اسمك بالكامل/);
+ assert.equal(r.patch.awaiting_id,'name');
 });
 
 
@@ -492,7 +493,7 @@ test('multi-turn area comparison remembers places and applicant priority without
  assert.equal(second.patch.awaiting_id,'name');
  assert.equal(second.patch.answers.area,undefined);
  assert.match(second.reply,/الشيخ زايد/);
- assert.match(second.reply,/نكمل التقديم/);
+ assert.doesNotMatch(second.reply,/نكمل التقديم/);
 });
 
 

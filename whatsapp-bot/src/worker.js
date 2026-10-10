@@ -203,12 +203,13 @@ export class Worker {
   // Keep new candidates in the office associated with the receiving
   // WhatsApp account. The office's questions/areas must not cross tenants.
   const linkedAccount=!a&&accountId?must(await this.db.from('masar_whatsapp_accounts')
-   .select('office_id,active,reply_mode').eq('id',accountId).maybeSingle()):null;
+   .select('office_id,active,reply_mode,review_new_contacts').eq('id',accountId).maybeSingle()):null;
   const referral=hasVerifiedAdReferral(record.referral)?record.referral:null;
   let applicantWasCreated=false;
   if(!a){
+   const requireReview=linkedAccount?.review_new_contacts===true;
    const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at,
-    bot_enabled:false,answers:{__history_review:initialHistoryReview({source:historic?'imported_whatsapp_history':'first_seen_after_link'})}};
+    ...(requireReview?{bot_enabled:false,answers:{__history_review:initialHistoryReview({source:historic?'imported_whatsapp_history':'first_seen_after_link'})}}:{})};
    if(multi)row.whatsapp_account_id=accountId;
    if(linkedAccount?.office_id)row.office_id=linkedAccount.office_id;
    if(referral)row.answers=withFirstAttribution(row.answers,referral);
@@ -272,7 +273,8 @@ export class Worker {
    if(historic){
     // Historical device messages must not be mistaken for a fresh staff reply:
     // do not learn from them, resolve alerts, or send followups.
-    if(a.bot_enabled!==false){
+    if(a.bot_enabled!==false&&accountId&&must(await this.db.from('masar_whatsapp_accounts')
+     .select('review_new_contacts').eq('id',accountId).maybeSingle())?.review_new_contacts===true){
      must(await this.db.from('masar_applicants').update({
       bot_enabled:false,answers:{...(a.answers||{}),__history_review:initialHistoryReview({source:'prior_staff_conversation'})},
       updated_at:new Date().toISOString()

@@ -12,6 +12,11 @@ jobs:
       - run: npm install
       - run: npm test
       - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Paired synthetic Node/Python evaluation (report only)
+        run: PYTHONPATH=python-ai-engine python -m shadow_ai.paired_eval
 
   python-shadow-check:
     runs-on: ubuntu-latest
@@ -26,3 +31,6 @@ jobs:
       - name: Python synthetic quality report
         working-directory: python-ai-engine
         run: python -m shadow_ai.evaluate
+      - name: Python shared-fixture contract
+        working-directory: python-ai-engine
+        run: python -m shadow_ai.paired_eval --python-only --fail-on-python

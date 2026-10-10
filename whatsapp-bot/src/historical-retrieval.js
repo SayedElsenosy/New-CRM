@@ -7,6 +7,10 @@ import {norm} from './domain.js';
  * considered; office facts always come from the current, verified CRM.
  */
 const TOPIC={
+ comparison:{
+  ask:/(?:قارن|مقارن|مقارنه|الفرق|انسب|احسن|افضل|ترشح|رشحت|الاحسن|نصيحتك)/,
+  terms:['قارن','مقارن','مقارنة','المقارنة','الفرق','انسب','أفضل','افضل','احسن','الهرم','زايد','المطاعم','الماركت']
+ },
  residence:{
   ask:/(?:ساكن|سكن|بيتي|فين|منصوري|الهرم|اقرب|قريب|عنواني|مكان سكن)/,
   terms:['ساكن','سكن','المنصور','الهرم','بيتي','عنوان','المنطقه','المنطقة','القريب']
@@ -48,10 +52,10 @@ function topicMatch(text){
 function queryTerms(text){
  const tags=topicMatch(text);
  if(!tags.length||(!HISTORIC_TRIGGER.test(norm(text))&&tags.length===1&&!/^(?:residence|job)$/.test(tags[0])))return [];
- const chosen=tags.includes('residence')?['residence']:tags.includes('payroll')?['payroll']:
+ const chosen=tags.includes('comparison')?['comparison']:tags.includes('residence')?['residence']:tags.includes('payroll')?['payroll']:
   tags.includes('shift')?['shift']:tags.includes('documents')?['documents']:
   tags.includes('job')?['job']:tags.includes('corrections')?['corrections']:[];
- const terms=[...new Set(chosen.flatMap(tag=>TOPIC[tag].terms))].slice(0,9);
+ const terms=[...new Set(chosen.flatMap(tag=>TOPIC[tag].terms))].slice(0,10);
  return terms.filter(t=>/^[\p{L}\d]{3,20}$/u.test(t));
 }
 function relevance(row,terms,query){

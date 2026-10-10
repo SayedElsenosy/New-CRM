@@ -76,6 +76,8 @@ def run_synthetic(config: EvaluationConfig, *, max_cases: int = 3,
                 "matches_labeled_action": baseline["action"] == case.get("expect", {}).get("python_action"),
                 "model_action_matches_reference": None,
                 "provider_error_status": status,
+                "provider_permission_code": error.permission_code if isinstance(
+                    error, ProviderCallError) else None,
                 "fallback_to_rules": True,
                 "latency_ms": proposer.last_latency_ms,
                 "prompt_tokens": 0, "completion_tokens": 0,

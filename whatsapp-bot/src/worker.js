@@ -237,9 +237,13 @@ export class Worker {
     // override an explicitly stopped or staff-taken-over conversation.
     const staff=must(await this.db.from('masar_messages').select('id')
      .eq('applicant_id',a.id).eq('direction','out').eq('sender','staff').limit(1));
+    const manualStop=must(await this.db.from('masar_events').select('id')
+     .eq('applicant_id',a.id).eq('kind','staff_update')
+     .contains('detail',{bot_enabled:false}).limit(1));
     if(eligibleForAutoAdStart({
       historical:historic,outbound:external,account:linkedAccount,referral,
-      answers:patch.answers||a.answers,existing:true,stage:a.stage,hasStaffHistory:staff.length>0
+      answers:patch.answers||a.answers,existing:true,stage:a.stage,
+      hasStaffHistory:staff.length>0||manualStop.length>0
     })){
      patch.bot_enabled=true;
      patch.answers={...(patch.answers||a.answers||{}),__history_review:automaticAdReview()};

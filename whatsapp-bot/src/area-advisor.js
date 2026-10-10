@@ -418,21 +418,33 @@ function uniqueBest(rows,scoreFn,{lowest=false}={}){
  if(scored[1]&&scored[0].score===scored[1].score)return null;
  return scored[0].row;
 }
+function shortComparisonFacts(area,{max=3}={}){
+ const p=areaProfile(area),facts=[];
+ if(p.fixedSalary)facts.push('ثابت شهري '+money(p.fixedSalary)+' جنيه');
+ if(p.weeklyMin&&p.weeklyMax)facts.push('متوسط أسبوعي '+money(p.weeklyMin)+'–'+money(p.weeklyMax)+' جنيه');
+ else if(p.weeklyAverage)facts.push('متوسط أسبوعي '+money(p.weeklyAverage)+' جنيه');
+ if(p.orderPrice)facts.push('الأوردر من '+money(p.orderPrice)+' جنيه');
+ if(p.shiftHours)facts.push('شيفت '+p.shiftHours+' ساعات');
+ const benefits=benefitLabels(p);
+ if(benefits.length)facts.push(benefits.slice(0,2).join(' + '));
+ // No raw multi-paragraph office descriptions in comparisons. Full details
+ // remain available through the explicit details route.
+ if(!facts.length){
+  const first=String(area?.details||'').split(/\n/).map(x=>x.trim()).find(Boolean)||'';
+  return first?first.slice(0,115):'التفاصيل المسجلة غير كافية للمقارنة';
+ }
+ return facts.slice(0,max).join(' · ');
+}
 function placeComparisonBlock(family){
  const place=displayPlace(family);
- const variants=(family||[]).filter(a=>areaMode(a)!=='general'&&String(a.details||'').trim());
  const detailed=(family||[]).filter(a=>String(a.details||'').trim());
- const source=variants.length?variants:detailed.slice(0,1);
- if(!source.length){
-  const general=(family||[]).find(a=>areaMode(a)==='general')||family?.[0];
-  const fallback=general?areaDetails(general).replace(/^📍\s*/,''):(place+'\nتفاصيل المنطقة لسه مش مضافة. مسؤول التوظيف يقدر يوضحها ليك.');
-  return '• '+fallback;
- }
+ const variants=detailed.filter(a=>areaMode(a)!=='general');
+ const source=variants.length?variants.slice(0,3):detailed.slice(0,1);
+ if(!source.length)return '• '+place+': تفاصيل الوظيفة غير مسجلة بما يكفي للمقارنة';
  if(source.length===1){
-  const raw=areaDetails(source[0]).replace(/^📍\s*/,'');
-  return '• '+raw;
+  return '• '+place+' ('+modeLabel(areaMode(source[0]))+'): '+shortComparisonFacts(source[0]);
  }
- return '• '+place+':\n'+source.slice(0,3).map(v=>'  - '+modeLabel(areaMode(v))+': '+compactAreaSummary(v)).join('\n');
+ return '• '+place+':\n'+source.map(area=>'  - '+modeLabel(areaMode(area))+': '+shortComparisonFacts(area,{max:2})).join('\n');
 }
 function comparisonPriority(text){
  const n=norm(text);
@@ -448,57 +460,63 @@ function storedComparisonKeys(answers,areas){
  const valid=new Set((areas||[]).filter(a=>a?.active===true).map(areaPlaceKey).filter(Boolean));
  return [...new Set(raw.map(x=>norm(x)).filter(x=>valid.has(x)))].slice(0,4);
 }
+function comparableIncomeWinner(rows){
+ // Do not compare a monthly salary with weekly earnings, or a weekly
+ // maximum with an average. Only compare the same type of number.
+ for(const key of ['weeklyAverage','weeklyMax','fixedSalary']){
+  if(rows.every(row=>Number(row.metrics[key])>0)){
+   return {winner:uniqueBest(rows,row=>row.metrics[key]),basis:key};
+  }
+ }
+ return {winner:null,basis:null};
+}
 function crossPlaceRecommendation(families,text,priority=null,profile=null){
  const rows=families.map(family=>({family,place:displayPlace(family),metrics:placeMetrics(family)}));
- const n=norm(text);
  const detected=priority||comparisonPriority(text)||profile?.primary||null;
- const asksBenefits=['benefits','stability'].includes(detected)||/(مميزات|مزايا|تامين|تأمين|اجازات|إجازات|ثبات|استقرار)/.test(n);
- const asksIncome=detected==='income'||/(دخل|فلوس|قبض|مرتب|راتب|اوردر|أوردر)/.test(n);
- const asksDistance=detected==='distance'||/(زون|مسافه|مسافة|قريب|اقرب|أقرب)/.test(n);
- const asksShift=detected==='shift';
- if(asksBenefits){
-  const winner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
-  if(winner)return 'لو تركيزك على المميزات والثبات، '+winner.place+' ظاهر أقوى في البيانات المسجلة عندنا.';
-  const optionsWinner=uniqueBest(rows,x=>x.metrics.modeCount);
-  if(optionsWinner)return 'المميزات الأساسية المسجلة متقاربة، لكن '+optionsWinner.place+' عنده خيارات تشغيل أكتر حاليًا.';
-  return 'من ناحية المميزات والثبات، البيانات المسجلة متقاربة بين المناطق دي.';
- }
- if(asksIncome){
-  const winner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);
-  if(winner)return 'لو أهم حاجة عندك سقف الدخل، '+winner.place+' ظاهر أقوى في الأرقام المسجلة.';
-  return 'من ناحية الدخل، الأرقام المسجلة متقاربة ومفيش فائز واضح.';
- }
- if(asksDistance){
-  const winner=uniqueBest(rows,x=>x.metrics.zoneKm||0,{lowest:true});
-  if(winner)return 'لو يهمك الزون الأقصر، '+winner.place+' ظاهر أنسب من البيانات المسجلة.';
-  return 'من ناحية الزون، البيانات المسجلة متقاربة ومفيش فرق واضح.';
- }
- if(asksShift){
-  const winner=uniqueBest(rows,x=>x.metrics.shiftHours||0,{lowest:true});
-  if(winner)return 'بما إن ساعات الشغل الأقل مهمة ليك، '+winner.place+' ظاهر أنسب حسب الشيفت المسجل.';
-  return 'من ناحية ساعات الشيفت، مفيش فرق واضح في البيانات المسجلة.';
- }
- if(!priority&&!comparisonPriority(text)&&profile?.preferred_mode){
-  const winner=uniqueBest(rows,x=>x.metrics.profiles.some(p=>p.mode===profile.preferred_mode)?1:0);
-  if(winner)return 'وبما إنك مفضل '+modeLabel(profile.preferred_mode)+'، '+winner.place+' أقرب لتفضيلك لأنه متاح فيه النظام ده.';
- }
  const benefitsWinner=uniqueBest(rows,x=>x.metrics.benefitsCount*10+(x.metrics.fixedSalary?2:0));
- const incomeWinner=uniqueBest(rows,x=>x.metrics.weeklyMax||x.metrics.weeklyAverage||x.metrics.fixedSalary||0);
- if(benefitsWinner&&incomeWinner){
-  if(benefitsWinner.place===incomeWinner.place)return 'بشكل عام من البيانات المسجلة، '+benefitsWinner.place+' ظاهر أقوى في المميزات وكمان الدخل، لكن القرار النهائي يعتمد على النظام المتاح هناك.';
-  return benefitsWinner.place+' أقوى في المميزات والثبات، بينما '+incomeWinner.place+' أقوى في سقف الدخل.';
+ const income=comparableIncomeWinner(rows);
+ if(detected==='distance'){
+  return 'الزون المسجل يخص نطاق التوصيل أثناء الشغل، مش مشوارك من البيت. من غير عنوان عمل أو زمن مواصلات موثوق مش هقولك مين الأقرب.';
  }
- if(benefitsWinner)return benefitsWinner.place+' ظاهر أقوى من ناحية المميزات المسجلة.';
- if(incomeWinner)return incomeWinner.place+' ظاهر أقوى من ناحية الدخل المسجل.';
- return 'مفيش منطقة أقدر أقول إنها أحسن مطلقًا من غير ما تحدد أولويتك.';
+ if(detected==='shift'){
+  const winner=uniqueBest(rows,x=>x.metrics.shiftHours||0,{lowest:true});
+  return winner?'أقصر شيفت مسجل ضمن خيارات '+winner.place+'، بس ده ممكن يختلف حسب نظام الشغل.':'مفيش بيانات شيفت قابلة للمقارنة بشكل مؤكد.';
+ }
+ if(detected==='income'){
+  return income.winner?'بالنسبة لنفس نوع الدخل المسجل، '+income.winner.place+' ظاهر أعلى، لكن المبلغ المتوقع مش مضمون.'
+   :'مش هقارن مرتب شهري بدخل أسبوعي أو سقف أوردرات؛ دول أرقام مختلفة ومش دليل إن منطقة أحسن في الدخل.';
+ }
+ if(['benefits','stability'].includes(detected)){
+  return benefitsWinner?'لو المميزات أو الثبات أهم عندك، فيه خيار في '+benefitsWinner.place+' ظاهر أقوى في البيانات المسجلة؛ مش شرط كل الأنظمة هناك بنفس الشروط.'
+   :'المميزات المسجلة متقاربة، ولازم نحدد نظام الشغل المناسب قبل الترشيح.';
+ }
+ if(profile?.preferred_mode){
+  const modeWinner=uniqueBest(rows,x=>x.metrics.profiles.some(p=>p.mode===profile.preferred_mode)?1:0);
+  if(modeWinner)return 'بما إنك مفضل '+modeLabel(profile.preferred_mode)+'، النظام ده موجود في '+modeWinner.place+'، لكن لسه محتاجين نتأكد من ملاءمة المشوار.';
+ }
+ if(benefitsWinner&&income.winner&&benefitsWinner.place!==income.winner.place){
+  return benefitsWinner.place+' فيه خيار أقوى في المميزات، بينما '+income.winner.place+' أعلى في الدخل القابل للمقارنة؛ الاختيار مش محسوم من غير أولويتك.';
+ }
+ if(benefitsWinner)return 'من ناحية المميزات، فيه خيار في '+benefitsWinner.place+' ظاهر أقوى، بس ما نقدرش نعتبره الأفضل ليك قبل ما نعرف مشوار الشغل وأولوياتك.';
+ if(income.winner)return 'في نوع الدخل القابل للمقارنة، '+income.winner.place+' ظاهر أعلى؛ لكن ده لوحده مش كفاية لاختيار الأنسب ليك.';
+ return 'البيانات مش كفاية لترشيح منطقة أفضل بشكل مؤكد من غير معرفة أولوياتك.';
 }
-function comparePlacesReply(keys,areas,text,priority=null,profile=null){
+function comparePlacesReply(keys,areas,text,priority=null,profile=null,answers={}){
  const families=keys.map(key=>familyByKey(areas,key)).filter(x=>x.length);
  if(families.length<2)return null;
- return 'لو بنقارن '+families.map(displayPlace).join(' و ')+' حسب البيانات المسجلة عندنا:\n\n'
-  +families.map(placeComparisonBlock).join('\n\n')
+ const source=answers?.__residence_clarification;
+ const residenceHint=source?.reference_place==='haram'
+  ?'\n\nإنت ذكرت المنصورية ناحية الهرم كمرجع لسكنك، لكن ماعنديش زمن مشوار مؤكّد لأي مكان شغل.'
+  :'';
+ const question=priority==='distance'
+  ?'تقدر تتحمل مشوار شغل يومي قد إيه؟'
+  :residenceHint?'علشان أرشحلك الأنسب: القرب من البيت أهم عندك ولا ثبات الدخل والمميزات؟'
+   :priority?'تحب نركز على '+(PRIORITY_LABELS[priority]||'أولويتك')+'، ولا فيه عامل تاني مهم عندك؟'
+    :'إيه الأهم ليك: القرب من البيت ولا ثبات الدخل والمميزات؟';
+ return 'مقارنة سريعة حسب بيانات الشغل المسجلة حاليًا:\n\n'
+  +families.map(placeComparisonBlock).join('\n')
   +'\n\n'+crossPlaceRecommendation(families,text,priority,profile)
-  +'\n\nلو تقولي أهم حاجة عندك إيه — الدخل، المميزات، ثبات المرتب، ولا الزون — أقولك اختياري ليك بشكل أدق.';
+  +residenceHint+'\n\n'+question;
 }
 function compareReply(items,text,place,profile=null){
  const lines=items.map(area=>'• '+modeLabel(areaMode(area))+': '+compactAreaSummary(area));
@@ -546,12 +564,12 @@ export function conversationalAreaAdvice(text,areas,answers={}){
  const priority=comparisonPriority(text)||profile.primary||null;
  const storedKeys=storedComparisonKeys(answers,active);
  if((compare||priority)&&explicit.length>=2){
-  const reply=comparePlacesReply(explicit,active,text,priority,profile);
+  const reply=comparePlacesReply(explicit,active,text,priority,profile,answers);
   if(reply)return {reply,action:'compare_places',comparisonKeys:explicit,priority};
  }
  if((compare||priority)&&explicit.length<2&&storedKeys.length>=2){
   const rememberedPriority=comparisonPriority(text)||answers?.__area_comparison?.priority||profile.primary||null;
-  const reply=comparePlacesReply(storedKeys,active,text,rememberedPriority,profile);
+  const reply=comparePlacesReply(storedKeys,active,text,rememberedPriority,profile,answers);
   if(reply)return {reply,action:'compare_places_followup',comparisonKeys:storedKeys,priority:rememberedPriority};
  }
  const key=explicit[0]||contextKey(answers,active);

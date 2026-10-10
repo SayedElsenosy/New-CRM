@@ -384,7 +384,12 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  const qualificationFlowEnabled=qs.some(q=>q.field_key==='has_motorcycle')&&qs.some(q=>q.field_key==='preferred_work_area');
 
  const openingFacts=settings.ai_enabled?extractConversationFacts(m.body,qs,areas):[];
- if(isFreshApplicationStart(a,m)&&openingFacts.length===0){
+ // Prior staff-led chats approved for handover are continuations, even if
+ // their first captured message carries an ad referral. Don't restart the
+ // candidate journey or send a welcome as though this is a new contact.
+ const approvedPrelinkHistory=answers.__history_review?.status==='approved'
+  &&['prior_staff_conversation','imported_whatsapp_history'].includes(answers.__history_review?.source);
+ if(isFreshApplicationStart(a,m)&&openingFacts.length===0&&!approvedPrelinkHistory){
   const first=nextMissing(qs,answers,areas)||qs[0];
   const welcome=String(settings.welcome||'').trim();
   const firstQuestion=openingQuestionPrompt(first,areas);

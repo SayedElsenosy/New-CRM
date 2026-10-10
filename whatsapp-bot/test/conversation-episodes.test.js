@@ -96,7 +96,7 @@ test('live screenshot scenario: old Haram/Zayed comparison yields current CRM te
  });
  assert.equal(turn.agent_action,'compare_places');
  assert.match(turn.reply,/المقارنة/);
- assert.match(turn.reply,/5225/);
+ assert.match(turn.reply,/5,?225/);
  assert.match(turn.reply,/38/);
  assert.doesNotMatch(turn.reply,/99999/);
  assert.doesNotMatch(turn.reply,/نكمل التقديم: حابب تنزل شغل في أنهي منطقة/);

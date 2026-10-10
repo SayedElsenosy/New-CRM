@@ -51,7 +51,7 @@ test('Never equate delivery zones with home-to-work commuting distance',()=>{
  assert.doesNotMatch(r.reply,/الشيخ زايد أقرب لبيتك|الهرم أقرب لبيتك/);
 });
 test('Monthly fixed salary vs weekly delivery earnings is not a direct income ranking',()=>{
- const r=conversationalAreaAdvice('الهرم ولا الشيخ زايد انهي احسن من ناحية المرتب؟',areas,{});
+ const r=conversationalAreaAdvice('الهرم ولا الشيخ زايد انهي احسن من ناحية المرتب؟',[areas[0],areas[1]],{});
  assert.equal(r.action,'compare_places');
  assert.match(r.reply,/مرتب شهري بدخل أسبوعي|أرقام مختلفة/);
  assert.doesNotMatch(r.reply,/الشيخ زايد.*أعلى في الدخل|الهرم.*أعلى في الدخل/);

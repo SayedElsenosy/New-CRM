@@ -34,11 +34,21 @@ async function accessToken(){
 }
 
 async function request(route,options,token){
- return fetch(base+'/api'+route,{
-  ...options,
-  headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...options.headers},
-  signal:options.signal||AbortSignal.timeout(25000)
- });
+ const {timeoutMs=25000,...fetchOptions}=options;
+ const limit=Number.isFinite(timeoutMs)?Math.max(1000,Math.min(180000,timeoutMs)):25000;
+ try{
+  return await fetch(base+'/api'+route,{
+   ...fetchOptions,
+   headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`,...fetchOptions.headers},
+   signal:fetchOptions.signal||AbortSignal.timeout(limit)
+  });
+ }catch(error){
+  if(['AbortError','TimeoutError'].includes(error?.name)||/fetch is aborted|signal is aborted/i.test(String(error?.message||''))){
+   const e=new Error('الاتصال بالخدمة اتأخر أو اتقطع قبل تأكيد النتيجة. راجع البيانات الحالية قبل تكرار الحفظ أو الحذف.');
+   e.code='REQUEST_ABORTED';throw e;
+  }
+  throw error;
+ }
 }
 
 export async function api(route,options={}){
@@ -55,7 +65,7 @@ export async function api(route,options={}){
  }
  return options.raw?response:response.json();
 }
-export const send=(route,body={},method='POST')=>api(route,{method,body:JSON.stringify(body)});
+export const send=(route,body={},method='POST',options={})=>api(route,{...options,method,body:JSON.stringify(body)});
 export const STAGES={new:'جديد',incomplete:'لم يكمل البيانات',complete:'أرسل البيانات بالكامل',lecture:'حضر المحاضرة',working:'بدأ شغل'};
 export const RECRUITMENT_STAGES={new:'جديد',review:'قيد المراجعة',interview:'في المقابلة',accepted:'تم القبول',hired:'تم التعيين',rejected:'مرفوض'};
 export const INTERVIEW_STATUSES={scheduled:'مجدولة',completed:'تمت',cancelled:'ملغاة',no_show:'لم يحضر'};

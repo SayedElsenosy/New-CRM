@@ -504,7 +504,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const offices=await officeState(req),officeId=req.role==='admin'?(req.body.office_id?String(req.body.office_id):null):req.officeId;
   if(offices.configured&&!officeId)throw bad('اختر مكتب التوظيف الخاص برقم واتساب');
   if(officeId)await ensureOfficeAccess(req,officeId);
-  const insertRow={name,legacy_session:false,active:true,reply_mode:'off'};if(officeId)insertRow.office_id=officeId;
+  const insertRow={name,legacy_session:false,active:true,reply_mode:'off',review_new_contacts:true};if(officeId)insertRow.office_id=officeId;
   const row=must(await db.from('masar_whatsapp_accounts').insert(insertRow).select().single());
   await whatsapp.add(row);res.status(201).json(whatsapp.snapshot(row.id));
  });});
@@ -514,10 +514,10 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
   const mode=String(req.body?.reply_mode||'');
   if(normalizeReplyMode(mode)!==mode)throw bad('وضع الرد غير صحيح');
   const row=must(await db.from('masar_whatsapp_accounts')
-   .update({reply_mode:mode,updated_at:new Date().toISOString()})
+   .update({reply_mode:mode,review_new_contacts:true,updated_at:new Date().toISOString()})
    .eq('id',req.params.id).select().single());
   const linked=whatsapp.item?.(req.params.id);
-  if(linked)linked.account={...linked.account,...row};
+  if(linked){linked.account={...linked.account,...row};linked.connection.syncHistory=true;}
   must(await db.from('masar_events').insert({kind:'whatsapp_reply_mode_changed',
    staff_id:req.user.id,detail:{account_id:row.id,office_id:row.office_id,reply_mode:mode}}));
   res.json(whatsapp.snapshot(req.params.id)||row);

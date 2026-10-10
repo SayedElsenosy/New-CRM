@@ -27,13 +27,17 @@ export function isVerifiedCampaignLead(referral){
  )&&(String(referral.source_id||'').trim()||String(referral.ctwa_clid||'').trim()));
 }
 const AUTO_REVIEW_SOURCES=new Set(['first_seen_after_link','imported_whatsapp_history']);
-export function eligibleForAutoAdStart({historical=false,outbound=false,account=null,referral=null,answers=null,existing=false}={}){
- if(historical||outbound||account?.active!==true||account?.review_new_contacts!==true)return false;
+export function eligibleForAutoAdStart({historical=false,outbound=false,account=null,referral=null,answers=null,existing=false,hasStaffHistory=false}={}){
+ if(historical||outbound||hasStaffHistory||account?.active!==true||account?.review_new_contacts!==true)return false;
  if(!accountCanReply(account.reply_mode,{referral,firstAttribution:answers?.__attribution}))return false;
  if(!isVerifiedCampaignLead(referral)&&!isVerifiedCampaignLead(answers?.__attribution))return false;
  if(!existing)return true;
  const history=answers?.__history_review;
  return history?.status==='pending'&&AUTO_REVIEW_SOURCES.has(history.source);
+}
+export function pauseOnHistoricalStaffReply({historical=false,outbound=false,account=null,answers={}}={}){
+ return historical&&outbound&&account?.review_new_contacts===true
+  &&answers?.__history_review?.status!=='approved';
 }
 export function automaticAdReview(){
  return {status:'auto_started',source:'verified_campaign_without_known_staff_history',at:new Date().toISOString()};

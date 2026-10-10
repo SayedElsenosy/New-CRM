@@ -6,6 +6,7 @@ import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {paymentTimingAdvice} from './payment-info.js';
 import {mansouriyaGuidance} from './residence-guidance.js';
 import {contextualAreaFollowup,rememberAreaDetails} from './contextual-area-followup.js';
+import {initialApplicantQuestion,contextualShiftQuestion} from './job-side-questions.js';
 import {answerHistoricResidenceRecall} from './historical-recall-answer.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';

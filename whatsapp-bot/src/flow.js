@@ -6,7 +6,7 @@ import {asksForNearbyArea,mentionsResidence} from './location.js';
 import {paymentTimingAdvice} from './payment-info.js';
 import {mansouriyaGuidance} from './residence-guidance.js';
 import {contextualAreaFollowup,rememberAreaDetails} from './contextual-area-followup.js';
-import {initialApplicantQuestion,contextualShiftQuestion} from './job-side-questions.js';
+import {initialApplicantQuestion,contextualShiftQuestion,clarifyUnlocatedNearbyRequest} from './job-side-questions.js';
 import {answerHistoricResidenceRecall} from './historical-recall-answer.js';
 import {nearestWorkAreasWithFreeMaps,nearestWorkAreaFreeReply} from './geoapify-maps.js';
 import {plannerFactsForQuestions} from './agent-runtime.js';
@@ -510,6 +510,8 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
  if(!protocolAction&&!m.media_path){
   const shift=contextualShiftQuestion({text:m.body,answers,areas});
   if(shift)return {patch:{awaiting_id:a.awaiting_id||null},reply:shift.reply,agent_action:shift.action};
+  const nearby=clarifyUnlocatedNearbyRequest(m.body);
+  if(nearby)return {patch:{awaiting_id:a.awaiting_id||null},reply:nearby.reply,agent_action:nearby.action};
  }
  const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
  const recommendationPreferences=settings.ai_enabled&&!protocolAction?extractRecommendationPreferences(m.body):[];

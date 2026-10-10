@@ -27,8 +27,9 @@ export function isVerifiedCampaignLead(referral){
  )&&(String(referral.source_id||'').trim()||String(referral.ctwa_clid||'').trim()));
 }
 const AUTO_REVIEW_SOURCES=new Set(['first_seen_after_link','imported_whatsapp_history']);
-export function eligibleForAutoAdStart({historical=false,outbound=false,account=null,referral=null,answers=null,existing=false,hasStaffHistory=false}={}){
+export function eligibleForAutoAdStart({historical=false,outbound=false,account=null,referral=null,answers=null,existing=false,hasStaffHistory=false,stage='new'}={}){
  if(historical||outbound||hasStaffHistory||account?.active!==true||account?.review_new_contacts!==true)return false;
+ if(existing&&(answers?.__bot_paused_by_staff===true||!['new','incomplete'].includes(stage)))return false;
  if(!accountCanReply(account.reply_mode,{referral,firstAttribution:answers?.__attribution}))return false;
  if(!isVerifiedCampaignLead(referral)&&!isVerifiedCampaignLead(answers?.__attribution))return false;
  if(!existing)return true;

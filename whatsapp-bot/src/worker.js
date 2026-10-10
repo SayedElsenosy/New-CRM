@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
+import {buildTurnPipeline} from './agent-pipeline.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {loadLifetimeMemory} from './lifetime-memory.js';
 import {retrieveHistoricalExcerpts,historicalRecallNeeded} from './historical-retrieval.js';
@@ -454,6 +455,8 @@ export class Worker {
      // Backfill the entire existing history once, then incrementally index
      // every previously unseen message, including staff replies and corrections.
      // A memory-index failure must never prevent the applicant getting a reply.
+     const memoryStarted=Date.now();
+     let memoryStatus='done';
      let lifetimeChanged=false;
      try{
       const loaded=await loadLifetimeMemory(this.db,{
@@ -464,14 +467,20 @@ export class Worker {
        lifetimeChanged=true;
       }
      }catch(memoryError){
+      memoryStatus='degraded';
       console.warn('Lifetime conversation memory unavailable:',memoryError.code||memoryError.name||'Error');
      }
+     const memoryMs=Date.now()-memoryStarted;
+     const knowledgeStarted=Date.now();
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
+     const knowledgeMs=Date.now()-knowledgeStarted;
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
      let recentMessages=[];
      let historicalExcerpts=[];
      let conversationEpisodes=[];
-     if(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m)){
+     const understandingStarted=Date.now();
+     const plannerAttempted=Boolean(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m));
+     if(plannerAttempted){
       try{
        const recent=must(await this.db.from('masar_messages').select('sequence,direction,sender,body,created_at')
         .eq('applicant_id',a.id).order('sequence',{ascending:false}).limit(Math.max(4,Math.min(30,Number(c.settings.agent_context_messages||12)))));
@@ -504,6 +513,8 @@ export class Worker {
        console.warn('AI Agent LLM planner failed:',e.code||e.name||'Error');
       }
      }
+     const understandingMs=Date.now()-understandingStarted;
+     const decisionStarted=Date.now();
      let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null,historicalExcerpts,conversationEpisodes});
      if(lifetimeChanged&&turn.patch&&turn.reply){
       turn={...turn,patch:{...turn.patch,answers:{
@@ -533,6 +544,8 @@ export class Worker {
        console.warn('AI Agent response composer failed:',e.code||e.name||'Error');
       }
      }
+     const decisionMs=Date.now()-decisionStarted;
+     const responseStarted=Date.now();
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.followup_reply){
       try{
@@ -550,6 +563,7 @@ export class Worker {
        must(await this.db.from('masar_knowledge').update({usage_count:Number(row.usage_count||0)+1,last_used_at:new Date().toISOString()}).eq('id',turn.knowledge_id));
       }catch(e){if(!schemaMissing(e))throw e;}
      }
+     const responseMs=Date.now()-responseStarted;
      try{
       const action=turn.agent_action||(turn.handoff?'handoff':turn.knowledge_id?'knowledge_answer':turn.followup_reply?'answer_and_continue':'flow_turn');
       const afterAwaiting=Object.prototype.hasOwnProperty.call(turn.patch||{},'awaiting_id')?turn.patch.awaiting_id:a.awaiting_id;
@@ -576,6 +590,15 @@ export class Worker {
         ...(llmUsage.calls>0?{llm_usage:llmUsage}:{}),
         ...(turn.expert_intent?{expert_topic:turn.expert_intent,expert_source:turn.expert_source}:{}),
         quality_signals:qualitySignals,
+        pipeline:buildTurnPipeline({
+         waitMs:Date.now()-Date.parse(m.created_at||new Date()),
+         memory:{status:memoryStatus,ms:memoryMs,indexed:memoryStatus==='done'},
+         knowledge:{status:'done',ms:knowledgeMs,items:knowledge.length,excerpts:historicalExcerpts.length},
+         understanding:{status:plannerAttempted?(llmAnalysis?.available?'done':'degraded'):'skipped',
+          ms:plannerAttempted?understandingMs:null,engine:plannerAttempted?'llm':'rules',usedLlm:llmAnalysis?.available===true},
+         decision:{status:'done',ms:decisionMs,action},
+         response:{status:'done',ms:responseMs,queued:Boolean(turn.reply)}
+        }),
         brain_memory_updated:Boolean(brain.changed),planned_steps:llmAnalysis?.plan?.steps||[],
         crm_tools:Array.isArray(turn.tool_calls)?turn.tool_calls.map(x=>({name:x.tool,ok:x.ok})):[]
        }

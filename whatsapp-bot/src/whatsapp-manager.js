@@ -30,6 +30,7 @@ export class WhatsAppManager{
   if(this.items.has(key))return this.items.get(key);
   const connection=new this.ConnectionClass({
    sessionPath:this.sessionFor(account),
+   syncHistory:account.review_new_contacts===true,
    onMessage:record=>this.onMessage({...record,whatsapp_account_id:account.id})
   });
   const item={account:{...account},connection};

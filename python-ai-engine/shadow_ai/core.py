@@ -214,7 +214,9 @@ def plan(payload: dict[str, Any]) -> dict[str, Any]:
     memory = _memory(history)
     intents = _intent_tags(text, mentioned)
     preview_id = _last_preview(history, areas)
-    active_job = next((a for a in areas if str(a.get("id")) == preview_id), None)
+    active_job = next((a for a in areas if isinstance(a, dict)
+                       and a.get("active") is not False
+                       and str(a.get("id")) == preview_id), None)
     if not active_job and len(mentioned) == 1 and len(grouped.get(mentioned[0], [])) == 1:
         active_job = grouped[mentioned[0]][0]
     discussed = [area for place in mentioned for area in grouped.get(place, [])]

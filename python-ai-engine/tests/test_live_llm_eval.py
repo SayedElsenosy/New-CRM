@@ -1,11 +1,14 @@
 import json
 import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from shadow_ai.core import plan
 from shadow_ai.evaluate import AREAS, user, preview
 from shadow_ai.llm_provider import (
     DisabledNetwork, EvaluationConfig, GroqSyntheticProposer,
-    checked_synthetic_context, request_payload, MAX_CASES
+    checked_synthetic_context, request_payload, MAX_CASES,
+    ProviderCallError, _post_groq
 )
 from shadow_ai.live_eval import run_synthetic, check_free_pilot, FREE_PILOT_CASE_IDS
 from shadow_ai.model_boundary import safe_model_action
@@ -59,6 +62,9 @@ class LiveLLMSafetyTests(unittest.TestCase):
         self.assertEqual(sent["max_tokens"], 180)
         self.assertEqual(sent["temperature"], 0)
         self.assertEqual(sent["response_format"]["type"], "json_object")
+        self.assertFalse(sent["include_reasoning"])
+        self.assertEqual(sent["reasoning_effort"], "low")
+        self.assertNotIn("reasoning_format", sent)
         self.assertEqual(p.last_usage["total_tokens"], 142)
         self.assertEqual(p.request_count, 1)
         self.assertNotIn("01000000000", json.dumps(sent, ensure_ascii=False))
@@ -157,6 +163,45 @@ class LiveLLMSafetyTests(unittest.TestCase):
         self.assertEqual([c["id"] for c in report["cases"]], list(FREE_PILOT_CASE_IDS))
         self.assertEqual(report["live_llm_requests_attempted"], 3)
         self.assertEqual(report["total_prompt_tokens"], 150)
+
+    def test_http_400_is_reported_without_exposing_unsafe_response(self):
+        http_error = HTTPError("https://api.groq.com", 400,
+                               "TOKEN=SECRET from groq", {}, None)
+        with patch("shadow_ai.llm_provider.urlopen", side_effect=http_error):
+            with self.assertRaises(ProviderCallError) as context:
+                _post_groq({"test": True}, KEY, 12)
+        self.assertEqual(context.exception.status, "http_400")
+        self.assertNotIn("SECRET", str(context.exception))
+
+    def test_first_provider_failure_stops_without_three_wasted_calls(self):
+        requests = []
+        def broken(payload, token, timeout):
+            requests.append("attempt")
+            raise ProviderCallError("http_400")
+        proposer = GroqSyntheticProposer(config(True), transport=broken)
+        report = run_synthetic(config(True), max_cases=3, proposer=proposer)
+        self.assertEqual(report["cases_evaluated"], 1)
+        self.assertEqual(report["live_llm_requests_attempted"], 1)
+        self.assertEqual(report["provider_errors"], 1)
+        self.assertEqual(report["cases"][0]["provider_error_status"], "http_400")
+        self.assertEqual(report["model_only_evaluable_cases"], 0)
+        self.assertEqual(report["model_only_matches_reference"], 0)
+        self.assertEqual(report["action_matches_reference"], 1)
+        self.assertEqual(len(requests), 1)
+        self.assertNotIn(KEY, json.dumps(report))
+
+    def test_llm_success_is_counted_separately_from_rule_fallbacks(self):
+        def fake(payload, token, timeout):
+            return {"choices": [{"message": {"content": json.dumps({
+                "action": "clarify_job_system", "confidence": .92,
+                "reason_code": "job_missing"
+            })}}], "usage": {"prompt_tokens": 55, "completion_tokens": 16}}
+        pilot = GroqSyntheticProposer(config(True), transport=fake)
+        result = run_synthetic(config(True), max_cases=1, proposer=pilot)
+        self.assertEqual(result["model_only_evaluable_cases"], 1)
+        self.assertEqual(result["model_only_matches_reference"], 1)
+        self.assertEqual(result["provider_errors"], 0)
+        self.assertEqual(result["model_proposals_accepted"], 1)
 
 if __name__ == "__main__":
     unittest.main()

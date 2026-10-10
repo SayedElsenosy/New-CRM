@@ -114,7 +114,7 @@ quality rather than assuming Python itself produces better text.
 
 ## Phase 3 — first Free-only 3-message pilot (NOT RUN YET)
 
-The Free-only pilot is prepared but NO real model call has been made.
+The Free-only pilot was first attempted on 2026-10-10: 3 requests returned provider_error, with no LLM proposals accepted. An unsupported GPT-OSS reasoning_format parameter was found and corrected; a safe HTTP status will be reported on the next one-call diagnostic run.
 The Groq Free plan uses quota limits; Developer has usage-based billing.
 A script cannot verify the organization's billing tier from the current
 Groq Chat API. You MUST personally check your active organization is
@@ -133,7 +133,7 @@ intervening turns requiring context recall.
 
 No external LLM requests occur in CI or Railway. Provider testing is
 read-only: no Supabase, WhatsApp, applicant details, hiring decision,
-or production key. This pilot CLI sends up to 3 attempts per run,
+or production key. This pilot CLI defaults to ONE attempt (optionally 1-3),
 maximum 180 generated tokens each, no automatic retries and a
 12-second request timeout, and reports actions, usage and latency only.
 
@@ -150,8 +150,17 @@ Open PowerShell in the python-ai-engine folder:
 2. Create a NEW project-specific evaluation key in the Free organization
    at https://console.groq.com/keys. Never paste it in ChatGPT,
    a screenshot, GitHub or production Railway variables.
-3. Open PowerShell in the python-ai-engine folder and execute:
+3. Open PowerShell in the python-ai-engine folder. If you downloaded an
+   older ZIP, refresh the following three files from the main GitHub branch:
 
+       $raw = "https://raw.githubusercontent.com/SayedElsenosy/New-CRM/main/python-ai-engine"
+       Invoke-WebRequest "$raw/shadow_ai/llm_provider.py" -OutFile ".\shadow_ai\llm_provider.py"
+       Invoke-WebRequest "$raw/shadow_ai/live_eval.py" -OutFile ".\shadow_ai\live_eval.py"
+       Invoke-WebRequest "$raw/run_free_pilot.ps1" -OutFile ".\run_free_pilot.ps1"
+
+   Then run the optional no-network check and ONE diagnostic request:
+
+       .\run_free_pilot.ps1 -DryRun
        .\run_free_pilot.ps1
 
 4. Type FREE only after confirming the current organization is Free.
@@ -176,7 +185,11 @@ If someone falsely attests a paid organization, model calls could
 still incur cost. Therefore NEVER run against Developer.
 
 The generic provider class has a separate 10-attempt ceiling for
-test safety; the approved Free-pilot CLI is stricter: at most 3.
+test safety; the approved Free-pilot CLI is stricter: 1 default, at most 3.
+A provider failure halts the run immediately and prints only a safe HTTP
+status (401 invalid key, 400 unsupported request, 429 free rate limit)
+without revealing the full API error body or the key. Reported action
+matches from fallback rules do NOT imply the LLM answered correctly.
 All prompts are synthetic; passing doesn't prove human-level chat
 quality, real WhatsApp throughput or correctness on actual applicants.
 

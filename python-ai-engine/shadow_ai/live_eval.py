@@ -10,7 +10,7 @@ import statistics
 from pathlib import Path
 
 from .core import plan
-from .llm_provider import EvaluationConfig, GroqSyntheticProposer, DisabledNetwork
+from .llm_provider import EvaluationConfig, GroqSyntheticProposer, DisabledNetwork, ProviderCallError
 from .model_boundary import safe_model_action
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "benchmarks" / "paired_cases.json"
@@ -56,28 +56,42 @@ def run_synthetic(config: EvaluationConfig, *, max_cases: int = 3,
                 "proposed_accepted": accepted is not None,
                 "accepted_action": accepted or baseline["action"],
                 "matches_labeled_action": (accepted or baseline["action"]) == expected,
+                "model_action_matches_reference": (accepted == expected) if accepted else None,
                 "fallback_to_rules": accepted is None,
                 "latency_ms": proposer.last_latency_ms,
                 "prompt_tokens": proposer.last_usage.get("prompt_tokens", 0),
                 "completion_tokens": proposer.last_usage.get("completion_tokens", 0),
             })
-        except Exception:
-            # Error names/codes only, no raw provider response, prompt or secrets.
+        except Exception as error:
+            # Never serialize raw provider errors, prompts, tokens or response.
+            # The only remote diagnostic we retain is an allowlisted status.
+            status = error.status if isinstance(error, ProviderCallError) else (
+                "invalid_model_response" if isinstance(error, RuntimeError)
+                else "local_validation_error"
+            )
             rows.append({
                 "id": case["id"], "proposed_action": "provider_error",
                 "proposed_accepted": False,
                 "accepted_action": baseline["action"],
                 "matches_labeled_action": baseline["action"] == case.get("expect", {}).get("python_action"),
+                "model_action_matches_reference": None,
+                "provider_error_status": status,
                 "fallback_to_rules": True,
                 "latency_ms": proposer.last_latency_ms,
                 "prompt_tokens": 0, "completion_tokens": 0,
             })
+            # Fail fast: do not burn all Free-tier attempts if authentication,
+            # rate limits, unsupported parameters or network calls are broken.
+            break
     timings = [r["latency_ms"] for r in rows if r["latency_ms"] is not None]
     return {
         "source": "synthetic_checked_in_cases_only",
         "live_llm_requests_attempted": proposer.request_count,
         "cases_evaluated": len(rows),
         "action_matches_reference": sum(r["matches_labeled_action"] for r in rows),
+        "model_only_matches_reference": sum(r.get("model_action_matches_reference") is True for r in rows),
+        "model_only_evaluable_cases": sum(r.get("model_action_matches_reference") is not None for r in rows),
+        "provider_errors": sum(bool(r.get("provider_error_status")) for r in rows),
         "model_proposals_accepted": sum(r["proposed_accepted"] for r in rows),
         "fallback_count": sum(r["fallback_to_rules"] for r in rows),
         "median_model_latency_ms": round(statistics.median(timings), 2) if timings else None,

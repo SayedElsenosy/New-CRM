@@ -30,6 +30,13 @@ class DisabledNetwork(RuntimeError):
     """Opt-in protections refused a remote request."""
 
 
+class ProviderCallError(RuntimeError):
+    """Only safe status categories, never raw remote error bodies or credentials."""
+    def __init__(self, status: str):
+        self.status = status
+        super().__init__("Provider request failed (" + status + ")")
+
+
 @dataclass(frozen=True)
 class EvaluationConfig:
     model: str
@@ -93,7 +100,10 @@ def request_payload(context: dict[str, Any], model: str) -> dict[str, Any]:
         "model": model, "temperature": 0,
         "max_tokens": MAX_TOKENS,
         "response_format": {"type": "json_object"},
-        "reasoning_format": "hidden",
+        # GPT-OSS does not accept reasoning_format. Groq supports the
+        # mutually exclusive include_reasoning parameter for GPT-OSS.
+        "include_reasoning": False,
+        "reasoning_effort": "low",
         "messages": [
             {"role": "system", "content": (
                 "أنت مختبر نوايا توظيف للغة العامية المصرية. الأمثلة افتراضية فقط. "
@@ -117,13 +127,17 @@ def _post_groq(payload: dict[str, Any], token: str, timeout: int) -> dict[str, A
     try:
         with urlopen(req, timeout=timeout) as response:
             raw = response.read(15000)
-    except (HTTPError, URLError, TimeoutError, OSError) as error:
-        # Deliberately never include provider response or headers (secrets/PII).
-        raise RuntimeError("Provider call failed: " + type(error).__name__) from None
+    except HTTPError as error:
+        # Only an HTTP status number is exposed. Never log response body,
+        # exception strings, request headers or raw prompts.
+        status = int(error.code) if 100 <= int(error.code) <= 599 else 0
+        raise ProviderCallError("http_" + str(status)) from None
+    except (URLError, TimeoutError, OSError):
+        raise ProviderCallError("network_or_timeout") from None
     try:
         return json.loads(raw)
-    except (ValueError, TypeError) as error:
-        raise RuntimeError("Provider returned invalid JSON") from None
+    except (ValueError, TypeError):
+        raise ProviderCallError("invalid_json_response") from None
 
 
 class GroqSyntheticProposer:

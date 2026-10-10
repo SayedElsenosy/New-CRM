@@ -211,7 +211,7 @@ export class Worker {
     bot_enabled:false,answers:{__history_review:initialHistoryReview({source:historic?'imported_whatsapp_history':'first_seen_after_link'})}};
    if(multi)row.whatsapp_account_id=accountId;
    if(linkedAccount?.office_id)row.office_id=linkedAccount.office_id;
-   if(referral)row.answers=withFirstAttribution({},referral);
+   if(referral)row.answers=withFirstAttribution(row.answers,referral);
    a=must(await this.db.from('masar_applicants').insert(row).select().single());
    applicantWasCreated=true;
   }else{

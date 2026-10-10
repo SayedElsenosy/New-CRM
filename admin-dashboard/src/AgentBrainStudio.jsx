@@ -13,6 +13,16 @@ const dateLabel=value=>{
  return Number.isNaN(d.getTime())?'بدون وقت':d.toLocaleString('ar-EG',{dateStyle:'short',timeStyle:'short'});
 };
 const short=(value,max=100)=>String(value||'').slice(0,max);
+const ACTION_LABELS={
+ ask_next:'سؤال متابعة',answer_question:'الرد على سؤال',save_facts:'حفظ معلومات',
+ compare_places:'مقارنة مناطق العمل',compare_places_followup:'استكمال المقارنة',
+ compare_area_modes:'مقارنة أنظمة الشغل',explain_area_mode:'شرح تفاصيل وظيفة',
+ handoff:'تحويل لموظف',clarify:'طلب توضيح',historical_residence_recall:'استرجاع من الذاكرة',
+ ask_question:'سؤال للمتقدم',qualification:'تقييم التأهيل',stop:'إيقاف الرد'
+};
+const MODE_LABELS={llm_assist:'LLM مساعد',llm_live:'LLM مباشر',deterministic:'قواعد النظام',fallback:'خطة احتياطية'};
+const readableAction=value=>ACTION_LABELS[String(value||'')]||short(value||'قرار غير مصنف',52);
+const readableMode=value=>MODE_LABELS[String(value||'')]||short(value||'غير محدد',36);
 const NODES=Array.from({length:100},(_,i)=>{
  const theta=i*2.399963229728653,rad=Math.sqrt((i+.5)/100);
  return {x:500+Math.cos(theta)*190*rad,y:282+Math.sin(theta)*120*rad,r:i%9===0?3.1:1.5,delay:(i%13)*.24};
@@ -115,6 +125,7 @@ function NeuralCore({activity=0}){
 }
 export default function AgentBrainStudio({state={},onNavigate,reload,updatedAt}){
  const [active,setActive]=useState('memory');
+ const [showAllActivity,setShowAllActivity]=useState(false);
  const modules=useMemo(()=>brainStudioModules(state),[state]);
  const details=modules[active];
  const stats=state.stats||{},a=state.agent_stats||{},llm=state.llm||{};
@@ -163,11 +174,14 @@ export default function AgentBrainStudio({state={},onNavigate,reload,updatedAt})
    </section>
    <section className="abs-activity-card">
     <div className="abs-section-heading"><span><Activity size={19}/> آخر قرارات مسجلة</span><span>سجل النشاط</span></div>
-    {activity.length?<div className="abs-activity-list">{activity.map((d,i)=><div key={d.id||i}>
-      <span className="abs-activity-bullet"/><div><strong>{short(d.action||'غير مصنف',52)}</strong>
-       <small>{short(d.planner_mode||'غير محدد',36)} · {dateLabel(d.created_at)}</small></div>
+    {activity.length?<div className={'abs-activity-list'+(showAllActivity?' expanded':'')}>{activity.map((d,i)=><div key={d.id||i}>
+      <span className="abs-activity-bullet"/><div><strong>{readableAction(d.action)}</strong>
+       <small>{readableMode(d.planner_mode)} · {dateLabel(d.created_at)}</small></div>
       <span>{d.confidence==null?'—':Math.round(number(d.confidence)*100)+'%'}</span>
     </div>)}</div>:<p className="abs-empty">مفيش قرارات مسجلة لعرضها حاليًا. ده مش معناه إن الـAgent متوقف؛ بيانات التتبع قد تكون غير متاحة.</p>}
+    {activity.length>3&&<button type="button" className="abs-more-activity" aria-expanded={showAllActivity}
+       onClick={()=>setShowAllActivity(value=>!value)}>{showAllActivity?'عرض أقل':'عرض المزيد من القرارات'}</button>}
+    <p className="abs-activity-help">نسبة الثقة تقدير داخلي للقرار وليست نسبة دقة مؤكدة.</p>
     <button type="button" className="abs-open-btn" onClick={()=>onNavigate('decisions')}>تفاصيل القرارات <ArrowLeft size={17}/></button>
    </section>
   </div>

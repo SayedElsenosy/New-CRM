@@ -16,7 +16,7 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush,sendOfficeQualityPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
-import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,initialHistoryReview,historicalChatMark} from './reply-scope.js';
+import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,shouldCreateHistoryReviewAlert,initialHistoryReview,historicalChatMark} from './reply-scope.js';
 import {questionPrompt,areaDetails} from './domain.js';
 import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
@@ -313,7 +313,7 @@ export class Worker {
   if(multi)messageRow.whatsapp_account_id=accountId;
   const saved=must(await this.db.from('masar_messages').insert(messageRow).select('id').single());
   if(historic)return;
-  if(historyReviewRequired({answers:a.answers})){
+  if(shouldCreateHistoryReviewAlert({historical:historic,answers:a.answers})){
    // Never send a new automation before the staff can see why it was paused.
    // Historical synced messages should be recorded silently; an actual live
    // inbound message creates a single actionable review alert.

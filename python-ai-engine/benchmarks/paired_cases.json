@@ -1,0 +1,485 @@
+{
+  "version": 1,
+  "notes": "Synthetic Arabic job fixtures only; same history and office data for Node and Python, different output contracts",
+  "areas": [
+    {
+      "id": "haram-rest",
+      "name": "الهرم مطاعم",
+      "place_key": "الهرم",
+      "work_mode": "restaurants",
+      "active": true,
+      "recruitment_eligible": true,
+      "weekly_income_min": 3500,
+      "weekly_income_max": 6000,
+      "order_price": 38,
+      "delivery_zone_km": 10,
+      "details": "الهرم مطاعم، سعر الأوردر 38 جنيه، متوسط الدخل الأسبوعي من 3500 إلى 6000 جنيه حسب العمل، الزون 10 كم. القبض أسبوعي."
+    },
+    {
+      "id": "zayed-market",
+      "name": "الشيخ زايد ماركت",
+      "place_key": "الشيخ زايد",
+      "work_mode": "market",
+      "active": true,
+      "recruitment_eligible": true,
+      "monthly_fixed_salary": 5225,
+      "shift_hours": 9,
+      "motorcycle_required": true,
+      "benefits": [
+        "تأمين اجتماعي",
+        "تأمين طبي"
+      ],
+      "details": "الشيخ زايد ماركت، مرتب شهري ثابت 5225 جنيه، شيفت 9 ساعات، لازم موتوسيكل، تأمين اجتماعي وتأمين طبي."
+    },
+    {
+      "id": "obour-market",
+      "name": "العبور ماركت",
+      "place_key": "العبور",
+      "work_mode": "market",
+      "active": true,
+      "recruitment_eligible": true,
+      "shift_hours": 9,
+      "motorcycle_required": true,
+      "details": "العبور ماركت: شيفت 9 ساعات فقط، يشترط وجود متوسيكل. بداية الشيفت ونهايته غير محددتين."
+    },
+    {
+      "id": "nasr-market",
+      "name": "مدينة نصر ماركت",
+      "place_key": "مدينة نصر",
+      "work_mode": "market",
+      "active": true,
+      "recruitment_eligible": true,
+      "shift_hours": 9,
+      "details": "مدينة نصر ماركت شيفت 9 ساعات."
+    },
+    {
+      "id": "nasr-rest",
+      "name": "مدينة نصر مطاعم",
+      "place_key": "مدينة نصر",
+      "work_mode": "restaurants",
+      "active": true,
+      "recruitment_eligible": true,
+      "weekly_income_min": 4000,
+      "details": "مدينة نصر مطاعم، متوسط الدخل الأسبوعي 4000 جنيه."
+    }
+  ],
+  "cases": [
+    {
+      "id": "ad_vehicle",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "هو الشغل لازم موتوسيكل ولا عربية؟"
+        }
+      ],
+      "opening_ad": true,
+      "expect": {
+        "python_action": "clarify_job_system",
+        "python_intents": [
+          "job_requirements"
+        ],
+        "node_terms": [
+          "موتوسيكل"
+        ],
+        "node_not_terms": [
+          "أهلاً بك في التقديم"
+        ]
+      }
+    },
+    {
+      "id": "shift_followup",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "العبور"
+        },
+        {
+          "role": "agent",
+          "metadata": {
+            "preview_area_id": "obour-market"
+          }
+        },
+        {
+          "role": "applicant",
+          "text": "في مواعيد عمل محددة؟"
+        }
+      ],
+      "expect": {
+        "python_action": "answer_shift_from_crm",
+        "python_intents": [
+          "shift_details"
+        ],
+        "node_terms": [
+          "9 ساعات"
+        ],
+        "node_not_terms": [
+          "حابب تنزل شغل في أنهي منطقة"
+        ]
+      }
+    },
+    {
+      "id": "shift_short",
+      "history": [
+        {
+          "role": "agent",
+          "metadata": {
+            "preview_area_id": "obour-market"
+          }
+        },
+        {
+          "role": "applicant",
+          "text": "شفتات مثلا"
+        }
+      ],
+      "expect": {
+        "python_action": "answer_shift_from_crm",
+        "python_intents": [
+          "shift_details"
+        ],
+        "node_terms": [
+          "9 ساعات"
+        ]
+      }
+    },
+    {
+      "id": "income_vs_commute",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "الهرم ولا الشيخ زايد أحسن في المرتب والقرب من البيت؟"
+        }
+      ],
+      "expect": {
+        "python_action": "compare_registered_jobs",
+        "python_intents": [
+          "compare_areas",
+          "pay_details",
+          "nearby_work"
+        ],
+        "python_warnings": [
+          "do_not_compare_weekly_and_monthly_income",
+          "delivery_zone_is_not_home_commute"
+        ],
+        "node_terms": [
+          "الهرم",
+          "الشيخ زايد"
+        ],
+        "node_not_terms": [
+          "الهرم أقرب لبيتك",
+          "الشيخ زايد أقرب لبيتك"
+        ]
+      }
+    },
+    {
+      "id": "residence_only",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "أنا ساكن في المنصورية وعايز شغل قريب ومشوار قليل"
+        }
+      ],
+      "expect": {
+        "python_action": "clarify_commute",
+        "python_intents": [
+          "nearby_work"
+        ],
+        "python_residence": "المنصوريه",
+        "node_no_qualification": true
+      }
+    },
+    {
+      "id": "area_proposal",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "عايز اشتغل في العبور"
+        }
+      ],
+      "expect": {
+        "python_action": "request_explicit_work_area_confirmation",
+        "python_intents": [
+          "work_area_proposal"
+        ],
+        "node_no_qualification": true
+      }
+    },
+    {
+      "id": "area_negation",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "مش عايز اشتغل في العبور"
+        }
+      ],
+      "expect": {
+        "python_action": "clarify_or_continue",
+        "python_absent_intents": [
+          "work_area_proposal"
+        ],
+        "node_no_qualification": true
+      }
+    },
+    {
+      "id": "history_50",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "أنا ساكن في المنصورية"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "applicant",
+          "text": "استفسار سابق"
+        },
+        {
+          "role": "agent",
+          "metadata": {
+            "preview_area_id": "obour-market"
+          }
+        },
+        {
+          "role": "applicant",
+          "text": "طيب الشيفت كام ساعة؟"
+        }
+      ],
+      "expect": {
+        "python_action": "answer_shift_from_crm",
+        "python_intents": [
+          "shift_details"
+        ],
+        "python_residence": "المنصوريه",
+        "node_terms": [
+          "9 ساعات"
+        ],
+        "node_no_qualification": true
+      }
+    },
+    {
+      "id": "ambiguous_mode",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "مدينة نصر الشيفتات كام ساعة؟"
+        }
+      ],
+      "expect": {
+        "python_action": "clarify_job_system",
+        "python_intents": [
+          "shift_details"
+        ],
+        "node_no_qualification": true
+      }
+    },
+    {
+      "id": "resume",
+      "history": [
+        {
+          "role": "applicant",
+          "text": "نكمل التقديم من مكان ما وقفنا"
+        }
+      ],
+      "expect": {
+        "python_action": "resume_application_without_reset",
+        "python_intents": [
+          "continue_application"
+        ],
+        "node_no_qualification": true
+      }
+    }
+  ]
+}

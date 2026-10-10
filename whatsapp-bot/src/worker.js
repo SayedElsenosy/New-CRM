@@ -434,6 +434,7 @@ export class Worker {
     const prior=must(await this.db.from('masar_messages').select('id').eq('applicant_id',m.applicant_id).eq('direction','in').eq('status','failed').lte('sequence',m.sequence).limit(1));
     if(prior.length){blocked.add(m.applicant_id);continue;}
     try{
+     const workerStartedAt=Date.now();
      const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db,a.office_id||null);
      const account=a.whatsapp_account_id?must(await this.db.from('masar_whatsapp_accounts')
       .select('reply_mode,active').eq('id',a.whatsapp_account_id).maybeSingle()):null;
@@ -591,7 +592,7 @@ export class Worker {
         ...(turn.expert_intent?{expert_topic:turn.expert_intent,expert_source:turn.expert_source}:{}),
         quality_signals:qualitySignals,
         pipeline:buildTurnPipeline({
-         waitMs:Date.now()-Date.parse(m.created_at||new Date()),
+         waitMs:workerStartedAt-Date.parse(m.created_at||new Date()),
          memory:{status:memoryStatus,ms:memoryMs,indexed:memoryStatus==='done'},
          knowledge:{status:'done',ms:knowledgeMs,items:knowledge.length,excerpts:historicalExcerpts.length},
          understanding:{status:plannerAttempted?(llmAnalysis?.available?'done':'degraded'):'skipped',

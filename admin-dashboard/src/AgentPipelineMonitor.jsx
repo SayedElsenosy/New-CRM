@@ -11,6 +11,7 @@ const STEP_LABELS={
 const STATE_LABELS={
  done:'اكتملت',skipped:'لم تُستخدم',degraded:'جزئي / تعذّر',failed:'فشلت',
  sent:'تم الإرسال',queued:'في طابور الإرسال',sending:'جارٍ الإرسال',
+ processing_failed:'تعذرت المعالجة',
  uncertain:'حالة الإرسال غير مؤكدة',cancelled:'أُلغي الرد',not_recorded:'لا توجد حالة إرسال مسجلة'
 };
 const ACTION_LABELS={
@@ -20,7 +21,7 @@ const ACTION_LABELS={
  answer_contextual_shift:'الرد على سؤال المواعيد',
  initial_job_requirements:'الرد على شروط الوظيفة',
  clarify_nearby_origin:'توضيح مكان السكن',
- handoff:'تحويل لموظف',flow_turn:'قرار من قواعد النظام',
+ handoff:'تحويل لموظف',processing_failure:'تعذرت معالجة الرسالة',flow_turn:'قرار من قواعد النظام',
  knowledge_answer:'رد من قاعدة المعرفة',answer_and_continue:'الرد واستكمال التقديم',
  contextual_area_details:'تفاصيل منطقة العمل'
 };
@@ -29,10 +30,11 @@ const formatDate=x=>{
  return Number.isNaN(d.getTime())?'—':d.toLocaleString('ar-EG',{dateStyle:'short',timeStyle:'short'});
 };
 const stageColor=status=>status==='done'||status==='sent'?'success':
- status==='failed'||status==='uncertain'||status==='degraded'?'warning':
+ status==='failed'||status==='uncertain'||status==='degraded'||status==='processing_failed'?'warning':
  status==='queued'||status==='sending'?'active':'neutral';
 const actionLabel=x=>ACTION_LABELS[x]||String(x||'قرار مسجل').replace(/_/g,' ').slice(0,60);
 function stageDescription(stage){
+ if(stage.status==='failed')return 'توقفت المعالجة عند هذه المرحلة، وسيطبق النظام سياسة إعادة المحاولة.';
  if(stage.key==='received')return 'الوقت بين حفظ رسالة المتقدم وبدء معالجتها';
  if(stage.key==='memory')return stage.indexed?'تم تشغيل فهرسة الذاكرة المسجلة':'فهرسة الذاكرة لم تكتمل أو لم تُشغّل';
  if(stage.key==='knowledge')return 'تم تحميل '+(stage.items||0)+' معلومة وإحضار '+(stage.historical_excerpts||0)+' مقاطع تاريخية مرتبطة';

@@ -638,13 +638,14 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     };
    }
    let sideMatch=null;
-   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)){
+   if(settings.ai_enabled&&settings.ai_knowledge_enabled===true&&looksLikeQuestion(m.body)
+    &&!['compare_places','compare_places_followup','compare_area_modes'].includes(advice.action)){
     const candidate=findKnowledgeAnswer(m.body,knowledge,Math.max(.5,Number(settings.ai_confidence_threshold||.62)-.06));
     if(candidate&&!/(منطقة|المناطق|عنوان|مكان|ماركت|مطاعم)/.test(norm(candidate.question||'')))sideMatch=candidate;
    }
    const rememberedDetails=rememberAreaDetails(answers,areas,advice);
    const persistAdvisorAnswers=Boolean(rememberedDetails||advice.contextPlaceKey||(current?.kind==='area'&&advice.previewAreaId)||(Array.isArray(advice.comparisonKeys)&&advice.comparisonKeys.length>=2)||recommendationProfileChanged||observations.length||savedAgentFacts.length);
-   const compareContinuation=['compare_places','compare_places_followup'].includes(advice.action)&&current&&!conversationEpisodes.length?'\n\nنكمل التقديم: '+questionPrompt(current,areas):'';
+   const compareContinuation='';
    return {
     patch:current?{...(persistAdvisorAnswers?{answers}:{}),awaiting_id:current.id,stage:realAnswerCount(answers)?'incomplete':'new'}:{...(persistAdvisorAnswers?{answers}:{}),stage:computedStage({...a,answers},questions,areas),awaiting_id:null},
     reply:(sideMatch?String(sideMatch.answer||'').trim()+'\n\n':'')

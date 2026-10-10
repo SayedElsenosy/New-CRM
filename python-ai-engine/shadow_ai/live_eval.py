@@ -10,23 +10,41 @@ import statistics
 from pathlib import Path
 
 from .core import plan
-from .llm_provider import EvaluationConfig, GroqSyntheticProposer, MAX_CASES
+from .llm_provider import EvaluationConfig, GroqSyntheticProposer, DisabledNetwork
 from .model_boundary import safe_model_action
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "benchmarks" / "paired_cases.json"
+FREE_PILOT_MODEL = "openai/gpt-oss-20b"
+FREE_PILOT_CASE_IDS = ("ad_vehicle", "income_vs_commute", "history_50")
+FREE_PILOT_MAX_CASES = len(FREE_PILOT_CASE_IDS)
+
+
+def check_free_pilot(config: EvaluationConfig, *, approved_in_console: bool,
+                     free_tier_env: str) -> None:
+    """Cannot remotely attest Groq billing state. Require two explicit confirmations."""
+    if not approved_in_console or free_tier_env != "YES":
+        raise DisabledNetwork("Verify the Groq organization is Free (not Developer) first")
+    if config.model != FREE_PILOT_MODEL:
+        raise DisabledNetwork("Free pilot uses only the checked Groq model")
+    config.check()
+
 
 
 def run_synthetic(config: EvaluationConfig, *, max_cases: int = 3,
                   proposer: GroqSyntheticProposer | None = None) -> dict:
     config.check()
-    if not 1 <= max_cases <= MAX_CASES:
-        raise ValueError("max_cases outside approved limit")
+    if not 1 <= max_cases <= FREE_PILOT_MAX_CASES:
+        raise ValueError("Free pilot never exceeds three calls")
     dataset = json.loads(FIXTURE_PATH.read_text("utf-8"))
     if dataset.get("version") != 1:
         raise ValueError("unrecognized synthetic fixture version")
+    by_id = {row["id"]: row for row in dataset["cases"]}
+    if not all(key in by_id for key in FREE_PILOT_CASE_IDS):
+        raise ValueError("Missing synthetic benchmark case")
     proposer = proposer or GroqSyntheticProposer(config)
     rows = []
-    for case in dataset["cases"][:max_cases]:
+    for key in FREE_PILOT_CASE_IDS[:max_cases]:
+        case = by_id[key]
         baseline = plan({"history": case["history"], "areas": dataset["areas"]})
         try:
             suggestion = proposer.propose(baseline=baseline, history=case["history"])
@@ -77,11 +95,28 @@ def main() -> None:
                         help="Enable network request when environment guard also says YES")
     parser.add_argument("--synthetic-only-confirmed", action="store_true")
     parser.add_argument("--max-cases", type=int, default=3)
+    parser.add_argument("--confirm-free-tier", action="store_true",
+                        help="I checked Groq Console: the selected organization is Free, not Developer")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show selected synthetic scenarios without any network or API key")
     args = parser.parse_args()
-    if not (args.live and args.synthetic_only_confirmed):
-        raise SystemExit("No external calls: --live and --synthetic-only-confirmed are required")
+    if args.dry_run:
+        print(json.dumps({"mode": "OFFLINE_ONLY", "network_attempts": 0,
+                          "model": FREE_PILOT_MODEL,
+                          "max_cases": FREE_PILOT_MAX_CASES,
+                          "cases": list(FREE_PILOT_CASE_IDS),
+                          "requires_free_account_verification": True},
+                         ensure_ascii=False, indent=2))
+        return
+    if not (args.live and args.synthetic_only_confirmed and args.confirm_free_tier):
+        raise SystemExit("No external calls: all three explicit confirmation flags are required")
+    import os
     config = EvaluationConfig.from_environment(approved=True)
-    # Config validates network flag, model name and dedicated secret.
+    try:
+        check_free_pilot(config, approved_in_console=args.confirm_free_tier,
+                         free_tier_env=os.environ.get("SHADOW_GROQ_FREE_TIER_CONFIRMED", ""))
+    except DisabledNetwork as exc:
+        raise SystemExit(str(exc)) from None
     report = run_synthetic(config, max_cases=args.max_cases)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

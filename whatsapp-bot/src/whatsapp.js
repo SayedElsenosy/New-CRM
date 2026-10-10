@@ -140,9 +140,9 @@ export async function normalizedRecord(sock,msg,{upsertType=null}={}){
  };
 }
 export class WhatsAppConnection{
- constructor({sessionPath,onMessage,SocketFactory=makeWASocket,authLoader=useMultiFileAuthState}){
+ constructor({sessionPath,onMessage,syncHistory=false,SocketFactory=makeWASocket,authLoader=useMultiFileAuthState}){
   this.sessionPath=path.resolve(sessionPath);this.authPath=path.join(this.sessionPath,'baileys-auth');
-  this.onMessage=onMessage;this.SocketFactory=SocketFactory;this.authLoader=authLoader;this.client=null;
+  this.onMessage=onMessage;this.syncHistory=syncHistory===true;this.SocketFactory=SocketFactory;this.authLoader=authLoader;this.client=null;
   this.desired=false;this.busy=false;this.receiveTail=Promise.resolve();
   this.state={status:'disconnected',phone:null,qr:null,error:null};
  }
@@ -165,7 +165,7 @@ export class WhatsAppConnection{
    const sock=this.SocketFactory({
     auth:state,
     markOnlineOnConnect:false,
-    syncFullHistory:true,
+    syncFullHistory:this.syncHistory,
     generateHighQualityLinkPreview:false,
     browser:['Speed Delivery','Chrome','1.0.0'],
     getMessage:async()=>undefined,
@@ -199,6 +199,7 @@ export class WhatsAppConnection{
    // Treat it as best effort only; a missing history event is NOT proof that
    // the conversation never existed on the phone before this linkage.
    sock.ev.on('messaging-history.set',({messages=[]}={})=>{
+    if(!this.syncHistory)return;
     for(const msg of [...messages].sort((a,b)=>
      Number(a?.messageTimestamp?.toString?.()||0)-Number(b?.messageTimestamp?.toString?.()||0))){
      this.receiveTail=this.receiveTail.then(async()=>{

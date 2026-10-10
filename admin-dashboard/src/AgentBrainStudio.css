@@ -60,7 +60,7 @@
 .abs-section-heading>span:last-child{font-size:11px;font-weight:600;color:#a0becd}
 .abs-verified{border-radius:100px;padding:3px 9px;background:rgba(19,152,141,.16);color:#8ae6db!important}
 .abs-detail-header{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:16px 0 4px}
-.abs-detail-header h3{font-size:20px;margin:0}
+.abs-studio .abs-detail-header h3{font-size:20px;margin:0;color:#edfbff!important;line-height:1.4;opacity:1;text-shadow:0 0 10px rgba(57,170,205,.10)}
 .abs-detail-header div{display:flex;align-items:flex-end;flex-direction:column}
 .abs-detail-header strong{font-size:26px;color:#65e4fd}
 .abs-detail-header small{color:#8fb2c7}
@@ -87,3 +87,40 @@
 @media(max-width:1000px){.abs-workspace{grid-template-columns:1fr 1fr;grid-template-rows:430px auto;gap:11px}.abs-neural-scene{grid-column:1/-1;grid-row:1;min-height:430px}.abs-node-column{grid-row:2;display:grid;grid-template-columns:1fr;gap:10px}.abs-node-card{min-height:82px}.abs-lower{grid-template-columns:1fr}.abs-neural-scene .abs-brain-art{top:-2%;height:101%}}
 @media(max-width:620px){.abs-head{flex-direction:column}.abs-head-actions{width:100%;justify-content:space-between}.abs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.abs-metrics strong{font-size:21px}.abs-workspace{grid-template-columns:1fr 1fr;grid-template-rows:300px auto;gap:7px}.abs-neural-scene{min-height:300px;border-radius:11px}.abs-node-card{min-height:80px;align-items:flex-start;flex-direction:column;gap:5px}.abs-node-icon{width:28px;height:28px}.abs-node-copy>span{font-size:15px}.abs-node-copy small{font-size:10px}.abs-scene-top,.abs-scene-footer{font-size:9px;right:9px;left:9px}.abs-scene-footer{flex-wrap:wrap}.abs-detail-table{grid-template-columns:1fr}.abs-head h2{font-size:26px}}
 @media(prefers-reduced-motion:reduce){.abs-studio *, .abs-studio *:before, .abs-studio *:after{animation:none!important;transition:none!important}}
+
+.abs-activity-list:not(.expanded)>div:nth-child(n+4){display:none}
+.abs-more-activity{display:block;margin:13px auto 1px;padding:8px 14px;background:rgba(20,107,147,.17);border:1px solid rgba(58,175,208,.38);border-radius:9px;color:#84dff5;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit}
+.abs-more-activity:hover{background:rgba(40,150,185,.24)}
+.abs-activity-help{color:#88aebe!important;font-size:11px!important;margin:11px 0 0!important}
+.abs-studio .abs-detail-header strong{color:#65e4fd!important}
+.abs-detail-card,.abs-activity-card{overflow:hidden}
+@media(max-width:620px){
+ .abs-studio{gap:13px}
+ .abs-head h2{margin:4px 0;font-size:25px}
+ .abs-head p{font-size:12px;line-height:1.65}
+ .abs-head-actions{gap:10px}
+ .abs-head-actions button{min-height:38px;padding:8px 11px}
+ .abs-metrics{gap:8px}
+ .abs-metrics>div{padding:11px 12px;min-height:72px}
+ .abs-metrics strong{font-size:20px}
+ .abs-node-card{min-height:76px;padding:9px 10px;border-radius:12px}
+ .abs-node-copy{gap:3px}
+ .abs-node-copy>span{font-size:15px}
+ .abs-lower{gap:12px}
+ .abs-detail-card,.abs-activity-card{padding:14px;border-radius:14px}
+ .abs-section-heading{font-size:13px;gap:7px}
+ .abs-section-heading>span:last-child{font-size:10px}
+ .abs-detail-header{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:12px 0 0}
+ .abs-studio .abs-detail-card .abs-detail-header h3{font-size:18px;color:#edfbff!important}
+ .abs-detail-header div{display:flex;flex-direction:row;align-items:baseline;justify-content:flex-start;gap:8px}
+ .abs-detail-header strong{font-size:25px;line-height:1.1}
+ .abs-detail-card p,.abs-activity-card .abs-empty{font-size:12px;line-height:1.7;margin:10px 0}
+ .abs-detail-table{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .abs-detail-table>div{padding:9px 10px;min-height:70px;gap:5px}
+ .abs-detail-table span{font-size:11px}
+ .abs-detail-table strong{font-size:13px}
+ .abs-activity-list>div{padding:10px 0}
+ .abs-activity-list strong{font-size:12px}
+ .abs-activity-list small{font-size:10px}
+ .abs-open-btn{margin-top:13px;padding:10px 11px;font-size:12px}
+}

@@ -28,6 +28,9 @@ jobs:
       - name: Python offline shadow agent tests
         working-directory: python-ai-engine
         run: python -m unittest discover -s tests -v
+      - name: Python Free-pilot offline preview (network forbidden)
+        working-directory: python-ai-engine
+        run: python -m shadow_ai.live_eval --dry-run
       - name: Python synthetic quality report
         working-directory: python-ai-engine
         run: python -m shadow_ai.evaluate

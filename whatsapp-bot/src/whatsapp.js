@@ -112,9 +112,10 @@ export async function normalizedRecord(sock,msg,{upsertType=null}={}){
  const jid=String(msg?.key?.remoteJid||'');
  if(!jid||jid.endsWith('@g.us')||jid==='status@broadcast'||!msg?.key?.id||!msg.message)return null;
  const fromMe=Boolean(msg?.key?.fromMe);
- if(upsertType&&upsertType!=='notify')return null;
+ if(upsertType&&upsertType!=='notify'&&upsertType!=='history')return null;
+ const historical=upsertType==='history';
  let media=null,media_error=null;
- const meta=mediaMeta(msg.message);
+ const meta=historical?null:mediaMeta(msg.message);
  if(meta){
   try{
    const size=Number(meta.node?.fileLength?.toString?.()||meta.node?.fileLength||0);
@@ -134,7 +135,8 @@ export async function normalizedRecord(sock,msg,{upsertType=null}={}){
   body:extractMessageText(msg.message).slice(0,10000),media,media_error,
   referral:fromMe?null:extractAdReferral(msg.message),
   created_at:new Date((Number.isFinite(ts)?ts:Math.floor(Date.now()/1000))*1000).toISOString(),
-  received_at:new Date().toISOString(),upsert_type:upsertType||null
+  received_at:new Date().toISOString(),upsert_type:upsertType||null,
+  historical
  };
 }
 export class WhatsAppConnection{
@@ -163,7 +165,7 @@ export class WhatsAppConnection{
    const sock=this.SocketFactory({
     auth:state,
     markOnlineOnConnect:false,
-    syncFullHistory:false,
+    syncFullHistory:true,
     generateHighQualityLinkPreview:false,
     browser:['Speed Delivery','Chrome','1.0.0'],
     getMessage:async()=>undefined,
@@ -191,6 +193,18 @@ export class WhatsAppConnection{
       this.state={status:'disconnected',phone:null,qr:null,error:null};
       if(this.desired)setTimeout(()=>this.connect().catch(()=>{}),3000).unref();
      }
+    }
+   });
+   // WhatsApp may offer partial historical sync on pairing/relinking.
+   // Treat it as best effort only; a missing history event is NOT proof that
+   // the conversation never existed on the phone before this linkage.
+   sock.ev.on('messaging-history.set',({messages=[]}={})=>{
+    for(const msg of [...messages].sort((a,b)=>
+     Number(a?.messageTimestamp?.toString?.()||0)-Number(b?.messageTimestamp?.toString?.()||0))){
+     this.receiveTail=this.receiveTail.then(async()=>{
+      const record=await normalizedRecord(sock,msg,{upsertType:'history'});
+      if(record)await this.onMessage(record);
+     }).catch(error=>console.warn('WhatsApp history import failed:',error.code||error.name||'Error'));
     }
    });
    sock.ev.on('messages.upsert',({messages,type})=>{

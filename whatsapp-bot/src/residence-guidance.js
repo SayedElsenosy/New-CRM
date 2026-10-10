@@ -81,6 +81,10 @@ function followupHaram(areas){
 export function mansouriyaGuidance({text='',previous=null,areas=[]}={}){
  const body=String(text||'').trim(),n=norm(body);
  const mentions=requiresResidenceDisambiguation(body);
+ // A comparison of job areas is not a request to identify the applicant's
+ // residence. Let the CRM comparison advisor handle that intent.
+ if(/(?:قارن|مقارن|مقارنه|الفرق|انسب|احسن|افضل)/.test(n)
+   &&/(?:شغل|وظيفه|مطاعم|ماركت|زايد|اكتوبر|الهرم)/.test(n))return null;
  const pending=previous?.kind==='mansouriya_unverified';
  if(!mentions&&!pending)return null;
 

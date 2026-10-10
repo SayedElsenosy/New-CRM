@@ -193,6 +193,25 @@ matches from fallback rules do NOT imply the LLM answered correctly.
 All prompts are synthetic; passing doesn't prove human-level chat
 quality, real WhatsApp throughput or correctness on actual applicants.
 
+### Diagnosing a Groq 403 (without more requests)
+
+Groq documents HTTP 403 for models blocked by either organization or project
+permissions. Before re-running anything, open the Groq Console, select the
+**same Personal / Default Project** as the evaluation key, and check:
+
+- Settings > Organization > Limits: ensure openai/gpt-oss-20b is not blocked.
+- Settings > Projects > Limits: ensure the model is not blocked by the project.
+- Groq Console's API Logs can show a reason for the existing failed request.
+
+The CLI now allows only these documented diagnostic codes in its output:
+model_permission_blocked_org and model_permission_blocked_project.
+For other 403s it prints provider_permission_code = null, not a guessed
+cause, and never displays raw provider messages or the API key.
+Do not disable intentional security restrictions or switch to a paid plan.
+Wait for verification before making a *single* further test request.
+
+Official source: https://console.groq.com/docs/model-permissions
+
 ## Safe migration steps
 
 1. Run and review synthetic offline fixtures.

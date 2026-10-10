@@ -7,7 +7,7 @@ from shadow_ai.llm_provider import (
     DisabledNetwork, EvaluationConfig, GroqSyntheticProposer,
     checked_synthetic_context, request_payload, MAX_CASES
 )
-from shadow_ai.live_eval import run_synthetic
+from shadow_ai.live_eval import run_synthetic, check_free_pilot, FREE_PILOT_CASE_IDS
 from shadow_ai.model_boundary import safe_model_action
 
 EXAMPLE = {"history": [user("ممكن أعرف شيفت العبور كام ساعة؟"),
@@ -124,6 +124,39 @@ class LiveLLMSafetyTests(unittest.TestCase):
         self.assertEqual(report["model_proposals_accepted"], 1)
         self.assertEqual(report["total_prompt_tokens"], 80)
         self.assertNotIn("موتوسيكل ولا عربية", json.dumps(report, ensure_ascii=False))
+
+    def test_free_pilot_explicit_double_confirmation_and_model(self):
+        self.assertEqual(FREE_PILOT_CASE_IDS,
+                         ("ad_vehicle", "income_vs_commute", "history_50"))
+        with self.assertRaises(DisabledNetwork):
+            check_free_pilot(config(True), approved_in_console=False, free_tier_env="YES")
+        with self.assertRaises(DisabledNetwork):
+            check_free_pilot(config(True), approved_in_console=True, free_tier_env="")
+        with self.assertRaises(DisabledNetwork):
+            check_free_pilot(EvaluationConfig(model="other-model", token=KEY,
+                                              network_allowed=True),
+                             approved_in_console=True, free_tier_env="YES")
+        valid = EvaluationConfig(model="openai/gpt-oss-20b", token=KEY,
+                                 network_allowed=True)
+        check_free_pilot(valid, approved_in_console=True, free_tier_env="YES")
+
+    def test_free_pilot_hard_capped_at_three_without_transport(self):
+        with self.assertRaises(ValueError):
+            run_synthetic(config(True), max_cases=4,
+                          proposer=GroqSyntheticProposer(config(True),
+                                                         transport=lambda *a: self.fail("Network attempted")))
+
+    def test_three_cases_are_curated_not_just_first_three(self):
+        def fake(payload, token, timeout):
+            return {"choices": [{"message": {"content": json.dumps({
+                "action": "clarify_or_continue", "confidence": 0.85,
+                "reason_code": "test"
+            })}}], "usage": {"prompt_tokens": 50, "completion_tokens": 12}}
+        pilot = GroqSyntheticProposer(config(True), transport=fake)
+        report = run_synthetic(config(True), max_cases=3, proposer=pilot)
+        self.assertEqual([c["id"] for c in report["cases"]], list(FREE_PILOT_CASE_IDS))
+        self.assertEqual(report["live_llm_requests_attempted"], 3)
+        self.assertEqual(report["total_prompt_tokens"], 150)
 
 if __name__ == "__main__":
     unittest.main()

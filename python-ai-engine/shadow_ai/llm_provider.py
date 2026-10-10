@@ -93,6 +93,7 @@ def request_payload(context: dict[str, Any], model: str) -> dict[str, Any]:
         "model": model, "temperature": 0,
         "max_tokens": MAX_TOKENS,
         "response_format": {"type": "json_object"},
+        "reasoning_format": "hidden",
         "messages": [
             {"role": "system", "content": (
                 "أنت مختبر نوايا توظيف للغة العامية المصرية. الأمثلة افتراضية فقط. "

@@ -112,55 +112,73 @@ whether text data can be sent to a specific provider lawfully and securely,
 perform per-office access review, set usage limits, and evaluate actual answer
 quality rather than assuming Python itself produces better text.
 
-## Phase 3 — optional REAL LLM experiment (NOT ENABLED)
+## Phase 3 — first Free-only 3-message pilot (NOT RUN YET)
 
-An opt-in Groq-compatible HTTPS client now exists in
-shadow_ai.llm_provider, with a fixed Groq endpoint, bounded timeouts,
-maximum **180 generated tokens** and a hard cap of **10 requests per
-run**. It operates **only** on the synthetic benchmark file bundled with
-this repository. It must not be given actual candidates' WhatsApp chats,
-phone numbers, residence addresses, personal IDs or credentials.
+The Free-only pilot is prepared but NO real model call has been made.
+The Groq Free plan uses quota limits; Developer has usage-based billing.
+A script cannot verify the organization's billing tier from the current
+Groq Chat API. You MUST personally check your active organization is
+**Free, not Developer**, before proceeding. Do not upgrade or add a
+payment method just to run this experiment.
 
-### Without model calls or costs (default)
+Official docs:
+- Free quotas: https://console.groq.com/docs/rate-limits
+- Free vs Developer billing: https://console.groq.com/docs/billing-faqs
+- Create a separate API key: https://console.groq.com/keys
 
-    cd python-ai-engine
-    python -m unittest discover -s tests -v
+The current Free pilot uses **openai/gpt-oss-20b** and three synthetic
+scenarios: an advertising lead's motorcycle question; a comparison
+of area income and commute distance; and a conversation with 50
+intervening turns requiring context recall.
 
-The tests inject mock provider outputs, check request bounds and do not
-access external services.
+No external LLM requests occur in CI or Railway. Provider testing is
+read-only: no Supabase, WhatsApp, applicant details, hiring decision,
+or production key. This pilot CLI sends up to 3 attempts per run,
+maximum 180 generated tokens each, no automatic retries and a
+12-second request timeout, and reports actions, usage and latency only.
 
-### Only if you approve provider data use and pricing
+### Windows — offline preview (no key, no network)
 
-Use a **separate evaluation-only Groq key**; never reuse/copy the live
-production key into GitHub or chat. API access may incur charges even if
-a particular model has a free tier. The script has no hard monetary cap
-because providers set prices and quotas independently.
+Open PowerShell in the python-ai-engine folder:
 
-On Windows PowerShell:
+    .\run_free_pilot.ps1 -DryRun
 
-    cd python-ai-engine
-    $env:SHADOW_LLM_NETWORK_ENABLED = 'YES'
-    $env:SHADOW_GROQ_MODEL = '<model-supported-by-your-account>'
-    $env:SHADOW_GROQ_API_KEY = '<your-evaluation-key>'
-    python -m shadow_ai.live_eval --live --synthetic-only-confirmed --max-cases 3
+### Windows — only after verifying the Free account
 
-Without **all** those values and flags the script exits before a
-network request. Maximum max-cases is 10; default is 3. The model
-is called with temperature 0 and JSON output. Afterwards clear:
+1. Visit https://console.groq.com and check Settings > Billing.
+   It must say Free, NOT Developer. Otherwise STOP.
+2. Create a NEW project-specific evaluation key in the Free organization
+   at https://console.groq.com/keys. Never paste it in ChatGPT,
+   a screenshot, GitHub or production Railway variables.
+3. Open PowerShell in the python-ai-engine folder and execute:
 
-    Remove-Item Env:SHADOW_GROQ_API_KEY
+       .\run_free_pilot.ps1
 
-### What is measured
+4. Type FREE only after confirming the current organization is Free.
+   Paste the new evaluation key into the **hidden** PowerShell prompt.
+5. The script tests three synthetic cases, displays results and
+   clears temporary key variables. If a 429 occurs, the free quota
+   was reached: DO NOT upgrade or retry on a paid organization.
 
-- Proposed action, policy acceptance, fallback and labeled intent agreement
-- Token counts reported by provider, median API response latency
-- NOT human-level understanding or candidate-facing reply quality:
-  this is solely a read-only model-assisted planning experiment
+Do not permanently relax restrictive PowerShell execution policy.
+Use only a safe, per-process execution policy if required.
 
-No keys are stored in files, Railway or CI. The Python lab is NOT
-connected to WhatsApp. Running this external trial requires explicit
-approval for potential charges and for transmitting synthetic prompts
-to that provider.
+### Safety limits
+
+Before a real request the CLI requires all of the following:
+- flags --live --synthetic-only-confirmed --confirm-free-tier
+- environment SHADOW_LLM_NETWORK_ENABLED=YES
+- environment SHADOW_GROQ_FREE_TIER_CONFIRMED=YES
+- a separate test key and exact model ID openai/gpt-oss-20b
+
+These safeguards are NOT proof of a Free billing account.
+If someone falsely attests a paid organization, model calls could
+still incur cost. Therefore NEVER run against Developer.
+
+The generic provider class has a separate 10-attempt ceiling for
+test safety; the approved Free-pilot CLI is stricter: at most 3.
+All prompts are synthetic; passing doesn't prove human-level chat
+quality, real WhatsApp throughput or correctness on actual applicants.
 
 ## Safe migration steps
 

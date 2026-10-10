@@ -69,6 +69,7 @@ export default function AgentPipelineMonitor(){
   const interval=setInterval(()=>{if(active)refresh();},20000);
   return ()=>{active=false;clearInterval(interval);};
  },[refresh]);
+ const hasDetailedTrace=traces.some(x=>x.historic_trace===false);
  const row=traces.find(x=>x.event_id===selected)||null;
  const steps=row?.stages||[];
  const timeline=steps.length?[
@@ -84,6 +85,7 @@ export default function AgentPipelineMonitor(){
    <button type="button" onClick={refresh} disabled={loading} className="apm-refresh"><RefreshCw size={16}/> تحديث المسار</button>
   </header>
   {error&&<div className="apm-error" role="alert"><AlertTriangle size={15}/> {error}</div>}
+  {!loading&&!error&&traces.length>0&&!hasDetailedTrace&&<div className="apm-awaiting-trace" role="status"><Clock3 size={19}/><span><strong>بانتظار أول رسالة بعد تفعيل تتبع المراحل</strong><small>كل القرارات الظاهرة اتسجلت قبل تشغيل الميزة. ابعت رسالة واتساب جديدة وسيظهر تتبّع المراحل الفعلي هنا بعد معالجتها.</small></span></div>}
   <div className="apm-layout">
    <div className="apm-list">
     <div className="apm-subheading"><MessageCircle size={16}/> آخر الرسائل التي عالجها الـAgent</div>
@@ -104,7 +106,7 @@ export default function AgentPipelineMonitor(){
       <div><strong>{actionLabel(row.action)}</strong><small>{formatDate(row.created_at)}</small></div>
       <span className={'apm-delivery '+stageColor(row.delivery)}>{STATE_LABELS[row.delivery]||row.delivery}</span>
      </div>
-     {row.historic_trace?<div className="apm-empty"><Clock3 size={19}/> القرار ده اتسجل قبل تشغيل تتبع المراحل الجديد. حالة إرسال واتساب متاحة، لكن مش هنفترض تفاصيل مراحل لم تتسجل وقتها.</div>:
+     {row.historic_trace?<div className="apm-empty"><Clock3 size={19}/> القرار ده قديم واتسجل قبل تفعيل التتبّع التفصيلي. تقدر تشوف حالة إرسال الرد، ولعرض المراحل ومددها اختار رسالة اتعالجت بعد تفعيل الميزة.</div>:
      <ol className="apm-stage-list">{timeline.map((stage,index)=><li key={stage.key} className={'apm-stage '+stageColor(stage.status)}>
       <span className="apm-step-number">{stage.status==='done'||stage.status==='sent'?<CheckCircle2 size={18}/>:index+1}</span>
       <span className="apm-stage-content"><strong>{STEP_LABELS[stage.key]||stage.key}</strong>

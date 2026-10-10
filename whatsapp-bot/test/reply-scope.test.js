@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,normalizeReplyMode,
- initialHistoryReview,historicalChatMark} from '../src/reply-scope.js';
+ initialHistoryReview,historicalChatMark,shouldCreateHistoryReviewAlert} from '../src/reply-scope.js';
 import {normalizedRecord,extractAdReferral} from '../src/whatsapp.js';
 
 test('per-number reply mode: all, ads_only, off (and fail closed for invalid)',()=>{
@@ -43,4 +43,14 @@ test('genuine ad context is detected without assuming ordinary text is an ad ref
   externalAdReply:{sourceId:'123',sourceType:'ad',title:'Recruiting'}
  }}};
  assert.equal(extractAdReferral(referred).source_id,'123');
+});
+
+test('first live inbound from a verified ad must show history review alert instead of silently swallowing messages',()=>{
+ const pending={__history_review:{status:'pending',source:'first_seen_after_link'}};
+ assert.equal(shouldCreateHistoryReviewAlert({historical:false,answers:pending}),true);
+ assert.equal(shouldCreateHistoryReviewAlert({historical:true,answers:pending}),false);
+ assert.equal(shouldCreateHistoryReviewAlert({historical:false,answers:{
+  __history_review:{status:'approved',source:'first_seen_after_link'}
+ }}),false);
+ assert.equal(shouldCreateHistoryReviewAlert({historical:false,answers:{}}),false);
 });

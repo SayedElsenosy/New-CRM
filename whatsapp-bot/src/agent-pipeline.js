@@ -4,7 +4,7 @@
  * One compact snapshot is appended to the existing agent_turn event.
  */
 export const PIPELINE_STAGES=['received','memory','knowledge','understanding','decision','response'];
-const safeMs=value=>Number.isFinite(Number(value))?Math.min(120000,Math.max(0,Math.round(Number(value)))):null;
+const safeMs=value=>value!==null&&value!==undefined&&Number.isFinite(Number(value))?Math.min(120000,Math.max(0,Math.round(Number(value)))):null;
 const safeCount=value=>Number.isFinite(Number(value))?Math.min(500,Math.max(0,Math.floor(Number(value)))):0;
 const safeAction=value=>String(value||'flow_turn').replace(/[^a-z0-9_]/gi,'').slice(0,50)||'flow_turn';
 const safeStatus=value=>['done','skipped','degraded','failed'].includes(value)?value:'skipped';
@@ -58,6 +58,10 @@ export function deliveryState(status){
   default:return 'not_recorded';
  }
 }
+export function failureStageEvent({stage='received',attempt=1,messageId=null}={}){
+ const valid=PIPELINE_STAGES.includes(stage)?stage:'received';
+ return {message_id:messageId,stage:valid,attempt:Math.min(3,Math.max(1,Math.floor(Number(attempt)||1)))};
+}
 export function summarizePipelineEvents(events=[],outgoing=[]){
  const byParent=new Map();
  for(const row of outgoing||[]){
@@ -68,6 +72,12 @@ export function summarizePipelineEvents(events=[],outgoing=[]){
  const priority=['failed','uncertain','sending','queued','cancelled','sent','not_recorded'];
  return (events||[]).slice(0,30).map(event=>{
   const detail=event?.detail||{},messageId=detail.message_id||null;
+  if(event?.kind==='agent_pipeline_failed'){
+   const failed=failureStageEvent({stage:detail.stage,attempt:detail.attempt,messageId});
+   return {event_id:event.id,message_id:messageId,created_at:event.created_at,
+    action:'processing_failure',stages:[{key:failed.stage,status:'failed',duration_ms:null}],
+    historic_trace:false,delivery:'processing_failed',response_count:0,attempt:failed.attempt};
+  }
   const stages=publicPipeline(event);
   const states=byParent.get(messageId)||[];
   const delivery=states.length?priority.find(x=>states.includes(x)):'not_recorded';

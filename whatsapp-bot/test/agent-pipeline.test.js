@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildTurnPipeline,PIPELINE_STAGES,publicPipeline,summarizePipelineEvents,deliveryState} from '../src/agent-pipeline.js';
+import {buildTurnPipeline,PIPELINE_STAGES,publicPipeline,summarizePipelineEvents,deliveryState,failureStageEvent} from '../src/agent-pipeline.js';
 
 test('operational pipeline uses only allowlisted stage metadata, no applicant text or hidden chain of thought',()=>{
  const privatePrompt='candidate phone 201234567890 private';
@@ -59,4 +59,23 @@ test('invalid raw durations and counts cannot poison UI payload',()=>{
  assert.equal(t.stages[2].items,500);
  assert.equal(t.stages[2].historical_excerpts,0);
  assert.doesNotMatch(t.stages[4].action,/[<>"]/);
+});
+
+test('processing failure reveals only stage, not raw model errors, and is not confused with WhatsApp send failure',()=>{
+ const failure=failureStageEvent({stage:'understanding',attempt:3,messageId:'m'});
+ const row={id:'e',kind:'agent_pipeline_failed',created_at:'2026-10-10T12:00:00Z',
+  detail:{...failure,raw_error:'PRIVATE data should not appear'}};
+ const result=summarizePipelineEvents([row])[0];
+ assert.equal(result.action,'processing_failure');
+ assert.equal(result.stages[0].key,'understanding');
+ assert.equal(result.stages[0].status,'failed');
+ assert.equal(result.delivery,'processing_failed');
+ assert.equal(result.attempt,3);
+ assert.doesNotMatch(JSON.stringify(result),/PRIVATE|raw_error/);
+ assert.equal(failureStageEvent({stage:'malicious',attempt:999}).stage,'received');
+ assert.equal(failureStageEvent({stage:'response',attempt:999}).attempt,3);
+});
+test('skipped model stage has no invented duration',()=>{
+ const row=buildTurnPipeline({understanding:{status:'skipped'}});
+ assert.equal(row.stages[3].duration_ms,null);
 });

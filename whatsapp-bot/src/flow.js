@@ -507,6 +507,10 @@ export async function planTurn({applicant:a,message:m,questions,areas,settings,i
     reply:contextual.reply,agent_action:contextual.action};
   }
  }
+ if(!protocolAction&&!m.media_path){
+  const shift=contextualShiftQuestion({text:m.body,answers,areas});
+  if(shift)return {patch:{awaiting_id:a.awaiting_id||null},reply:shift.reply,agent_action:shift.action};
+ }
  const observations=settings.ai_enabled&&!protocolAction?extractConversationObservations(m.body):[];
  const recommendationPreferences=settings.ai_enabled&&!protocolAction?extractRecommendationPreferences(m.body):[];
  const recommendationMerge=mergeRecommendationProfile(answers.__recommendation_profile,recommendationPreferences);

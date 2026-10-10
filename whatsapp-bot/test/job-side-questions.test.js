@@ -84,3 +84,13 @@ test('normal application greeting still starts onboarding without side question'
  assert.match(t.reply,/أهلاً بك في التقديم/);
  assert.equal(t.patch.awaiting_id,'area');
 });
+
+test('unlocated near-Salam question asks for landmark instead of generic work-area repetition',async()=>{
+ const t=await run(base,'اقرب حاجه للسلام');
+ assert.equal(t.agent_action,'clarify_nearby_origin');
+ assert.match(t.reply,/مدينة السلام/);
+ assert.match(t.reply,/شارع أو معلم/);
+ assert.doesNotMatch(t.reply,/حابب تنزل شغل في أنهي منطقة/);
+ assert.equal(t.patch.awaiting_id,'area');
+ assert.equal(t.patch.answers,undefined);
+});

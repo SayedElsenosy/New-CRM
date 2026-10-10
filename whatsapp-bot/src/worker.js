@@ -175,7 +175,8 @@ export class Worker {
   const historic=historicalChatMark(record);
   const cutoff=await this.resetCutoff(record,accountId);
   if(cutoff){
-   const received=Date.parse(record.received_at||record.created_at||0),reset=Date.parse(cutoff);
+   // Old history must never recreate a deliberately deleted/reset contact.
+   const received=Date.parse(historic?record.created_at:(record.received_at||record.created_at||0)),reset=Date.parse(cutoff);
    if(Number.isFinite(received)&&Number.isFinite(reset)&&received<=reset)return;
   }
   let existingQuery=this.db.from('masar_messages').select('id').eq('wa_id',record.id);

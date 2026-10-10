@@ -1,11 +1,12 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {
-  Activity,ArrowLeft,BarChart3,BellRing,BookOpen,BrainCircuit,CalendarDays,
+  Activity,ArrowLeft,Network,BarChart3,BellRing,BookOpen,BrainCircuit,CalendarDays,
   CheckCircle2,ClipboardCheck,Cpu,Database,FileText,Gauge,Globe2,MessageCircle,
   Megaphone,Play,Plus,RefreshCw,Search,Send,Settings2,ShieldCheck,Sparkles,MessageCircleQuestion,
   Target,Users,Zap,MapPin,TrendingUp,Briefcase,Clock3,FolderOpen,ChevronLeft,CalendarCheck,UserPlus,Bot,MessageSquare,Filter
 } from 'lucide-react';
 import {api,send,date,personName} from './api';
+import AgentBrainStudio from './AgentBrainStudio';
 
 const n=value=>Number(value||0);
 const fmt=value=>n(value).toLocaleString('en-US');
@@ -696,15 +697,18 @@ function AgentDecisions({state}){
 }
 
 export function ReferenceAIAgentPage({action}){
-  const [state,setState]=useState(null),[view,setView]=useState('dashboard'),[error,setError]=useState('');
-  const load=useCallback(async()=>{try{setState(await api('/agent'));setError('');}catch(e){setError(e.message);}},[]);
+  const [state,setState]=useState(null),[view,setView]=useState('dashboard'),[error,setError]=useState(''),[updatedAt,setUpdatedAt]=useState(null);
+  const load=useCallback(async()=>{try{const result=await api('/agent');setState(result);setUpdatedAt(Date.now());setError('');}catch(e){setError(e.message);}},[]);
   useEffect(()=>{load();},[load]);
+  // Refresh only while the dedicated brain monitor is visible.
+  useEffect(()=>{if(view!=='neural')return;const timer=setInterval(load,60000);return ()=>clearInterval(timer);},[view,load]);
   if(!state)return <div className="v2-agent-loading"><BrainCircuit size={44}/><strong>جارٍ تشغيل AI Agent...</strong>{error&&<small>{error}</small>}</div>;
   return <div className="v2-page v2-agent">
     <section className="v2-hero v2-agent-hero"><div className="v2-hero-copy"><h1>الوكيل الذكي</h1><p>إدارة وتدريب ومتابعة أداء الوكيل الذكي داخل المنصة</p></div><img src="/reference/hero-rider.webp" alt="" aria-hidden="true"/></section>
-    <div className="v2-agent-toolbar"><button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}><BrainCircuit/> الرئيسية</button><button className={view==='knowledge'?'active':''} onClick={()=>setView('knowledge')}><Database/> المعرفة</button><button className={view==='decisions'?'active':''} onClick={()=>setView('decisions')}><Activity/> القرارات</button><button className={view==='test'?'active':''} onClick={()=>setView('test')}><Play/> التدريب</button><button className={view==='quality'?'active':''} onClick={()=>setView('quality')}><ShieldCheck/> مركز الجودة</button><button className={view==='performance'?'active':''} onClick={()=>setView('performance')}><TrendingUp/> الأداء والتجربة</button><button className={view==='settings'?'active':''} onClick={()=>setView('settings')}><Settings2/> الإعدادات</button><span className={'v2-agent-state '+(state.llm?.configured?'on':'')}><i/>{state.llm?.configured?'LLM READY':'CORE ACTIVE'}</span></div>
+    <div className="v2-agent-toolbar"><button className={view==='dashboard'?'active':''} onClick={()=>setView('dashboard')}><BrainCircuit/> الرئيسية</button><button className={view==='neural'?'active':''} onClick={()=>setView('neural')}><Network/> العقل التفاعلي</button><button className={view==='knowledge'?'active':''} onClick={()=>setView('knowledge')}><Database/> المعرفة</button><button className={view==='decisions'?'active':''} onClick={()=>setView('decisions')}><Activity/> القرارات</button><button className={view==='test'?'active':''} onClick={()=>setView('test')}><Play/> التدريب</button><button className={view==='quality'?'active':''} onClick={()=>setView('quality')}><ShieldCheck/> مركز الجودة</button><button className={view==='performance'?'active':''} onClick={()=>setView('performance')}><TrendingUp/> الأداء والتجربة</button><button className={view==='settings'?'active':''} onClick={()=>setView('settings')}><Settings2/> الإعدادات</button><span className={'v2-agent-state '+(state.llm?.configured?'on':'')}><i/>{state.llm?.configured?'LLM READY':'CORE ACTIVE'}</span></div>
     {error&&<div className="v2-error">{error}<button onClick={load}><RefreshCw size={15}/> إعادة المحاولة</button></div>}
     {view==='dashboard'&&<AgentDashboard state={state} onView={setView}/>}
+    {view==='neural'&&<AgentBrainStudio state={state} onNavigate={setView} reload={load} updatedAt={updatedAt}/>}
     {view==='knowledge'&&<AgentKnowledge state={state} reload={load}/>}
     {view==='test'&&<AgentTest state={state}/>}
     {view==='quality'&&<AgentQualityCenter state={state} reload={load} onReviewKnowledge={()=>setView('knowledge')}/>}

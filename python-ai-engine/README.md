@@ -72,6 +72,46 @@ local evaluation. Future production retrieval must support pagination and
 persistent indexes to scale without losing context; this prototype does not
 claim to solve unbounded 100,000-message histories.
 
+## Paired Node/Python comparison (Phase 2)
+
+A single synthetic fixture file at benchmarks/paired_cases.json is used by
+both implementations. It contains **no actual applicant transcripts, phones,
+office secrets, or external API calls**.
+
+From the project root, after npm install:
+
+    PYTHONPATH=python-ai-engine python -m shadow_ai.paired_eval
+
+Run Python contract tests without Node:
+
+    cd python-ai-engine
+    python -m unittest discover -s tests -v
+    python -m shadow_ai.paired_eval --python-only --fail-on-python
+
+The comparative report is printed in GitHub Actions. **Do not rank**
+the engines by raw passed counts or wall-clock times: the Python experiment
+returns a proposed structured action; the current Node flow returns a
+candidate-facing reply. They are checked on different observable contracts.
+Neither offline rule test exercises Groq/OpenAI inference, WhatsApp delivery,
+or actual production scale. To compare answer quality, both need equivalent
+LLM calls and human reviewed anonymized dialogues.
+
+### LLM proposal boundary — no live model calls yet
+
+shadow_ai.model_boundary defines an optional injectable model callback.
+It sends only allowlisted intent categories, structured CRM facts, and a
+current job identifier — **never raw chat text, phone numbers, residence,
+candidate identity or hidden reasoning**. It rejects suggestions without
+detected intents or a known job, forbidden CRM writes, attempts to change
+qualification and speculative free-form answers; provider errors revert to
+the current rule planner. Unit tests use a fake local model, **not an API**.
+
+There is no public network client, API token, provider credentials or
+deployment in this phase. Before a live LLM comparison we must decide
+whether text data can be sent to a specific provider lawfully and securely,
+perform per-office access review, set usage limits, and evaluate actual answer
+quality rather than assuming Python itself produces better text.
+
 ## Safe migration steps
 
 1. Run and review synthetic offline fixtures.

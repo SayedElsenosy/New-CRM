@@ -3,7 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {must,config} from './db.js';
 import {planTurn} from './flow.js';
-import {buildTurnPipeline} from './agent-pipeline.js';
+import {buildTurnPipeline,failureStageEvent} from './agent-pipeline.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {loadLifetimeMemory} from './lifetime-memory.js';
 import {retrieveHistoricalExcerpts,historicalRecallNeeded} from './historical-retrieval.js';
@@ -433,6 +433,7 @@ export class Worker {
     if(blocked.has(m.applicant_id))continue;
     const prior=must(await this.db.from('masar_messages').select('id').eq('applicant_id',m.applicant_id).eq('direction','in').eq('status','failed').lte('sequence',m.sequence).limit(1));
     if(prior.length){blocked.add(m.applicant_id);continue;}
+    let currentStage='received';
     try{
      const workerStartedAt=Date.now();
      const a=must(await this.db.from('masar_applicants').select('*').eq('id',m.applicant_id).single()),c=await config(this.db,a.office_id||null);
@@ -456,6 +457,7 @@ export class Worker {
      // Backfill the entire existing history once, then incrementally index
      // every previously unseen message, including staff replies and corrections.
      // A memory-index failure must never prevent the applicant getting a reply.
+     currentStage='memory';
      const memoryStarted=Date.now();
      let memoryStatus='done';
      let lifetimeChanged=false;
@@ -472,6 +474,7 @@ export class Worker {
       console.warn('Lifetime conversation memory unavailable:',memoryError.code||memoryError.name||'Error');
      }
      const memoryMs=Date.now()-memoryStarted;
+     currentStage='knowledge';
      const knowledgeStarted=Date.now();
      let knowledge=await loadKnowledge(this.db,a.office_id||null);
      const knowledgeMs=Date.now()-knowledgeStarted;
@@ -479,6 +482,7 @@ export class Worker {
      let recentMessages=[];
      let historicalExcerpts=[];
      let conversationEpisodes=[];
+     currentStage='understanding';
      const understandingStarted=Date.now();
      const plannerAttempted=Boolean(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m));
      if(plannerAttempted){
@@ -515,6 +519,7 @@ export class Worker {
       }
      }
      const understandingMs=Date.now()-understandingStarted;
+     currentStage='decision';
      const decisionStarted=Date.now();
      let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null,historicalExcerpts,conversationEpisodes});
      if(lifetimeChanged&&turn.patch&&turn.reply){
@@ -546,6 +551,7 @@ export class Worker {
       }
      }
      const decisionMs=Date.now()-decisionStarted;
+     currentStage='response';
      const responseStarted=Date.now();
      must(await this.db.rpc('masar_commit_turn',{p_message:m.id,p_patch:turn.patch,p_reply:turn.reply}));
      if(turn.followup_reply){
@@ -655,6 +661,17 @@ export class Worker {
      blocked.add(m.applicant_id);const attempts=m.attempts+1;
      must(await this.db.from('masar_messages').update({attempts,status:attempts>=3?'failed':'pending',error:'تعذر معالجة الرسالة؛ أعد المحاولة من ملف المتقدم.'}).eq('id',m.id));
      this.lastError='توجد رسالة تحتاج مراجعة في ملف المتقدم';
+     // Only an operational stage and capped retry count are persisted.
+     // Avoid raw exception text, WhatsApp content, prompts and PII.
+     try{
+      const logged=await this.db.from('masar_events').insert({
+       applicant_id:m.applicant_id,kind:'agent_pipeline_failed',
+       detail:failureStageEvent({stage:currentStage,attempt:attempts,messageId:m.id})
+      });
+      if(logged.error)throw logged.error;
+     }catch(traceError){
+      console.warn('Agent pipeline failure trace unavailable:',traceError.code||traceError.name||'Error');
+     }
     }
    }
 

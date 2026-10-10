@@ -4,7 +4,7 @@ import {areaPlaceKey,areaMode} from './area-advisor.js';
 /** Read-only answers to employment side questions. Never qualify an applicant. */
 const SHIFT_INTENT=/(?:شفت|شيفت|الورديه|ورديه|ورديات|مواعيد\s+(?:العمل|الشغل)|ساعات\s+(?:العمل|الشغل)|من\s+كام\s+(?:ل|الي|الى)\s+كام)/;
 const REQUIREMENT_INTENT=/(?:عربيه|عربيات|موتوسيكل|موتوسكل|موتسيكل|متوسيكل|مكنه|موتور)/;
-const REQUIREMENT_QUESTION=/(?:لازم|مطلوب|شرط|ينفع|المميزات|مميزات|هل|ايه|محتاج|معايا|معاك)/;
+const REQUIREMENT_QUESTION=/(?:لازم|مطلوب|شرط|ينفع|المميزات|مميزات|هل|ايه|محتاج)/;
 const DIGITS='٠١٢٣٤٥٦٧٨٩';
 const normalizeText=text=>norm(String(text||'')).replace(/[٠-٩]/g,c=>String(DIGITS.indexOf(c)));
 function currentArea(answers,areas){

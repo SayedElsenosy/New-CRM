@@ -88,6 +88,13 @@ test('manual and previously staff-led pauses are never silently reopened',()=>{
   assert.equal(eligibleForAutoAdStart({account:adsAccount,answers,existing:true}),false);
  }
  assert.equal(eligibleForAutoAdStart({account:adsAccount,answers:{__attribution:verifiedAd},existing:true}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,answers:{
+  __attribution:verifiedAd,__history_review:{status:'pending',source:'first_seen_after_link'},
+  __bot_paused_by_staff:true
+ },existing:true}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,answers:{
+  __attribution:verifiedAd,__history_review:{status:'pending',source:'first_seen_after_link'}
+ },existing:true,stage:'lecture'}),false);
 });
 test('a late WhatsApp history sync reveals human outbound; stop bot and require review',()=>{
  assert.equal(pauseOnHistoricalStaffReply({

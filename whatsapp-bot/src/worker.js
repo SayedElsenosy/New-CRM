@@ -6,6 +6,7 @@ import {planTurn} from './flow.js';
 import {updateBrainMemory,needsLlmPlanning} from './brain-memory.js';
 import {loadLifetimeMemory} from './lifetime-memory.js';
 import {retrieveHistoricalExcerpts,historicalRecallNeeded} from './historical-retrieval.js';
+import {retrieveConversationEpisodes,needsConversationEpisodes} from './conversation-episodes.js';
 import {turnQualitySignals} from './conversation-intelligence.js';
 import {qualityIssueAlertCandidate} from './quality-alerts.js';
 import {enrollNewInboundApplicant} from './pilot-observation.js';
@@ -377,6 +378,7 @@ export class Worker {
      let llmAnalysis={available:false,plan:null,state:this.agentRuntime?.snapshot?.(c.settings)||null};
      let recentMessages=[];
      let historicalExcerpts=[];
+     let conversationEpisodes=[];
      if(this.agentRuntime&&c.settings?.agent_llm_enabled===true&&needsLlmPlanning(m)){
       try{
        const recent=must(await this.db.from('masar_messages').select('sequence,direction,sender,body,created_at')
@@ -388,13 +390,19 @@ export class Worker {
           applicantId:a.id,currentSequence:m.sequence,query:m.body,
           recentSequences:recentMessages.map(x=>x.sequence)
          });
+         if(needsConversationEpisodes(m.body)){
+          conversationEpisodes=await retrieveConversationEpisodes(this.db,{
+           applicantId:a.id,currentSequence:m.sequence,
+           query:m.body,historicalExcerpts
+          });
+         }
         }catch(historyError){
          console.warn('Historical recall unavailable:',historyError.code||historyError.name||'Error');
         }
        }
        llmAnalysis=await this.agentRuntime.analyzeTurn({
         applicant:a,message:m,questions:c.questions,areas:c.areas,settings:c.settings,
-        knowledge,recentMessages,historicalExcerpts,office:c.office
+        knowledge,recentMessages,historicalExcerpts,conversationEpisodes,office:c.office
        });
        if(llmAnalysis?.available&&['assist','live'].includes(c.settings.agent_llm_mode)){
         knowledge=this.agentRuntime.reorderKnowledge(knowledge,llmAnalysis.plan,c.settings);
@@ -404,7 +412,7 @@ export class Worker {
        console.warn('AI Agent LLM planner failed:',e.code||e.name||'Error');
       }
      }
-     let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null,historicalExcerpts});
+     let turn=await planTurn({applicant:a,message:m,...c,interpret,knowledge,llmPlan:llmAnalysis?.plan||null,historicalExcerpts,conversationEpisodes});
      if(lifetimeChanged&&turn.patch&&turn.reply){
       turn={...turn,patch:{...turn.patch,answers:{
        ...(turn.patch.answers||a.answers||{}),__lifetime_memory:a.answers.__lifetime_memory
@@ -423,7 +431,7 @@ export class Worker {
        &&!replyContainsVerbatimAreaDetails(turn.reply,c.areas)){
       try{
        const composed=await this.agentRuntime.composeTurn({
-        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,historicalExcerpts,
+        message:m,turn,settings:c.settings,plan:llmAnalysis?.plan||null,recentMessages,historicalExcerpts,conversationEpisodes,
         office:c.office,applicant:{...a,answers:turn.patch?.answers||a.answers}
        });
        composerCalled=Number.isFinite(composed?.latency_ms);

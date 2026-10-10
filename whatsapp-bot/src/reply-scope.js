@@ -17,6 +17,27 @@ export function accountCanReply(mode,{referral=null,firstAttribution=null}={}){
  if(selected==='all')return true;
  return hasVerifiedAdReferral(referral)||hasVerifiedAdReferral(firstAttribution);
 }
+// Only an authentic WhatsApp click-to-ad referral can bypass the initial
+// unknown-contact review. Do not trust free-text claims of coming from an ad.
+export function isVerifiedCampaignLead(referral){
+ return Boolean(referral&&typeof referral==='object'&&(
+  String(referral.source_type||'').toLowerCase()==='ad' ||
+  String(referral.entry_point_source||'').toLowerCase()==='ctwa_ad' ||
+  String(referral.ctwa_clid||'').trim()
+ )&&(String(referral.source_id||'').trim()||String(referral.ctwa_clid||'').trim()));
+}
+const AUTO_REVIEW_SOURCES=new Set(['first_seen_after_link','imported_whatsapp_history']);
+export function eligibleForAutoAdStart({historical=false,outbound=false,account=null,referral=null,answers=null,existing=false}={}){
+ if(historical||outbound||account?.active!==true||account?.review_new_contacts!==true)return false;
+ if(!accountCanReply(account.reply_mode,{referral,firstAttribution:answers?.__attribution}))return false;
+ if(!isVerifiedCampaignLead(referral)&&!isVerifiedCampaignLead(answers?.__attribution))return false;
+ if(!existing)return true;
+ const history=answers?.__history_review;
+ return history?.status==='pending'&&AUTO_REVIEW_SOURCES.has(history.source);
+}
+export function automaticAdReview(){
+ return {status:'auto_started',source:'verified_campaign_without_known_staff_history',at:new Date().toISOString()};
+}
 // Known CRM applicants retain their prior per-applicant bot status; for a
 // contact FIRST seen on a newly linked number, earlier device-side dialogue
 // cannot be assumed to have been imported completely. Require staff review.

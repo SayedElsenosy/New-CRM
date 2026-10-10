@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,normalizeReplyMode,
- initialHistoryReview,historicalChatMark,shouldCreateHistoryReviewAlert} from '../src/reply-scope.js';
+ initialHistoryReview,historicalChatMark,shouldCreateHistoryReviewAlert,
+ eligibleForAutoAdStart,isVerifiedCampaignLead,pauseOnHistoricalStaffReply} from '../src/reply-scope.js';
 import {normalizedRecord,extractAdReferral} from '../src/whatsapp.js';
 
 test('per-number reply mode: all, ads_only, off (and fail closed for invalid)',()=>{
@@ -53,4 +54,63 @@ test('first live inbound from a verified ad must show history review alert inste
   __history_review:{status:'approved',source:'first_seen_after_link'}
  }}),false);
  assert.equal(shouldCreateHistoryReviewAlert({historical:false,answers:{}}),false);
+});
+
+const verifiedAd={source_id:'120253219829900236',source_type:'ad',ctwa_clid:'real-click-id',entry_point_source:'ctwa_ad'};
+const adsAccount={reply_mode:'ads_only',active:true,review_new_contacts:true};
+test('verified click-to-WhatsApp lead on ads-only number auto starts first contact',()=>{
+ assert.equal(isVerifiedCampaignLead(verifiedAd),true);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,referral:verifiedAd}),true);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,referral:{source_type:'ad'}}),false);
+ assert.equal(eligibleForAutoAdStart({account:{...adsAccount,reply_mode:'off'},referral:verifiedAd}),false);
+ assert.equal(eligibleForAutoAdStart({account:{...adsAccount,active:false},referral:verifiedAd}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,referral:verifiedAd,historical:true}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,referral:verifiedAd,outbound:true}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,referral:{source_id:'ad-id'},existing:false}),false,
+  'source id without a verified ad-type metadata does not bypass review');
+});
+test('old-policy pending Meta ad is resumed only if no imported staff conversation exists',()=>{
+ const firstSeen={__history_review:{status:'pending',source:'first_seen_after_link'},__attribution:verifiedAd};
+ const imported={__history_review:{status:'pending',source:'imported_whatsapp_history'},__attribution:verifiedAd};
+ for(const answers of [firstSeen,imported]){
+  assert.equal(eligibleForAutoAdStart({account:adsAccount,answers,existing:true}),true);
+  assert.equal(eligibleForAutoAdStart({account:adsAccount,answers,existing:true,hasStaffHistory:true}),false);
+ }
+});
+test('manual and previously staff-led pauses are never silently reopened',()=>{
+ for(const status of [
+  {status:'pending',source:'prior_staff_conversation'},
+  {status:'approved',source:'prior_staff_conversation'},
+  {status:'auto_started',source:'verified_campaign_without_known_staff_history'},
+  {status:'pending',source:'manual_handoff'}
+ ]){
+  const answers={__history_review:status,__attribution:verifiedAd};
+  assert.equal(eligibleForAutoAdStart({account:adsAccount,answers,existing:true}),false);
+ }
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,answers:{__attribution:verifiedAd},existing:true}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,answers:{
+  __attribution:verifiedAd,__history_review:{status:'pending',source:'first_seen_after_link'},
+  __bot_paused_by_staff:true
+ },existing:true}),false);
+ assert.equal(eligibleForAutoAdStart({account:adsAccount,answers:{
+  __attribution:verifiedAd,__history_review:{status:'pending',source:'first_seen_after_link'}
+ },existing:true,stage:'lecture'}),false);
+});
+test('a late WhatsApp history sync reveals human outbound; stop bot and require review',()=>{
+ assert.equal(pauseOnHistoricalStaffReply({
+  historical:true,outbound:true,account:adsAccount,
+  answers:{__history_review:{status:'auto_started'}}
+ }),true);
+ assert.equal(pauseOnHistoricalStaffReply({
+  historical:true,outbound:false,account:adsAccount,
+  answers:{__history_review:{status:'auto_started'}}
+ }),false);
+ assert.equal(pauseOnHistoricalStaffReply({
+  historical:false,outbound:true,account:adsAccount,
+  answers:{__history_review:{status:'auto_started'}}
+ }),false);
+ assert.equal(pauseOnHistoricalStaffReply({
+  historical:true,outbound:true,account:adsAccount,
+  answers:{__history_review:{status:'approved'}}
+ }),false);
 });

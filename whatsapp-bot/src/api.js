@@ -1374,7 +1374,7 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
       answers.__history_review={...answers.__history_review,status:'approved',approved_at:new Date().toISOString(),
        reviewed_by:req.user.id};
      }
-     delete answers.__ai_handoff;patch.answers=answers;
+     delete answers.__ai_handoff;delete answers.__bot_paused_by_staff;patch.answers=answers;
      const lastOut=must(await db.from('masar_messages').select('sequence').eq('applicant_id',a.id).eq('direction','out').order('sequence',{ascending:false}).limit(1).maybeSingle());
      let q=db.from('masar_messages').select('id,sequence,status,media_error').eq('applicant_id',a.id).eq('direction','in').eq('status','processed').order('sequence',{ascending:false}).limit(1);
      if(lastOut?.sequence)q=q.gt('sequence',lastOut.sequence);
@@ -1383,6 +1383,11 @@ export function makeApi({db,connection,connections,worker,speech=null,agentRunti
       must(await db.from('masar_messages').update({status:'pending',attempts:0,error:null}).eq('id',missed.id));
       resumedMessageId=missed.id;
      }
+    }
+    else {
+     // Explicit staff intervention must never be silently undone just because
+     // this contact originally arrived from a real WhatsApp ad.
+     patch.answers={...(a.answers||{}),__bot_paused_by_staff:true};
     }
    }
    if(b.stage!==undefined){

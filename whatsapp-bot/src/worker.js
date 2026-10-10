@@ -16,7 +16,7 @@ import {followupDue,buildFollowupMessage} from './followup.js';
 import {sendHumanInterventionPush,sendOfficeQualityPush} from './push.js';
 import {syncRecruitmentStageFromConversation} from './conversation-stage.js';
 import {withFirstAttribution} from './attribution.js';
-import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,shouldCreateHistoryReviewAlert,initialHistoryReview,historicalChatMark} from './reply-scope.js';
+import {accountCanReply,hasVerifiedAdReferral,historyReviewRequired,shouldCreateHistoryReviewAlert,initialHistoryReview,historicalChatMark,eligibleForAutoAdStart,automaticAdReview,pauseOnHistoricalStaffReply} from './reply-scope.js';
 import {questionPrompt,areaDetails} from './domain.js';
 import {syncInterviewFromStaffMessages,reconcileRecentStaffInterviews} from './interview-automation.js';
 
@@ -203,14 +203,21 @@ export class Worker {
 
   // Keep new candidates in the office associated with the receiving
   // WhatsApp account. The office's questions/areas must not cross tenants.
-  const linkedAccount=!a&&accountId?must(await this.db.from('masar_whatsapp_accounts')
+  const linkedAccount=accountId?must(await this.db.from('masar_whatsapp_accounts')
    .select('office_id,active,reply_mode,review_new_contacts').eq('id',accountId).maybeSingle()):null;
   const referral=hasVerifiedAdReferral(record.referral)?record.referral:null;
+  const external=record.direction==='out'||record.from_me===true;
   let applicantWasCreated=false;
   if(!a){
-   const requireReview=linkedAccount?.review_new_contacts===true;
+   // New, verified click-to-ad leads start instantly. A record of old staff
+   // conversation or absent/uncertain attribution still requires review.
+   const autoStart=eligibleForAutoAdStart({
+    historical:historic,outbound:external,account:linkedAccount,referral
+   });
+   const requireReview=linkedAccount?.review_new_contacts===true&&!autoStart;
    const row={contact_id:record.contact_id,phone:record.phone,last_message_at:record.created_at,
-    ...(requireReview?{bot_enabled:false,answers:{__history_review:initialHistoryReview({source:historic?'imported_whatsapp_history':'first_seen_after_link'})}}:{})};
+    ...(autoStart?{bot_enabled:true,answers:{__history_review:automaticAdReview()}}:
+       requireReview?{bot_enabled:false,answers:{__history_review:initialHistoryReview({source:historic?'imported_whatsapp_history':'first_seen_after_link'})}}:{})};
    if(multi)row.whatsapp_account_id=accountId;
    if(linkedAccount?.office_id)row.office_id=linkedAccount.office_id;
    if(referral)row.answers=withFirstAttribution(row.answers,referral);
@@ -221,15 +228,49 @@ export class Worker {
    if(!historic)patch.last_message_at=record.created_at;
    if(record.phone)patch.phone=record.phone;
    if(referral){const nextAnswers=withFirstAttribution(a.answers,referral);if(nextAnswers!==a.answers)patch.answers=nextAnswers;}
+   if(eligibleForAutoAdStart({
+    historical:historic,outbound:external,account:linkedAccount,referral,
+    answers:patch.answers||a.answers,existing:true,stage:a.stage
+   })){
+    // A paused contact imported under the older policy may resume only if
+    // the saved conversation contains no human outbound messages. Never
+    // override an explicitly stopped or staff-taken-over conversation.
+    const staff=must(await this.db.from('masar_messages').select('id')
+     .eq('applicant_id',a.id).eq('direction','out').eq('sender','staff').limit(1));
+    const manualStop=must(await this.db.from('masar_events').select('id')
+     .eq('applicant_id',a.id).eq('kind','staff_update')
+     .contains('detail',{bot_enabled:false}).limit(1));
+    if(eligibleForAutoAdStart({
+      historical:historic,outbound:external,account:linkedAccount,referral,
+      answers:patch.answers||a.answers,existing:true,stage:a.stage,
+      hasStaffHistory:staff.length>0||manualStop.length>0
+    })){
+     patch.bot_enabled=true;
+     patch.answers={...(patch.answers||a.answers||{}),__history_review:automaticAdReview()};
+     try{
+      const alerts=this.db.from('masar_alerts').update({
+       status:'resolved',resolution:'verified_campaign_auto_start',
+       resolved_at:new Date().toISOString(),updated_at:new Date().toISOString()
+      }).eq('applicant_id',a.id).eq('kind','history_review').eq('status','open');
+      const result=await alerts;
+      if(result.error)throw result.error;
+     }catch(error){console.warn('Auto-start alert cleanup failed:',error.code||error.name||'Error');}
+    }else{
+     // State imported history explicitly as staff-led; keep bot paused.
+     patch.bot_enabled=false;
+     patch.answers={...(patch.answers||a.answers||{}),
+      __history_review:initialHistoryReview({source:'prior_staff_conversation'})};
+    }
+   }
    must(await this.db.from('masar_applicants').update(patch).eq('id',a.id));
-   if(patch.answers)a={...a,answers:patch.answers};
+   a={...a,...patch};
   }
 
   const contactRow={contact_id:record.contact_id,applicant_id:a.id};
   if(multi)contactRow.whatsapp_account_id=accountId;
   must(await this.db.from('masar_contacts').upsert(contactRow,{onConflict:multi?'whatsapp_account_id,contact_id':'contact_id'}));
 
-  const isExternalOutbound=record.direction==='out'||record.from_me===true;
+  const isExternalOutbound=external;
   // Enroll only brand-new, inbound WhatsApp contacts. This is audit-only:
   // don't send anything, edit answers, or change the existing bot behavior.
   if(applicantWasCreated&&!historic&&!isExternalOutbound&&accountId){
@@ -260,9 +301,9 @@ export class Worker {
     // Imported device-side outgoing messages are prior human history, not
     // real-time staff replies. They should never trigger staff learning,
     // alerts resolution or fresh outbound sends.
-    if(a.bot_enabled!==false&&a.answers?.__history_review?.status!=='approved'
-      &&accountId&&must(await this.db.from('masar_whatsapp_accounts')
-       .select('review_new_contacts').eq('id',accountId).maybeSingle())?.review_new_contacts===true){
+    if(pauseOnHistoricalStaffReply({
+      historical:historic,outbound:external,account:linkedAccount,answers:a.answers
+    })){
      must(await this.db.from('masar_applicants').update({
       bot_enabled:false,
       answers:{...(a.answers||{}),__history_review:initialHistoryReview({source:'prior_staff_conversation'})},
